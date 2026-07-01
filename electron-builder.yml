@@ -1,0 +1,15 @@
+appId: com.scholarnote.app
+productName: ScholarNote
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+asar: true
+asarUnpack:
+  - '**/*.node'
+mac:
+  target:
+    - dmg
+  category: public.app-category.productivity
+  hardenedRuntime: true

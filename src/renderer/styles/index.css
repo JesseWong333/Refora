@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-background: #1e1e1e;
+    --color-foreground: #d4d4d4;
+    --color-muted: #858585;
+    --color-panel: #252526;
+    --color-panel-2: #2d2d2d;
+    --color-border: #3c3c3c;
+    --color-accent: #0e639c;
+    --color-accent-hover: #1f6fb2;
+    --color-warning: #cca700;
+    --color-error: #f48771;
+    --color-hover: #2a2d2e;
+    --color-active: #37373d;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial,
+      sans-serif;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+}
+
+@layer components {
+  .toolbar-btn {
+    @apply inline-flex h-7 cursor-pointer items-center rounded px-2 text-xs text-foreground hover:bg-hover;
+  }
+
+  .search-input {
+    @apply h-7 w-56 rounded border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none;
+  }
+
+  .field-input {
+    @apply w-full rounded border border-transparent bg-background px-2 py-1 text-sm text-foreground hover:border-border focus:border-accent focus:outline-none;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-panel-2) 0%,
+    var(--color-panel) 50%,
+    var(--color-panel-2) 100%
+  );
+  background-size: 400px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}

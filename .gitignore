@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+release/
+build/
+*.tsbuildinfo
+.DS_Store
+node_modules/.tmp/
+.klio/
+.github/

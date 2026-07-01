@@ -1,0 +1,113 @@
+{
+  "sidebar": {
+    "allFiles": "所有文件",
+    "recentlyRead": "最近阅读",
+    "recentlyAdded": "最近添加",
+    "starred": "收藏",
+    "categories": "分类",
+    "folderGrouping": "文件夹",
+    "emptyCategories": "暂无分类 \u2014 右键创建",
+    "createCategory": "创建分类",
+    "renameCategory": "重命名分类",
+    "deleteCategory": "删除分类",
+    "categoryName": "名称",
+    "deleteCategoryConfirm": "删除分类 \"{{name}}\"？文档不会被删除。"
+  },
+  "topbar": {
+    "addFile": "添加文件",
+    "addFolder": "添加文件夹",
+    "watchFolder": "监控文件夹",
+    "exportBibtex": "导出 BibTeX…",
+    "exportJson": "导出 JSON…",
+    "importing": "正在导入 {{current}}/{{total}} 个PDF…",
+    "search": "搜索…",
+    "settings": "设置"
+  },
+  "list": {
+    "title": "论文名称",
+    "authors": "作者",
+    "year": "发表年份",
+    "venue": "期刊/会议",
+    "addedAt": "添加时间",
+    "filePath": "PDF位置"
+  },
+  "detail": {
+    "title": "论文名称",
+    "authors": "作者",
+    "year": "发表年份",
+    "venue": "期刊/会议",
+    "volume": "卷号",
+    "abstract": "摘要",
+    "keywords": "关键词",
+    "url": "URL",
+    "addedAt": "添加时间",
+    "filePath": "PDF位置",
+    "note": "笔记",
+    "refreshMetadata": "刷新元数据",
+    "relocate": "重新定位",
+    "restoreOriginal": "恢复到原始位置",
+    "open": "打开",
+    "applyRemote": "应用远端值",
+    "moveToLibraryInherit": "继承全局",
+    "moveToLibraryMove": "移入库文件夹",
+    "moveToLibraryKeep": "保留原位"
+  },
+  "settings": {
+    "title": "设置",
+    "libraryFolder": "库文件夹",
+    "watchFolders": "监控文件夹",
+    "crossrefMailto": "Crossref Mailto",
+    "theme": "主题",
+    "language": "语言",
+    "proxy": "代理 (HTTP/HTTPS)",
+    "moveToLibraryOnCategorize": "分类时将文件移入库文件夹",
+    "watchFolderInsideLibrary": "路径不能在库文件夹内。",
+    "libraryInsideWatchFolder": "路径不能在监控文件夹内。",
+    "libraryInsideWatch": "库文件夹不能在监控文件夹内。",
+    "themeDark": "深色",
+    "zh": "中文",
+    "en": "English",
+    "chooseFolder": "选择文件夹",
+    "sidebarCollapsed": "收起侧边栏"
+  },
+  "common": {
+    "delete": "删除",
+    "rename": "重命名",
+    "cancel": "取消",
+    "confirm": "确认",
+    "create": "创建",
+    "save": "保存",
+    "add": "添加",
+    "remove": "移除",
+    "skip": "跳过",
+    "importAnyway": "仍然导入",
+    "openInFinder": "在访达中打开",
+    "copyPath": "复制路径",
+    "multiSelected": "已选择 {{count}} 篇",
+    "noResults": "未找到文档",
+    "emptyLibrary": "您的库是空的",
+    "selectDocHint": "选择一篇文献查看详情",
+    "noSearchResults": "没有匹配的文献。",
+    "saving": "正在保存…",
+    "saved": "已保存",
+    "networkError": "Crossref 无法访问 — 使用离线元数据",
+    "exportBibtexTitle": "导出 BibTeX",
+    "selectToExport": "请选择一篇或多篇文献以导出",
+    "bibtexExported": "已导出 {{count}} 条到 BibTeX"
+  },
+  "dialog": {
+    "duplicateWarning": "已存在相同内容的文件: {{name}}。跳过此文件？",
+    "deleteConfirm": "从库中移除此文献？（PDF文件不会被删除。）"
+  },
+  "wizard": {
+    "title": "欢迎使用 ScholarNote",
+    "description": "导入您的第一个 PDF 或连接监控文件夹开始使用。",
+    "chooseLibrary": "选择库文件夹",
+    "skip": "跳过"
+  },
+  "toast": {
+    "encryptedPdf": "跳过加密的 PDF: {{name}}（密码保护）",
+    "corruptedPdf": "无法读取: {{name}}（文件可能已损坏）",
+    "networkUnreachable": "Crossref 无法访问 — 使用离线元数据"
+  }
+}

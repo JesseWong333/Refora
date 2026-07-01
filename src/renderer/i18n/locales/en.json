@@ -1,0 +1,113 @@
+{
+  "sidebar": {
+    "allFiles": "All Files",
+    "recentlyRead": "Recently Read",
+    "recentlyAdded": "Recently Added",
+    "starred": "Starred",
+    "categories": "Categories",
+    "folderGrouping": "Folders",
+    "emptyCategories": "No categories yet \u2014 right-click to create one",
+    "createCategory": "Create Category",
+    "renameCategory": "Rename Category",
+    "deleteCategory": "Delete Category",
+    "categoryName": "Name",
+    "deleteCategoryConfirm": "Delete category \"{{name}}\"? Documents will not be deleted."
+  },
+  "topbar": {
+    "addFile": "Add File",
+    "addFolder": "Add Folder",
+    "watchFolder": "Watch Folder",
+    "exportBibtex": "Export BibTeX…",
+    "exportJson": "Export JSON…",
+    "importing": "Importing {{current}}/{{total}} PDFs…",
+    "search": "Search…",
+    "settings": "Settings"
+  },
+  "list": {
+    "title": "Title",
+    "authors": "Authors",
+    "year": "Year",
+    "venue": "Venue",
+    "addedAt": "Added",
+    "filePath": "Path"
+  },
+  "detail": {
+    "title": "Title",
+    "authors": "Authors",
+    "year": "Year",
+    "venue": "Venue",
+    "volume": "Volume",
+    "abstract": "Abstract",
+    "keywords": "Keywords",
+    "url": "URL",
+    "addedAt": "Added",
+    "filePath": "Path",
+    "note": "Notes",
+    "refreshMetadata": "Refresh Metadata",
+    "relocate": "Relocate",
+    "restoreOriginal": "Restore to Original Location",
+    "open": "Open",
+    "applyRemote": "Apply remote value",
+    "moveToLibraryInherit": "Inherit global",
+    "moveToLibraryMove": "Move into library",
+    "moveToLibraryKeep": "Keep in place"
+  },
+  "settings": {
+    "title": "Settings",
+    "libraryFolder": "Library Folder",
+    "watchFolders": "Watch Folders",
+    "crossrefMailto": "Crossref Mailto",
+    "theme": "Theme",
+    "language": "Language",
+    "proxy": "Proxy (HTTP/HTTPS)",
+    "moveToLibraryOnCategorize": "Move file into library on categorize",
+    "watchFolderInsideLibrary": "Path cannot be inside the library folder.",
+    "libraryInsideWatchFolder": "Path cannot be inside a watch folder.",
+    "libraryInsideWatch": "Library folder cannot be inside a watch folder.",
+    "themeDark": "Dark",
+    "zh": "中文",
+    "en": "English",
+    "chooseFolder": "Choose Folder",
+    "sidebarCollapsed": "Collapse Sidebar"
+  },
+  "common": {
+    "delete": "Delete",
+    "rename": "Rename",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "create": "Create",
+    "save": "Save",
+    "add": "Add",
+    "remove": "Remove",
+    "skip": "Skip",
+    "importAnyway": "Import Anyway",
+    "openInFinder": "Open in Finder",
+    "copyPath": "Copy Path",
+    "multiSelected": "{{count}} selected",
+    "noResults": "No documents found",
+    "emptyLibrary": "Your library is empty",
+    "selectDocHint": "Select a document to view details",
+    "noSearchResults": "No documents match your search.",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "networkError": "Crossref unreachable — using offline metadata",
+    "exportBibtexTitle": "Export BibTeX",
+    "selectToExport": "Select one or more documents to export",
+    "bibtexExported": "Exported {{count}} entries to BibTeX"
+  },
+  "dialog": {
+    "duplicateWarning": "A file with identical content already exists: {{name}}. Skip this file?",
+    "deleteConfirm": "Remove this document from the library? (The PDF file will not be deleted.)"
+  },
+  "wizard": {
+    "title": "Welcome to ScholarNote",
+    "description": "Import your first PDF or connect a watch folder to get started.",
+    "chooseLibrary": "Choose Library Folder",
+    "skip": "Skip"
+  },
+  "toast": {
+    "encryptedPdf": "Skipping encrypted PDF: {{name}} (password-protected)",
+    "corruptedPdf": "Could not read: {{name}} (file may be corrupted)",
+    "networkUnreachable": "Crossref unreachable — using offline metadata"
+  }
+}
