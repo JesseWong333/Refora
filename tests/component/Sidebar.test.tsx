@@ -113,6 +113,30 @@ describe('Sidebar', () => {
     expect(screen.queryByText('ML (5)')).not.toBeInTheDocument()
   })
 
+  it('shows an inline input when the create-category button is clicked', async () => {
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    await userEvent.click(screen.getByLabelText('sidebar.createCategory'))
+    expect(screen.getByPlaceholderText('sidebar.categoryName')).toBeInTheDocument()
+  })
+
+  it('creates a category when typing and pressing Enter in the inline input', async () => {
+    mocks.createCategory.mockResolvedValue({ id: 'new', name: 'Foo', sortOrder: 0, createdAt: 0 })
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    await userEvent.click(screen.getByLabelText('sidebar.createCategory'))
+    const input = screen.getByPlaceholderText('sidebar.categoryName')
+    await userEvent.type(input, 'Foo{Enter}')
+    expect(mocks.createCategory).toHaveBeenCalledWith('Foo')
+  })
+
+  it('cancels inline create on Escape without creating', async () => {
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    await userEvent.click(screen.getByLabelText('sidebar.createCategory'))
+    const input = screen.getByPlaceholderText('sidebar.categoryName')
+    await userEvent.type(input, 'Bar{Escape}')
+    expect(mocks.createCategory).not.toHaveBeenCalled()
+    expect(screen.queryByPlaceholderText('sidebar.categoryName')).not.toBeInTheDocument()
+  })
+
   it('calls setListMode with category mode and correct categoryId on category click', async () => {
     renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     await userEvent.click(screen.getByText('ML (5)'))

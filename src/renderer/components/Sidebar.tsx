@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Files,
@@ -20,13 +20,12 @@ import {
   Monitor,
   Loader2
 } from 'lucide-react'
-import { Button, showContextMenu } from '@lobehub/ui'
+import { Button, Input, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
+import type { InputRef } from 'antd/es/input'
 import { useDocumentStore } from '../store/documentStore'
 import { useTheme } from '../hooks/useTheme'
 import type { ListMode, Category } from '../../shared/ipc-types'
-import CategoryDialog from './CategoryDialog'
-import type { CategoryDialogState } from './CategoryDialog'
 import SettingsModal from './SettingsModal'
 import { api } from '../ipc'
 
@@ -137,7 +136,12 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const importProgress = useDocumentStore((s) => s.importProgress)
   const pendingMetadataCount = useDocumentStore((s) => s.pendingMetadataCount)
 
-  const [dialog, setDialog] = useState<CategoryDialogState | null>(null)
+  const [creatingNew, setCreatingNew] = useState(false)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [draftName, setDraftName] = useState('')
+  const newInputRef = useRef<InputRef>(null)
+  const renameInputRef = useRef<InputRef>(null)
+  const submittingRef = useRef(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [pendingCatImports, setPendingCatImports] = useState<Set<string>>(new Set())
@@ -157,16 +161,67 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     [setListMode]
   )
 
-  const handleCreate = useCallback(() => {
-    setDialog({ mode: 'create' })
+  const startCreate = useCallback(() => {
+    setDraftName('')
+    setRenamingId(null)
+    setCreatingNew(true)
   }, [])
 
-  const handleRename = useCallback(
-    (cat: Category) => {
-      setDialog({ mode: 'rename', category: cat })
-    },
-    []
-  )
+  const commitCreate = useCallback(async () => {
+    if (submittingRef.current) return
+    const trimmed = draftName.trim()
+    if (!trimmed) {
+      setCreatingNew(false)
+      setDraftName('')
+      return
+    }
+    submittingRef.current = true
+    await createCategory(trimmed)
+    setCreatingNew(false)
+    setDraftName('')
+    submittingRef.current = false
+  }, [draftName, createCategory])
+
+  const cancelCreate = useCallback(() => {
+    setCreatingNew(false)
+    setDraftName('')
+  }, [])
+
+  const startRename = useCallback((cat: Category) => {
+    setDraftName(cat.name)
+    setCreatingNew(false)
+    setRenamingId(cat.id)
+  }, [])
+
+  const commitRename = useCallback(async (cat: Category) => {
+    if (submittingRef.current) return
+    const trimmed = draftName.trim()
+    if (trimmed && trimmed !== cat.name) {
+      submittingRef.current = true
+      await renameCategory(cat.id, trimmed)
+      submittingRef.current = false
+    }
+    setRenamingId(null)
+    setDraftName('')
+  }, [draftName, renameCategory])
+
+  const cancelRename = useCallback(() => {
+    setRenamingId(null)
+    setDraftName('')
+  }, [])
+
+  useEffect(() => {
+    if (creatingNew) {
+      newInputRef.current?.focus()
+    }
+  }, [creatingNew])
+
+  useEffect(() => {
+    if (renamingId) {
+      renameInputRef.current?.focus()
+      renameInputRef.current?.select()
+    }
+  }, [renamingId])
 
   const handleDelete = useCallback(
     (cat: Category) => {
@@ -183,12 +238,12 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           key: 'create',
           label: t('sidebar.createCategory'),
           icon: <Plus className="h-3.5 w-3.5" />,
-          onClick: handleCreate,
+          onClick: startCreate,
         },
       ]
       showContextMenu(items)
     },
-    [t, handleCreate]
+    [t, startCreate]
   )
 
   const handleItemContext = useCallback(
@@ -200,13 +255,13 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           key: 'create',
           label: t('sidebar.createCategory'),
           icon: <Plus className="h-3.5 w-3.5" />,
-          onClick: handleCreate,
+          onClick: startCreate,
         },
         {
           key: 'rename',
           label: t('sidebar.renameCategory'),
           icon: <Pencil className="h-3.5 w-3.5" />,
-          onClick: () => handleRename(cat),
+          onClick: () => startRename(cat),
         },
         {
           key: 'delete',
@@ -218,7 +273,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       ]
       showContextMenu(items)
     },
-    [t, handleCreate, handleRename, handleDelete]
+    [t, startCreate, startRename, handleDelete]
   )
 
   const handleDragOverCategory = useCallback((e: React.DragEvent) => {
@@ -304,17 +359,6 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     }
     setDeleteConfirm(null)
   }, [deleteConfirm, deleteCategory, listMode, focusedDocId, setListMode])
-
-  const handleDialogSave = useCallback(
-    async (name: string) => {
-      if (dialog?.mode === 'create') {
-        await createCategory(name)
-      } else if (dialog?.mode === 'rename' && dialog.category) {
-        await renameCategory(dialog.category.id, name)
-      }
-    },
-    [dialog, createCategory, renameCategory]
-  )
 
   const cycleTheme = useCallback(() => {
     if (themeMode === 'system') setThemeMode('light')
@@ -443,7 +487,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               type="text"
               size="small"
               className="no-drag -mr-1 p-0.5 text-muted hover:text-foreground"
-              onClick={handleCreate}
+              onClick={startCreate}
               title={t('sidebar.createCategory')}
               aria-label={t('sidebar.createCategory')}
             >
@@ -451,25 +495,56 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             </Button>
           }
         >
-          {categories.length === 0 ? (
+          {creatingNew && (
+            <Input
+              ref={newInputRef}
+              className="no-drag mb-1"
+              size="small"
+              placeholder={t('sidebar.categoryName')}
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); void commitCreate() }
+                if (e.key === 'Escape') { e.preventDefault(); cancelCreate() }
+              }}
+              onBlur={() => void commitCreate()}
+            />
+          )}
+          {categories.length === 0 && !creatingNew ? (
             <div className="px-2 py-1 text-[11px] italic text-muted">
               {t('sidebar.emptyCategories')}
             </div>
           ) : (
             categories.map((c) => {
               const isPending = pendingCatImports.has(c.id)
+              const isRenaming = renamingId === c.id
               return (
                 <div key={c.id} className="relative">
-                  <SidebarItem
-                    icon={isPending ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : undefined}
-                    label={`${c.name} (${c.count ?? 0})`}
-                    active={listMode.mode === 'category' && listMode.categoryId === c.id}
-                    onClick={() => handleCategoryClick(c)}
-                    onContextMenu={(e) => handleItemContext(e, c)}
-                    onDragOver={handleDragOverCategory}
-                    onDrop={(e) => handleDropCategory(c.id, e)}
-                  />
-                  {isPending && <div className="cat-drop-pulse absolute inset-0" />}
+                  {isRenaming ? (
+                    <Input
+                      ref={renameInputRef}
+                      className="no-drag"
+                      size="small"
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); void commitRename(c) }
+                        if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
+                      }}
+                      onBlur={() => void commitRename(c)}
+                    />
+                  ) : (
+                    <SidebarItem
+                      icon={isPending ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : undefined}
+                      label={`${c.name} (${c.count ?? 0})`}
+                      active={listMode.mode === 'category' && listMode.categoryId === c.id}
+                      onClick={() => handleCategoryClick(c)}
+                      onContextMenu={(e) => handleItemContext(e, c)}
+                      onDragOver={handleDragOverCategory}
+                      onDrop={(e) => handleDropCategory(c.id, e)}
+                    />
+                  )}
+                  {isPending && !isRenaming && <div className="cat-drop-pulse absolute inset-0" />}
                 </div>
               )
             })
@@ -509,12 +584,6 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           </Button>
         </div>
       </div>
-
-      <CategoryDialog
-        state={dialog}
-        onSave={handleDialogSave}
-        onClose={() => setDialog(null)}
-      />
 
       {deleteConfirm && (
         <div className="dialog-overlay" onClick={() => setDeleteConfirm(null)}>

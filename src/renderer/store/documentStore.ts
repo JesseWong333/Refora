@@ -234,6 +234,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       await api.documents.delete(docId)
       get().showToast(i18n.t('common.movedToTrash', { count: 1 }))
+      void get().fetchCategories()
     } catch {
       if (doc) {
         set((s) => ({ documents: [...s.documents, doc] }))
@@ -264,6 +265,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       await api.documents.bulkDelete(ids)
       get().showToast(i18n.t('common.movedToTrash', { count: ids.length }))
+      void get().fetchCategories()
     } catch {
       set((s) => {
         const current = new Set(s.documents.map((d) => d.id))
