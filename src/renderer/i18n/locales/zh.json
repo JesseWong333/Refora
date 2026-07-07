@@ -83,6 +83,8 @@
     "add": "添加",
     "remove": "移除",
     "skip": "跳过",
+    "done": "完成",
+    "results": "条结果",
     "importAnyway": "仍然导入",
     "openInFinder": "在访达中打开",
     "copyPath": "复制路径",

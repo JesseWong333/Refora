@@ -137,7 +137,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       title={t('settings.title')}
       footer={
         <Button onClick={onClose} type="primary">
-          {t('common.cancel')}
+          {t('common.done')}
         </Button>
       }
       destroyOnClose
@@ -162,6 +162,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             value={proxyUrl}
             onChange={(e) => setProxyUrl(e.target.value)}
             onBlur={saveProxy}
+            onPressEnter={saveProxy}
             placeholder="http://proxy:8080"
             size="small"
           />
@@ -173,6 +174,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             value={crossrefMailto}
             onChange={(e) => setCrossrefMailto(e.target.value)}
             onBlur={saveMailto}
+            onPressEnter={saveMailto}
             placeholder="user@example.com"
             size="small"
           />

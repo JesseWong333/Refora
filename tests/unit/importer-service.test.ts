@@ -182,7 +182,7 @@ describe('createImporter', () => {
       expect(doc!.metadataStatus).toBe('pending')
       expect(doc!.filePath).toBe('/abs/test.pdf')
 
-      expect(mockWebContentsSend).not.toHaveBeenCalled()
+      expect(mockWebContentsSend).toHaveBeenCalled()
     })
 
     it('should handle NULL hash from worker', async () => {

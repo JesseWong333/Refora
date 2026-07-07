@@ -22,6 +22,7 @@ interface PendingRequest {
 
 const WORKER_TIMEOUT_MS = 60_000
 const NET_TIMEOUT_MS = 8_000
+const WORKER_IDLE_TIMEOUT_MS = 60_000
 
 type MetadataJob = () => Promise<void>
 
@@ -461,6 +462,7 @@ async function fetchArxivByTitle(title: string): Promise<{ data: Partial<Documen
 export function createMetadataService(repos: Repositories, win: BrowserWindow | (() => BrowserWindow | null)) {
   let worker: ReturnType<typeof utilityProcess.fork> | null = null
   let workerKilled = false
+  let workerIdleTimer: ReturnType<typeof setTimeout> | null = null
   const pending = new Map<string, PendingRequest>()
   const jobQueue: MetadataJob[] = []
   let activeJobs = 0
@@ -476,7 +478,25 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     return w
   }
 
+  function scheduleIdleKill(): void {
+    if (workerIdleTimer) clearTimeout(workerIdleTimer)
+    workerIdleTimer = setTimeout(() => {
+      if (pending.size === 0 && activeJobs === 0) {
+        if (worker && !workerKilled) {
+          logger.info('metadata-worker:idle-kill')
+          worker.kill()
+          workerKilled = true
+          worker = null
+        }
+      }
+    }, WORKER_IDLE_TIMEOUT_MS)
+  }
+
   function ensureWorker(): ReturnType<typeof utilityProcess.fork> {
+    if (workerIdleTimer) {
+      clearTimeout(workerIdleTimer)
+      workerIdleTimer = null
+    }
     if (worker && !workerKilled) return worker
     worker = utilityProcess.fork(join(__dirname, 'worker/pdf-worker.js'), [], {
       serviceName: 'Metadata Worker',
@@ -494,6 +514,10 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     })
     worker.on('exit', (code) => {
       logger.warn(`metadata-worker:exit code=${code} pending=${pending.size}`)
+      if (workerIdleTimer) {
+        clearTimeout(workerIdleTimer)
+        workerIdleTimer = null
+      }
       for (const [, req] of pending) {
         clearTimeout(req.timer)
         req.reject(new Error('Metadata worker exited unexpectedly'))
@@ -696,6 +720,9 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
         })
         .finally(() => {
           activeJobs--
+          if (activeJobs === 0 && jobQueue.length === 0) {
+            scheduleIdleKill()
+          }
           void processQueue()
         })
     }
@@ -734,6 +761,10 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
   }
 
   function destroy(): void {
+    if (workerIdleTimer) {
+      clearTimeout(workerIdleTimer)
+      workerIdleTimer = null
+    }
     if (worker && !workerKilled) {
       worker.kill()
       workerKilled = true

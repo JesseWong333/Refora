@@ -77,12 +77,12 @@ describe('createWatcher', () => {
       w.start(makeFolder({ path: '/watch/dir' }))
 
       expect(watchMockFn).toHaveBeenCalledWith('/watch/dir', expect.objectContaining({
-        depth: undefined,
+        depth: 20,
         awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 }
       }))
     })
 
-    it('ignores non-PDF files via ignored callback', () => {
+    it('ignores non-PDF files but allows directories via ignored callback', () => {
       w.start(makeFolder())
 
       const opts = watchMockFn.mock.calls[0]?.[1]
@@ -90,6 +90,7 @@ describe('createWatcher', () => {
       expect(opts?.ignored('/watch/dir/notes.md')).toBe(true)
       expect(opts?.ignored('/watch/dir/doc.pdf')).toBe(false)
       expect(opts?.ignored('/watch/dir/UPPERCASE.PDF')).toBe(false)
+      expect(opts?.ignored('/watch/dir/subfolder')).toBe(false)
     })
 
     it('excludes library folder via ignored callback', () => {

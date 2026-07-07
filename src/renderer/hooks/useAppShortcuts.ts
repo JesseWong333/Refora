@@ -16,7 +16,7 @@ function isInteractive(target: EventTarget | null): boolean {
 
 export function useAppShortcuts(): void {
   const focusSearch = useCallback(() => {
-    const input = document.querySelector<HTMLInputElement>('.search-input')
+    const input = document.querySelector<HTMLInputElement>('.doc-search-input')
     input?.focus()
   }, [])
 

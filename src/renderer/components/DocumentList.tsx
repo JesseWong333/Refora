@@ -244,6 +244,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
           } else {
             await api.documents.bulkCategorize(effectiveIds, catId)
           }
+          void useDocumentStore.getState().fetchCategories()
         } catch (err) {
           const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Failed to categorize'
           useDocumentStore.getState().showToast(msg)
@@ -412,7 +413,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
         <div className="mx-auto flex w-1/2 items-center gap-2">
           <Search className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
           <Input
-            className="flex-1 no-drag"
+            className="doc-search-input flex-1 no-drag"
             size="small"
             placeholder={t('topbar.search')}
             value={searchQuery}

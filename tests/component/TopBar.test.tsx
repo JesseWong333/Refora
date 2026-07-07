@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     importProgress: null as { current: number; total: number } | null,
     setListMode: vi.fn(),
     fetchCategories: vi.fn(),
+    fetchDocuments: vi.fn().mockResolvedValue(undefined),
     createCategory: vi.fn(),
     renameCategory: vi.fn(),
     deleteCategory: vi.fn(),

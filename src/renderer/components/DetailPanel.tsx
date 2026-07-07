@@ -358,15 +358,15 @@ function CategoryChips({
 
 function SingleDetail({ doc }: { doc: Document }) {
   const { t } = useTranslation()
-  const updateDocument = useDocumentStore((s) => s.updateDocument)
+  const patchDocument = useDocumentStore((s) => s.patchDocument)
   const openInFinder = useDocumentStore((s) => s.openInFinder)
   const refreshMetadata = useDocumentStore((s) => s.refreshMetadata)
   const requestDeleteConfirm = useDocumentStore((s) => s.requestDeleteConfirm)
   const [refreshing, setRefreshing] = useState(false)
 
   const onSaved = useCallback(
-    (d: Document) => updateDocument(d.id, {}).then(() => {}),
-    [updateDocument]
+    (d: Document) => { patchDocument(d.id, d) },
+    [patchDocument]
   )
 
   const handleRefresh = async () => {
@@ -378,6 +378,7 @@ function SingleDetail({ doc }: { doc: Document }) {
   const handleRelocate = async () => {
     try {
       await api.documents.relocateFile(doc.id, '')
+      useDocumentStore.getState().showToast(t('detail.relocate') ?? '')
     } catch (e) {
       const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : ''
       useDocumentStore.getState().showToast(msg)
@@ -387,7 +388,6 @@ function SingleDetail({ doc }: { doc: Document }) {
   const handleRestore = async () => {
     try {
       const updated = await api.documents.restoreFile(doc.id)
-      updateDocument(doc.id, {}).then(() => {})
       useDocumentStore.getState().patchDocument(doc.id, updated)
     } catch (e) {
       const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : ''

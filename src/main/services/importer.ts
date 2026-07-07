@@ -127,10 +127,8 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
       const current = i + 1
       const raw = paths[i]
 
-      if (total >= 3) {
-        const w = getWin()
-        if (w) emitImportProgress(w, { current, total })
-      }
+      const w = getWin()
+      if (w) emitImportProgress(w, { current, total })
 
       const abs = validateFilePath(raw)
       if (!abs) {
@@ -247,10 +245,8 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
       logger.info(`import:added ${doc.id} — ${abs}`)
     }
 
-    if (total >= 3) {
-      const w = getWin()
-      if (w) emitImportProgress(w, { current: total, total })
-    }
+    const w = getWin()
+    if (w) emitImportProgress(w, { current: total, total })
 
     emitter.emit('import:complete', { added, skipped, errors })
     return { added, skipped, errors }

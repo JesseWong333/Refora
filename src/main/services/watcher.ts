@@ -41,12 +41,13 @@ export function createWatcher(deps: WatcherDeps) {
     const libraryPrefix = libraryFolder ? libraryFolder + '/' : ''
 
     const inst = watch(wf.path, {
-      depth: undefined,
+      depth: 20,
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 },
       ignored: (testPath: string) => {
-        if (libraryFolder && testPath.startsWith(libraryPrefix)) return true
-        if (!testPath.toLowerCase().endsWith('.pdf')) return true
-        return false
+        if (libraryFolder && testPath !== wf.path && testPath.startsWith(libraryPrefix)) return true
+        const base = testPath.split('/').pop() ?? testPath
+        if (!base.includes('.')) return false
+        return !base.toLowerCase().endsWith('.pdf')
       }
     })
 
@@ -102,9 +103,14 @@ export function createWatcher(deps: WatcherDeps) {
     }
 
     const inst = watch(folder, {
-      depth: undefined,
+      depth: 20,
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 },
-      ignored: (testPath: string) => !testPath.toLowerCase().endsWith('.pdf')
+      ignored: (testPath: string) => {
+        if (testPath === folder) return false
+        const base = testPath.split('/').pop() ?? testPath
+        if (!base.includes('.')) return false
+        return !base.toLowerCase().endsWith('.pdf')
+      }
     })
 
     inst.on('add', (filePath: string) => {

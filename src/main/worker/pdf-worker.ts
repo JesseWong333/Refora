@@ -1,4 +1,4 @@
-import { createReadStream, readFileSync, statSync } from 'node:fs'
+import { createReadStream, statSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 const parentPort = process.parentPort

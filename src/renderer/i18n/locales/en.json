@@ -83,6 +83,8 @@
     "add": "Add",
     "remove": "Remove",
     "skip": "Skip",
+    "done": "Done",
+    "results": "results",
     "importAnyway": "Import Anyway",
     "openInFinder": "Open in Finder",
     "copyPath": "Copy Path",
