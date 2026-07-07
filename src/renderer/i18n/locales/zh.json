@@ -115,9 +115,8 @@
   },
   "wizard": {
     "title": "欢迎使用 ScholarNote",
-    "description": "选择一个库文件夹。添加到该文件夹的 PDF 将自动导入。",
-    "chooseLibrary": "选择库文件夹",
-    "skip": "跳过"
+    "description": "请选择一个库文件夹来存放您的 PDF。这是开始使用 ScholarNote 的必填步骤。添加到该文件夹的 PDF 将自动导入。",
+    "chooseLibrary": "选择库文件夹"
   },
   "toast": {
     "encryptedPdf": "跳过加密的 PDF: {{name}}（密码保护）",

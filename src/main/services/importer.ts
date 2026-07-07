@@ -123,6 +123,15 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
 
     if (total === 0) return { added, skipped, errors }
 
+    const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
+    if (!libraryFolder) {
+      for (const raw of paths) {
+        errors.push({ path: raw, message: 'Library folder is not configured. Please set it in Settings first.' })
+        logger.warn(`import:skip no-library-folder: ${raw}`)
+      }
+      return { added, skipped, errors }
+    }
+
     for (let i = 0; i < paths.length; i++) {
       const current = i + 1
       const raw = paths[i]
@@ -228,17 +237,14 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
         fileMissing: 0
       })
 
-      const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
-      if (libraryFolder) {
-        try {
-          const inLibrary = abs.startsWith(libraryFolder + '/') || abs === libraryFolder
-          if (!inLibrary) {
-            const newPath = copyToLibrary(abs, libraryFolder)
-            repos.documents.updateFilePath(doc.id, newPath, parsePath(newPath).base)
-          }
-        } catch (copyErr) {
-          logger.warn(`import:copy-to-library failed ${abs}: ${copyErr instanceof Error ? copyErr.message : String(copyErr)}`)
+      try {
+        const inLibrary = abs.startsWith(libraryFolder + '/') || abs === libraryFolder
+        if (!inLibrary) {
+          const newPath = copyToLibrary(abs, libraryFolder)
+          repos.documents.updateFilePath(doc.id, newPath, parsePath(newPath).base)
         }
+      } catch (copyErr) {
+        logger.warn(`import:copy-to-library failed ${abs}: ${copyErr instanceof Error ? copyErr.message : String(copyErr)}`)
       }
 
       added.push(doc.id)

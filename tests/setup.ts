@@ -25,6 +25,7 @@ const noopPromise = async () => ({ ok: true, data: undefined })
     windowBounds: null,
     listColumnState: null,
     sidebarCollapsed: false,
+    firstRun: false,
     libraryFolderPath: '/fake/library',
     proxyUrl: ''
   }),

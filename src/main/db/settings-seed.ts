@@ -1,8 +1,6 @@
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { SqliteLike } from './migrations'
 
-export const DEFAULT_LIBRARY_FOLDER = join(homedir(), 'Documents', 'ScholarNote Library')
+export const DEFAULT_LIBRARY_FOLDER = ''
 
 export type SettingKey =
   | 'libraryFolderPath'
@@ -36,7 +34,7 @@ function sqlLiteral(value: unknown): string {
 
 export function defaultSettings(language: 'zh' | 'en'): Array<[SettingKey, unknown]> {
   return [
-    ['libraryFolderPath', DEFAULT_LIBRARY_FOLDER],
+    ['libraryFolderPath', ''],
     ['crossrefMailto', ''],
     ['theme', 'dark'],
     ['sidebarCollapsed', '0'],

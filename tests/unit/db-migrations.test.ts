@@ -3,7 +3,6 @@ import { createRequire } from 'node:module'
 import { runMigrations, trigramAvailable, ftsColumns, type SqliteLike } from '../../src/main/db/migrations'
 import {
   seedDefaultSettings,
-  DEFAULT_LIBRARY_FOLDER,
   SETTING_KEYS
 } from '../../src/main/db/settings-seed'
 
@@ -211,7 +210,7 @@ describe('settings seeding', () => {
     const map = new Map(rows.map((r) => [r.key, r.value]))
 
     expect(new Set(map.keys())).toEqual(new Set<string>(SETTING_KEYS))
-    expect(map.get('libraryFolderPath')).toBe(JSON.stringify(DEFAULT_LIBRARY_FOLDER))
+    expect(map.get('libraryFolderPath')).toBe(JSON.stringify(''))
     expect(map.get('crossrefMailto')).toBe(JSON.stringify(''))
     expect(map.get('theme')).toBe(JSON.stringify('dark'))
     expect(map.get('sidebarCollapsed')).toBe(JSON.stringify('0'))

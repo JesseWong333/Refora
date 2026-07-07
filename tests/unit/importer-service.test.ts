@@ -6,12 +6,14 @@ const {
   mockExistsSync,
   mockStatSync,
   mockShowMessageBox,
-  mockWebContentsSend
+  mockWebContentsSend,
+  mockCopyToLibrary
 } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(),
   mockStatSync: vi.fn(),
   mockShowMessageBox: vi.fn().mockResolvedValue({ response: 0 }),
-  mockWebContentsSend: vi.fn()
+  mockWebContentsSend: vi.fn(),
+  mockCopyToLibrary: vi.fn<[string, string], string>()
 }))
 
 vi.mock('node:fs', () => ({
@@ -19,6 +21,14 @@ vi.mock('node:fs', () => ({
   existsSync: mockExistsSync,
   statSync: mockStatSync
 }))
+
+vi.mock('../../src/main/services/library', async () => {
+  const actual = await vi.importActual<typeof import('../../src/main/services/library')>('../../src/main/services/library')
+  return {
+    ...actual,
+    copyToLibrary: mockCopyToLibrary
+  }
+})
 
 vi.mock('electron', () => ({
   dialog: { showMessageBox: mockShowMessageBox },
@@ -130,16 +140,19 @@ describe('createImporter', () => {
     mockStatSync.mockClear()
     mockShowMessageBox.mockClear()
     mockWebContentsSend.mockClear()
+    mockCopyToLibrary.mockClear()
     vi.mocked(utilityProcess.fork).mockClear()
 
     db = createDb()
     runMigrations(adapt(db))
     seedDefaultSettings(adapt(db), 'en')
     repos = createRepositories(db as unknown as SqliteDb)
+    repos.settings.set('libraryFolderPath', '/fake/library')
 
     mockExistsSync.mockReturnValue(true)
     mockStatSync.mockReturnValue({ isFile: () => true, size: 12345 } as ReturnType<typeof mockStatSync>)
     mockShowMessageBox.mockResolvedValue({ response: 0 })
+    mockCopyToLibrary.mockImplementation((_src: string, lib: string) => `${lib}/imported.pdf`)
 
     vi.mocked(utilityProcess.fork).mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & { kill: ReturnType<typeof vi.fn>; postMessage: ReturnType<typeof vi.fn> }
@@ -180,7 +193,7 @@ describe('createImporter', () => {
       expect(doc!.fileHash).toBe('abc123')
       expect(doc!.title).toBeNull()
       expect(doc!.metadataStatus).toBe('pending')
-      expect(doc!.filePath).toBe('/abs/test.pdf')
+      expect(doc!.filePath).toBe('/fake/library/imported.pdf')
 
       expect(mockWebContentsSend).toHaveBeenCalled()
     })
@@ -441,6 +454,20 @@ describe('createImporter', () => {
       const docB = repos.documents.get(result.added[1]!)
       expect(docA!.fileHash).toBe('hashA')
       expect(docB!.fileHash).toBe('hashB')
+    })
+  })
+
+  describe('importFiles — library folder not configured', () => {
+    it('rejects all paths with an error when libraryFolderPath is empty', async () => {
+      repos.settings.set('libraryFolderPath', '')
+      const result = await importer.importFiles(['/abs/a.pdf', '/abs/b.pdf'], false)
+      expect(result.added).toEqual([])
+      expect(result.skipped).toEqual([])
+      expect(result.errors.length).toBe(2)
+      expect(result.errors[0]!.path).toBe('/abs/a.pdf')
+      expect(result.errors[0]!.message).toContain('Library folder')
+      expect(utilityProcess.fork).not.toHaveBeenCalled()
+      expect(mockCopyToLibrary).not.toHaveBeenCalled()
     })
   })
 })

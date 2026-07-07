@@ -93,7 +93,9 @@ describe('ipc-types shapes', () => {
         language: 'en',
         windowBounds: null,
         listColumnState: null,
-        sidebarCollapsed: false
+        sidebarCollapsed: false,
+        firstRun: true,
+        libraryFolderPath: ''
       }
     }
     const er: Result<BootstrapData> = {

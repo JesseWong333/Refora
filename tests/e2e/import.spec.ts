@@ -1,5 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
 import electronExe from 'electron'
 
 const mainScript = path.resolve(__dirname, '..', '..', 'out', 'main', 'index.js')
@@ -11,11 +13,23 @@ interface DocumentItem {
   fileName: string
 }
 
+interface ElectronApi {
+  import: { addFiles(paths: string[]): Promise<string[]> }
+  documents: { list(filter: { mode: string }): Promise<DocumentItem[]> }
+  settings: { set(key: string, value: unknown): Promise<void> }
+}
+
+function api(win: Window & typeof globalThis): ElectronApi {
+  return (win as Window & { api: ElectronApi }).api
+}
+
 test.describe('Import E2E', () => {
   let electronApp: Awaited<ReturnType<typeof electron.launch>>
   let electronPage: Awaited<ReturnType<Awaited<ReturnType<typeof electron.launch>>['firstWindow']>>
+  let libraryFolder: string
 
   test.beforeAll(async () => {
+    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'scholarnote-e2e-lib-'))
     electronApp = await electron.launch({
       executablePath: electronExe,
       env: {
@@ -25,10 +39,15 @@ test.describe('Import E2E', () => {
       args: [mainScript],
     })
     electronPage = await electronApp.firstWindow()
+    await electronPage.evaluate(
+      async (lib: string) => api(window).settings.set('libraryFolderPath', lib),
+      libraryFolder,
+    )
   })
 
   test.afterAll(async () => {
     await electronApp?.close()
+    try { fs.rmSync(libraryFolder, { recursive: true, force: true }) } catch { void 0 }
   })
 
   test('imports a single valid PDF and document appears in list', async () => {
@@ -44,7 +63,7 @@ test.describe('Import E2E', () => {
       return w.api.documents.list({ mode: 'all' })
     })
     expect(docs).toHaveLength(1)
-    expect(docs[0].filePath).toBe(validPath)
+    expect(docs[0].filePath).toBe(path.join(libraryFolder, 'valid.pdf'))
   })
 
   test('emits import:progress events when importing multiple files', async () => {
@@ -100,7 +119,7 @@ test.describe('Import E2E', () => {
       return w.api.documents.list({ mode: 'all' })
     })
     expect(docs.length).toBeGreaterThanOrEqual(1)
-    const found = docs.filter((d: DocumentItem) => d.filePath === validPath)
+    const found = docs.filter((d: DocumentItem) => d.fileName === 'valid.pdf')
     expect(found).toHaveLength(1)
   })
 

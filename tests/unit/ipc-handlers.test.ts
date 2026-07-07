@@ -199,7 +199,8 @@ describe('IPC handlers (data layer)', () => {
       windowBounds: null,
       listColumnState: null,
       sidebarCollapsed: false,
-      firstRun: true
+      firstRun: true,
+      libraryFolderPath: ''
     })
   })
 

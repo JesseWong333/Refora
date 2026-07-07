@@ -1,12 +1,16 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
 import electronExe from 'electron'
 
 test.describe('Document CRUD', () => {
   let electronApp: Awaited<ReturnType<typeof electron.launch>>
   let electronPage: Awaited<ReturnType<Awaited<ReturnType<typeof electron.launch>>['firstWindow']>>
+  let libraryFolder: string
 
   test.beforeAll(async () => {
+    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'scholarnote-e2e-crud-'))
     const launchEnv = { ...process.env }
     delete launchEnv.ELECTRON_RUN_AS_NODE
     electronApp = await electron.launch({
@@ -15,6 +19,8 @@ test.describe('Document CRUD', () => {
       args: ['.'],
     })
     electronPage = await electronApp.firstWindow()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await electronPage.evaluate((lib: string) => (window as any).api.settings.set('libraryFolderPath', lib) as Promise<void>, libraryFolder)
   })
 
   test.afterAll(async () => {
@@ -22,6 +28,7 @@ test.describe('Document CRUD', () => {
       electronApp?.close(),
       new Promise<void>((resolve) => setTimeout(resolve, 3000)),
     ]).catch(() => {})
+    try { fs.rmSync(libraryFolder, { recursive: true, force: true }) } catch { void 0 }
   })
 
   test('create → list → read', async () => {

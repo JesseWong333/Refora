@@ -17,16 +17,12 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
       const path = await api.dialog.openDirectory()
       if (path) {
         await api.settings.set('libraryFolderPath', path)
+        onDone()
       }
     } catch {
       void 0
     }
     setPicking(false)
-    onDone()
-  }
-
-  const handleSkip = () => {
-    onDone()
   }
 
   return (
@@ -37,7 +33,7 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
           {t('wizard.title', 'Welcome to ScholarNote')}
         </h1>
         <p className="text-center text-xs text-muted leading-relaxed">
-          {t('wizard.description', 'Import your first PDF or connect a watch folder to get started.')}
+          {t('wizard.description', 'Choose a Library Folder to store your PDFs. This is required to start using ScholarNote. Any PDF you add there is imported automatically.')}
         </p>
         <div className="flex w-full flex-col gap-2">
           <button
@@ -46,13 +42,6 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
             disabled={picking}
           >
             {t('wizard.chooseLibrary', 'Choose Library Folder')}
-          </button>
-          <button
-            className="w-full rounded-lg bg-panel-2 px-4 py-2.5 text-xs text-foreground hover:bg-hover"
-            onClick={handleSkip}
-            disabled={picking}
-          >
-            {t('wizard.skip', 'Skip')}
           </button>
         </div>
       </div>

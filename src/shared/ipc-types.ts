@@ -120,6 +120,7 @@ export interface BootstrapData {
   listColumnState: ListColumnState | null
   sidebarCollapsed: boolean
   firstRun: boolean
+  libraryFolderPath: string
 }
 
 export interface ImportProgress {

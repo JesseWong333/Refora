@@ -1,5 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
 import electronExe from 'electron'
 
 const mainScript = path.resolve(__dirname, '..', '..', 'out', 'main', 'index.js')
@@ -28,8 +30,10 @@ function api(pageEvalWindow: Window & typeof globalThis): ElectronApi {
 test.describe('IPC Smoke', () => {
   let electronApp: Awaited<ReturnType<typeof electron.launch>>
   let electronPage: Awaited<ReturnType<Awaited<ReturnType<typeof electron.launch>>['firstWindow']>>
+  let libraryFolder: string
 
   test.beforeAll(async () => {
+    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'scholarnote-e2e-smoke-'))
     electronApp = await electron.launch({
       executablePath: electronExe,
       env: {
@@ -39,10 +43,15 @@ test.describe('IPC Smoke', () => {
       args: [mainScript],
     })
     electronPage = await electronApp.firstWindow()
+    await electronPage.evaluate(
+      async (lib: string) => api(window).settings.set('libraryFolderPath', lib),
+      libraryFolder,
+    )
   })
 
   test.afterAll(async () => {
     await electronApp?.close()
+    try { fs.rmSync(libraryFolder, { recursive: true, force: true }) } catch { void 0 }
   })
 
   test('getBootstrap() returns valid shape', async () => {

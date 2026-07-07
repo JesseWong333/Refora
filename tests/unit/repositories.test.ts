@@ -4,7 +4,7 @@ import { runMigrations, type SqliteLike } from '../../src/main/db/migrations'
 import { createRepositories } from '../../src/main/db/repositories'
 import type { NewDocument } from '../../src/main/db/repositories/documents'
 import { RepoError } from '../../src/main/db/repositories/errors'
-import { seedDefaultSettings, DEFAULT_LIBRARY_FOLDER } from '../../src/main/db/settings-seed'
+import { seedDefaultSettings } from '../../src/main/db/settings-seed'
 import type { SqliteDb } from '../../src/main/db/types'
 import type { ListFilter } from '../../src/shared/ipc-types'
 
@@ -346,7 +346,7 @@ describe('settings repository', () => {
     const bs = repos.settings.getBootstrapSettings()
     expect(bs.language).toBe('en')
     expect(bs.sidebarCollapsed).toBe(false)
-    expect(bs.libraryFolderPath).toBe(DEFAULT_LIBRARY_FOLDER)
+    expect(bs.libraryFolderPath).toBe('')
     expect(bs.proxyUrl).toBe('')
     expect(bs.windowBounds).toBeNull()
     expect(bs.listColumnState).toBeNull()

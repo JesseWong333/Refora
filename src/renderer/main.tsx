@@ -5,6 +5,7 @@ import { motion } from 'motion/react'
 import Splash from './components/Splash'
 import App from './App'
 import { initI18n } from './i18n'
+import type { BootstrapData } from '../shared/ipc-types'
 import './styles/index.css'
 
 const IS_MAC = navigator.platform.toLowerCase().includes('mac')
@@ -20,7 +21,7 @@ if (!rootElement) {
 const root = createRoot(rootElement)
 root.render(<Splash />)
 
-function mountApp(bootstrap: { language: 'zh' | 'en'; listColumnState: unknown; sidebarCollapsed: boolean; firstRun: boolean }) {
+function mountApp(bootstrap: Pick<BootstrapData, 'language' | 'listColumnState' | 'sidebarCollapsed' | 'firstRun'>) {
   initI18n(bootstrap.language)
   root.render(
     <React.StrictMode>
@@ -41,5 +42,5 @@ window.api
     mountApp(bootstrap)
   })
   .catch(() => {
-    mountApp({ language: 'en', listColumnState: null, sidebarCollapsed: false, firstRun: false })
+    mountApp({ language: 'en', listColumnState: null, sidebarCollapsed: false, firstRun: true })
   })

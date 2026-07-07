@@ -52,13 +52,13 @@ function notImplemented(what: string): Result<never> {
 
 function bootstrapFromSettings(repos: Repositories): BootstrapData {
   const bs = repos.settings.getBootstrapSettings()
-  const docCount = repos.documents.list({ mode: 'all' }).length
   return {
     language: bs.language,
     windowBounds: bs.windowBounds,
     listColumnState: bs.listColumnState,
     sidebarCollapsed: bs.sidebarCollapsed,
-    firstRun: docCount === 0
+    firstRun: !bs.libraryFolderPath,
+    libraryFolderPath: bs.libraryFolderPath
   }
 }
 
