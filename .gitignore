@@ -10,3 +10,9 @@ node_modules/.tmp/
 .github/
 tests/
 test-results/
+coverage/
+playwright-report/
+*.log
+*.log.*
+.vite/
+.cache/
