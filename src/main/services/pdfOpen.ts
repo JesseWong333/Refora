@@ -4,7 +4,7 @@ import { emitDocumentUpdated } from '../ipc/events'
 import type { Document } from '../../shared/ipc-types'
 import { RepoError } from '../db/repositories/errors'
 
-export async function openPdf(repos: Repositories, win: BrowserWindow, docId: string): Promise<Document> {
+export async function openPdf(repos: Repositories, win: BrowserWindow | null, docId: string): Promise<Document> {
   const doc = repos.documents.get(docId)
   if (!doc) throw new RepoError('not_found', `Document ${docId} not found`)
   if (doc.fileMissing) throw new RepoError('file_missing', 'Source PDF file is missing')
@@ -16,6 +16,6 @@ export async function openPdf(repos: Repositories, win: BrowserWindow, docId: st
 
   repos.documents.setLastReadAt(docId, Date.now())
   const updated = repos.documents.get(docId) as Document
-  emitDocumentUpdated(win, updated)
+  if (win) emitDocumentUpdated(win, updated)
   return updated
 }

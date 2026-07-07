@@ -84,6 +84,9 @@ interface FakeRepos {
     incrementMetadataAttempts: ReturnType<typeof vi.fn>
     applyMetadataFields: ReturnType<typeof vi.fn>
   }
+  settings: {
+    get: ReturnType<typeof vi.fn>
+  }
   _byId: Map<string, Document>
 }
 
@@ -158,6 +161,7 @@ function mockRepos(docs: Document[]): FakeRepos {
 
   return {
     documents: { get, getResumableMetadataRows, setMetadataStatus, incrementMetadataAttempts, applyMetadataFields },
+    settings: { get: vi.fn(() => '') },
     _byId: byId
   }
 }
@@ -210,6 +214,45 @@ function makeArxivResponse(overrides: Record<string, unknown> = {}) {
     <id>http://arxiv.org/abs/2301.12345</id>
   </entry>
 </feed>`
+  }
+}
+
+function makeDblpResponse(opts: {
+  title?: string
+  authors?: string[]
+  year?: string
+  venue?: string
+  doi?: string
+  empty?: boolean
+} = {}) {
+  if (opts.empty) {
+    return { ok: true, json: async () => ({ result: { hits: { hit: [] } } }) }
+  }
+  const title = opts.title ?? 'Cross-view Transformers for real-time Map-view Semantic Segmentation.'
+  const authors = opts.authors ?? ['Brady Zhou', 'Philipp Krähenbühl']
+  const year = opts.year ?? '2022'
+  const venue = opts.venue ?? 'CVPR'
+  const doi = opts.doi ?? '10.1109/CVPR52688.2022.01339'
+  return {
+    ok: true,
+    json: async () => ({
+      result: {
+        hits: {
+          hit: [{
+            '@id': '1',
+            info: {
+              title,
+              authors: { author: authors.map((t) => ({ '@pid': 'x', text: t })) },
+              year,
+              venue,
+              doi,
+              ee: `https://doi.org/${doi}`,
+              type: 'Conference and Workshop Papers'
+            }
+          }]
+        }
+      }
+    })
   }
 }
 
@@ -278,7 +321,7 @@ describe('createMetadataService', () => {
     const win = mockWin()
 
     mockWorkerInfo = {}
-    mockWorkerText = 'This is a preprint available at arxiv:2301.12345'
+    mockWorkerText = 'Arxiv Paper Title\nThis is a preprint available at arxiv:2301.12345'
 
     mockNetFetchImpl = (url: string) => {
       if (url.includes('crossref')) {
@@ -303,16 +346,56 @@ describe('createMetadataService', () => {
   })
 
   // ----------------------------------------------------------
+  // Test 2b: arXiv ID resolves to a DIFFERENT (cited) paper — rejected, falls back to title search
+  // Reproduces the Track_3_NVOCC.pdf bug where the arXiv ID in the text was a cited paper,
+  // not the paper itself. The old parser also grabbed the feed-level <title>.
+  // ----------------------------------------------------------
+  it('rejects arXiv-by-ID when its title does not match the paper title, falls back to DBLP title search', async () => {
+    const doc = makeDoc({ title: null, authors: null, year: null, fileName: 'Track_3_NVOCC.pdf' })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    const realTitle = 'FB-OCC: 3D Occupancy Prediction based on Forward-Backward View Transformation'
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = `${realTitle}\nSome Author\nAbstract\nWe present FB-OCC. See arxiv:2205.08534 for related work.`
+    mockNetFetchImpl = (url: string) => {
+      if (url.includes('crossref')) return Promise.resolve({ ok: false })
+      if (url.includes('id_list=')) {
+        return Promise.resolve(makeArxivResponse({ title: 'Vision Transformer Adapter for Dense Predictions' }))
+      }
+      if (url.includes('search_query=')) {
+        return Promise.resolve(makeArxivResponse({ title: realTitle }))
+      }
+      if (url.includes('dblp.org')) return Promise.resolve(makeDblpResponse({ title: `${realTitle}.`, authors: ['Zhiqi Li', 'Jose M. Alvarez'], year: '2023', venue: 'CVPR Workshop' }))
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
+    const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).not.toContain('arXiv Query')
+    expect(fields.title).toBe(realTitle)
+    expect(fields.venue).toBe('CVPR Workshop')
+    expect(status).toBe('done')
+    expect(source).toBe('dblp')
+  })
+
+  // ----------------------------------------------------------
   // Test 3: No metadata found — falls back to PDF info
   // ----------------------------------------------------------
-  it('falls back to PDF metadata when both Crossref and arXiv fail', async () => {
+  it('falls back to filename when PDF text is short and no network match', async () => {
     const doc = makeDoc()
     const repos = mockRepos([doc])
     const win = mockWin()
 
     mockWorkerInfo = { Title: 'PDF Extracted Title' }
     mockWorkerText = 'No DOI or arXiv ID in this text'
-    mockNetFetchImpl = () => Promise.resolve({ ok: false }) // Both Crossref and arXiv fail
+    mockNetFetchImpl = () => Promise.resolve({ ok: false })
 
     const svc = createMetadataService(asRepos(repos), win)
     svc.enqueue('doc-1')
@@ -321,10 +404,307 @@ describe('createMetadataService', () => {
 
     expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
     const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
-    expect(fields.title).toBe('PDF Extracted Title')
+    expect(fields.title).toBe('Doc-1')
     expect(status).toBe('done')
     expect(source).toBe('pdf')
     expect(repos.documents.incrementMetadataAttempts).not.toHaveBeenCalled()
+  })
+
+  // ----------------------------------------------------------
+  // Test 3b: PDF info has EMPTY Title/Author strings — must fall back to text extraction
+  // Reproduces the reported bug where pdfjs returns "" for Title/Author on
+  // papers whose embedded metadata is blank (e.g. LaTeX-generated PDFs).
+  // ----------------------------------------------------------
+  it('falls back to filename when PDF text is short and info Title is empty', async () => {
+    const doc = makeDoc({ title: null, authors: null })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = 'Cross-view Transformers for real-time Map-view Semantic Segmentation\n Brady Zhou\nUT Austin\n Abstract\n We present cross-view transformers.'
+    mockNetFetchImpl = () => Promise.resolve({ ok: false })
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
+    const [id, f, , status, src] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(id).toBe('doc-1')
+    expect(f.title).toBe('Doc-1')
+    expect(f.authors).toBeUndefined()
+    expect(status).toBe('done')
+    expect(src).toBe('pdf')
+  })
+
+  // ----------------------------------------------------------
+  // Test 3c: PDF info Title is whitespace — treated as empty, fall back to text
+  // ----------------------------------------------------------
+  it('falls back to filename when PDF text is short and info Title is whitespace', async () => {
+    const doc = makeDoc({ title: null })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '   ', Author: '   ' }
+    mockWorkerText = 'SCube: Instant Large-Scale Scene Reconstruction using VoxSplats\n Xuanchi Ren\n1 , 2 , 3 ∗'
+    mockNetFetchImpl = () => Promise.resolve({ ok: false })
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    const [, f] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(f.title).toBe('Doc-1')
+  })
+
+  // ----------------------------------------------------------
+  // Test 3d: No DOI/arXiv ID — DBLP title search enriches metadata
+  // ----------------------------------------------------------
+  it('fetches authors/year/venue/doi from DBLP when no DOI or arXiv ID is present', async () => {
+    const doc = makeDoc({ title: null, authors: null, year: null, venue: null, doi: null })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = 'Cross-view Transformers for real-time Map-view Semantic Segmentation\n Brady Zhou\nUT Austin\n Abstract\n We present cross-view transformers.'
+    mockNetFetchImpl = (url: string) => {
+      if (url.includes('dblp.org')) return Promise.resolve(makeDblpResponse())
+      if (url.includes('arxiv.org')) return Promise.resolve({ ok: true, text: async () => '<feed></feed>' })
+      if (url.includes('crossref')) return Promise.resolve({ ok: false })
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
+    const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).toBe('Cross-view Transformers for real-time Map-view Semantic Segmentation')
+    expect(fields.authors).toBe('Zhou, Brady; Krähenbühl, Philipp')
+    expect(fields.year).toBe('2022')
+    expect(fields.venue).toBe('CVPR')
+    expect(fields.doi).toBe('10.1109/CVPR52688.2022.01339')
+    expect(status).toBe('done')
+    expect(source).toBe('dblp')
+  })
+
+  // ----------------------------------------------------------
+  // Test 3e: DBLP returns nothing matching — falls back to arXiv title search
+  // ----------------------------------------------------------
+  it('falls back to arXiv title search (with abstract) when DBLP finds no match', async () => {
+    const doc = makeDoc({ title: null, authors: null, year: null, abstract: null })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    const paperTitle = 'Arxiv Paper Title'
+    mockWorkerText = `${paperTitle}\nSome Author\nAbstract\nWe present a novel approach.`
+    mockNetFetchImpl = (url: string) => {
+      if (url.includes('dblp.org')) return Promise.resolve(makeDblpResponse({ empty: true }))
+      if (url.includes('arxiv.org')) return Promise.resolve(makeArxivResponse({ title: paperTitle }))
+      if (url.includes('crossref')) return Promise.resolve({ ok: false })
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
+    const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).toBe('Arxiv Paper Title')
+    expect(fields.year).toBe('2023')
+    expect(fields.abstract).toBe('Arxiv abstract text here.')
+    expect(status).toBe('done')
+    expect(source).toBe('arxiv')
+  })
+
+  // ----------------------------------------------------------
+  // Test 3f: DBLP returns a non-matching title — rejected, falls back to arXiv
+  // ----------------------------------------------------------
+  it('rejects DBLP result whose title does not match the extracted title', async () => {
+    const doc = makeDoc({ title: null, authors: null, year: null })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    const paperTitle = 'Some Completely Different Paper Title Here'
+    mockWorkerText = `${paperTitle}\nAuthor Name\nAbstract\nWe present something.`
+    mockNetFetchImpl = (url: string) => {
+      if (url.includes('dblp.org')) return Promise.resolve(makeDblpResponse({ title: 'Unrelated Paper About Cats' }))
+      if (url.includes('arxiv.org')) return Promise.resolve(makeArxivResponse({ title: paperTitle }))
+      if (url.includes('crossref')) return Promise.resolve({ ok: false })
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(3000)
+
+    const [, fields, , , source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.venue).toBeUndefined()
+    expect(source).toBe('arxiv')
+  })
+
+  // ----------------------------------------------------------
+  // Test 3f2: DBLP returns a partial match (confidence 0.6-0.75) — uses filename instead
+  // ----------------------------------------------------------
+  it('uses filename when DBLP title match confidence is below the use threshold', async () => {
+    const doc = makeDoc({ title: null, authors: null, year: null, fileName: 'chen2021deepvision.pdf' })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = 'Deep Learning Vision\nAuthor Name\nAbstract\nWe present an approach to deep learning for vision tasks.'
+    mockNetFetchImpl = (url: string) => {
+      if (url.includes('dblp.org')) return Promise.resolve(makeDblpResponse({ title: 'Deep Learning Vision Methods Applications Survey Review.' }))
+      if (url.includes('arxiv.org')) return Promise.resolve({ ok: true, text: async () => '<feed></feed>' })
+      if (url.includes('crossref')) return Promise.resolve({ ok: false })
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
+    const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).toBe('Chen 2021 deepvision')
+    expect(fields.venue).toBeUndefined()
+    expect(fields.year).toBeUndefined()
+    expect(status).toBe('done')
+    expect(source).toBe('pdf')
+  })
+
+  // ----------------------------------------------------------
+  // Test 3f3: arXiv returns a partial match (confidence 0.6-0.75) — uses filename instead
+  // ----------------------------------------------------------
+  it('uses filename when arXiv title match confidence is below the use threshold', async () => {
+    const doc = makeDoc({ title: null, authors: null, year: null, fileName: 'wang2022deepvis.pdf' })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = 'Deep Learning Vision\nAuthor Name\nAbstract\nWe present an approach to deep learning for vision tasks.'
+    const weakArxivTitle = 'Deep Learning Vision Methods Applications Survey Review'
+    mockNetFetchImpl = (url: string) => {
+      if (url.includes('dblp.org')) return Promise.resolve(makeDblpResponse({ empty: true }))
+      if (url.includes('arxiv.org')) return Promise.resolve(makeArxivResponse({ title: weakArxivTitle }))
+      if (url.includes('crossref')) return Promise.resolve({ ok: false })
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
+    const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).toBe('Wang 2022 deepvis')
+    expect(fields.abstract).toBeUndefined()
+    expect(status).toBe('done')
+    expect(source).toBe('pdf')
+  })
+
+  // ----------------------------------------------------------
+  // Test 3g: Poster/non-paper — unreliable title, skips network, uses filename
+  // ----------------------------------------------------------
+  it('uses filename as title and skips network search when extracted title is unreliable (poster)', async () => {
+    const doc = makeDoc({ title: null, authors: null, fileName: 'somePoster2023.pdf' })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = 'Conference Poster\nDeep Learning for Vision\nSlide 1\nIntro\nSlide 2\nMethod\nSlide 3\nResults'
+    let netCalls = 0
+    mockNetFetchImpl = (url: string) => {
+      netCalls++
+      if (url.includes('crossref')) return Promise.resolve({ ok: false })
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
+    const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).toBe('Some Poster 2023')
+    expect(status).toBe('done')
+    expect(source).toBe('pdf')
+    expect(netCalls).toBe(0)
+  })
+
+  // ----------------------------------------------------------
+  // Test 3h: Extracted title is noise (Figure caption) — uses filename, no network
+  // ----------------------------------------------------------
+  it('uses filename when text title is a figure/table noise line', async () => {
+    const doc = makeDoc({ title: null, authors: null, fileName: 'vaswani2017attention.pdf' })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = 'Figure 1: The Transformer model architecture.\nSome author\nAbstract\nWe present a model.'
+    let netCalls = 0
+    mockNetFetchImpl = () => {
+      netCalls++
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    const [, fields, , , source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).toBe('Vaswani 2017 attention')
+    expect(source).toBe('pdf')
+    expect(netCalls).toBe(0)
+  })
+
+  // ----------------------------------------------------------
+  // Test 3i: No title extracted at all — falls back to filename
+  // ----------------------------------------------------------
+  it('uses filename as title when no title can be extracted from text', async () => {
+    const doc = makeDoc({ title: null, authors: null, fileName: 'unknown_paper.pdf' })
+    const repos = mockRepos([doc])
+    const win = mockWin()
+
+    mockWorkerInfo = { Title: '', Author: '' }
+    mockWorkerText = 'arxiv\nhttps://example.com\nauthor@example.com\nab\n\n\n'
+    let netCalls = 0
+    mockNetFetchImpl = () => {
+      netCalls++
+      return Promise.resolve({ ok: false })
+    }
+
+    const svc = createMetadataService(asRepos(repos), win)
+    svc.enqueue('doc-1')
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    const [, fields, , , source] = repos.documents.applyMetadataFields.mock.calls[0]
+    expect(fields.title).toBe('Unknown paper')
+    expect(source).toBe('pdf')
+    expect(netCalls).toBe(0)
   })
 
   // ----------------------------------------------------------

@@ -366,6 +366,37 @@ describe('createImporter', () => {
       const result = await promise2
       expect(result.added.length).toBe(1)
     })
+
+    it('reuses the recovered worker for subsequent requests (workerKilled reset)', async () => {
+      const promise1 = importer.importFiles(['/abs/first.pdf'], false)
+      const worker1 = getWorker()
+      worker1!.emit('exit', 1)
+      await promise1
+
+      const promise2 = importer.importFiles(['/abs/second.pdf'], false)
+      const worker2 = getWorker()
+      worker2!.emit('message', {
+        correlationId: worker2!.postMessage.mock.calls.at(-1)![0].correlationId,
+        fileHash: null
+      })
+      await promise2
+
+      // After recovery, a third request must REUSE worker2 — no new fork.
+      const forkCallsAfterSecond = vi.mocked(utilityProcess.fork).mock.calls.length
+
+      const promise3 = importer.importFiles(['/abs/third.pdf'], false)
+      const worker3 = getWorker()
+      expect(worker3).toBe(worker2)
+      expect(vi.mocked(utilityProcess.fork).mock.calls.length).toBe(forkCallsAfterSecond)
+
+      worker3!.emit('message', {
+        correlationId: worker3!.postMessage.mock.calls.at(-1)![0].correlationId,
+        fileHash: null
+      })
+
+      const result3 = await promise3
+      expect(result3.added.length).toBe(1)
+    })
   })
 
   describe('importFiles — worker timeout', () => {

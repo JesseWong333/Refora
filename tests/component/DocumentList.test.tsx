@@ -55,34 +55,43 @@ let mockState: {
   toggleSelect: ReturnType<typeof vi.fn>
   setFocusedDoc: ReturnType<typeof vi.fn>
   toggleStar: ReturnType<typeof vi.fn>
+  categories: { id: string; name: string; count: number }[]
+  createCategory: ReturnType<typeof vi.fn>
 }
 
 vi.mock('@renderer/store/documentStore', () => ({
-  useDocumentStore: (selector?: (state: Record<string, unknown>) => unknown) => {
-    if (selector) return selector({
-      documents: mockState.documents,
-      isLoading: mockState.isLoading,
-      listColumnState: {
-        columns: defaultColumns,
-        sort: { field: 'addedAt' as const, dir: 'desc' as const }
-      },
-      listMode: { mode: 'all' },
-      selectedIds: [],
-      focusedDocId: null,
-      isSearching: mockState.isSearching,
-      searchResults: mockState.searchResults,
-      setSort: mockState.setSort,
-      setColumns: mockState.setColumns,
-      toggleSelect: mockState.toggleSelect,
-      setFocusedDoc: mockState.setFocusedDoc,
-      toggleStar: mockState.toggleStar,
-      openPdf: vi.fn(),
-      openInFinder: vi.fn(),
-      requestDeleteConfirm: vi.fn(),
-      refreshMetadata: vi.fn()
-    })
-    return mockState
-  }
+  useDocumentStore: Object.assign(
+    (selector?: (state: Record<string, unknown>) => unknown) => {
+      if (selector) return selector({
+        documents: mockState.documents,
+        isLoading: mockState.isLoading,
+        listColumnState: {
+          columns: defaultColumns,
+          sort: { field: 'addedAt' as const, dir: 'desc' as const }
+        },
+        listMode: { mode: 'all' },
+        selectedIds: [],
+        focusedDocId: null,
+        isSearching: mockState.isSearching,
+        searchResults: mockState.searchResults,
+        setSort: mockState.setSort,
+        setColumns: mockState.setColumns,
+        toggleSelect: mockState.toggleSelect,
+        setFocusedDoc: mockState.setFocusedDoc,
+        toggleStar: mockState.toggleStar,
+        openPdf: vi.fn(),
+        openInFinder: vi.fn(),
+        requestDeleteConfirm: vi.fn(),
+        refreshMetadata: vi.fn(),
+        categories: mockState.categories,
+        createCategory: mockState.createCategory
+      })
+      return mockState
+    },
+    {
+      getState: () => ({ showToast: vi.fn() })
+    }
+  )
 }))
 
 vi.mock('react-i18next', () => ({
@@ -121,7 +130,9 @@ function setupDefaultState() {
     setColumns: vi.fn(),
     toggleSelect: vi.fn(),
     setFocusedDoc: vi.fn(),
-    toggleStar: vi.fn()
+    toggleStar: vi.fn(),
+    categories: [],
+    createCategory: vi.fn()
   }
 }
 
@@ -213,7 +224,10 @@ describe('DocumentList', () => {
 
     render(<DocumentList />)
 
-    expect(screen.getByText('\u2605')).toBeInTheDocument()
+    const starBtn = screen.getByRole('button', { name: 'sidebar.starred' })
+    const starSvg = starBtn.querySelector('svg')
+    expect(starSvg).toBeTruthy()
+    expect(starSvg!.className.baseVal || starSvg!.getAttribute('class')).toContain('fill-yellow-400')
   })
 
   it('renders column headers with sort indicators', () => {
@@ -228,6 +242,7 @@ describe('DocumentList', () => {
     expect(screen.getByText('list.addedAt')).toBeInTheDocument()
     expect(screen.getByText('list.filePath')).toBeInTheDocument()
 
-    expect(screen.getByText('\u25BC')).toBeInTheDocument()
+    const sortIndicator = document.querySelector('.lucide-chevron-down')
+    expect(sortIndicator).toBeInTheDocument()
   })
 })

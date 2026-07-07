@@ -29,6 +29,10 @@ const REFERENCE_HEADINGS = /references|bibliography|参考文献|参考资料|re
 const DOI_REGEX = /10\.\d{4,9}\/[-._;()/:a-zA-Z0-9+]+/g
 const ARXIV_ID_REGEX = /(?:arxiv\s*:?\s*|arxiv\.org\/abs\/)(\d{4}\.\d{4,5}(?:v\d+)?)/i
 
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
 export function extractDoiFromText(text: string): string | null {
   const lines = text.split('\n')
   let inReferences = false
@@ -61,6 +65,71 @@ export function extractArxivFromText(text: string): string | null {
   return match ? match[1] : null
 }
 
+export function extractTitleFromText(text: string): string | null {
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+  for (const line of lines.slice(0, 8)) {
+    const lower = line.toLowerCase()
+    if (lower === 'arxiv' || lower.startsWith('arxiv:')) continue
+    if (lower === 'abstract' || lower.startsWith('abstract')) continue
+    if (lower.startsWith('http') || lower.startsWith('www.')) continue
+    if (lower.startsWith('doi') || DOI_REGEX.test(line)) continue
+    if (line.includes('@') && line.includes('.')) continue
+    if (line.length < 8) continue
+    return line
+  }
+  return null
+}
+
+const POSTER_KEYWORDS = /\b(poster|slide[s]?|presentation|keynote|tutorial|syllabus|preface|foreword|table of contents|index|appendix|chapter)\b/i
+const NOISE_TITLE_PATTERNS = /^(figure|fig\.?|table|tab\.?|algorithm|theorem|lemma|proof|equation|eq\.?|section|sec\.?)\s*\d+/i
+
+export function looksLikePosterOrNonPaper(text: string): boolean {
+  const head = text.slice(0, 600).toLowerCase()
+  if (POSTER_KEYWORDS.test(head)) return true
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+  if (lines.length < 12) return false
+  const headLines = lines.slice(0, 40)
+  const shortLines = headLines.filter((l) => l.length > 0 && l.length < 40)
+  if (shortLines.length / headLines.length > 0.8 && !/abstract/i.test(head)) {
+    return true
+  }
+  return false
+}
+
+export function isReliableTitle(title: string | null, text: string): boolean {
+  if (!title || title.trim().length === 0) return false
+  const trimmed = title.trim()
+  if (trimmed.length < 8) return false
+  if (trimmed.length > 300) return false
+  if (NOISE_TITLE_PATTERNS.test(trimmed)) return false
+  if (looksLikePosterOrNonPaper(text)) return false
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length
+  if (wordCount < 3) return false
+  const alphaRatio = (trimmed.match(/[a-zA-Z]/g) ?? []).length / trimmed.length
+  if (alphaRatio < 0.5) return false
+  if (DOI_REGEX.test(trimmed)) return false
+  return true
+}
+
+export function titleFromFileName(fileName: string): string | null {
+  let base = fileName.replace(/\.pdf$/i, '').trim()
+  if (base.length === 0) return null
+  base = base.replace(/[_]+/g, ' ')
+  base = base.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  base = base.replace(/(\d{4})([A-Za-z])/g, '$1 $2')
+  base = base.replace(/([A-Za-z])(\d{4})/g, '$1 $2')
+  base = base.replace(/\s+/g, ' ').trim()
+  if (base.length === 0) return null
+  const words = base.split(' ').filter(Boolean)
+  if (words.length === 0) return null
+  if (/^\d+$/.test(words[0]) && words.length > 1) {
+    words.shift()
+  }
+  const result = words.join(' ')
+  if (result.length === 0) return null
+  return result.charAt(0).toUpperCase() + result.slice(1)
+}
+
 export function normalizeAuthors(raw: string | null): string | null {
   if (!raw || raw.trim().length === 0) return null
   const parts = raw.split(';').map((s) => s.trim()).filter(Boolean)
@@ -88,6 +157,7 @@ export function mergeMetadata(
   for (const field of editableFields) {
     const fetchedVal = fetched[field]
     if (fetchedVal === undefined || fetchedVal === null) continue
+    if (typeof fetchedVal === 'string' && fetchedVal.trim().length === 0) continue
 
     const source: MetadataSource = fetched.metadataSource ?? 'crossref'
     remoteValues[field] = { value: String(fetchedVal), source }
@@ -103,14 +173,17 @@ export function mergeMetadata(
   return { patch, remoteValues }
 }
 
-async function fetchCrossref(doi: string): Promise<{ data: Partial<Document> } | null> {
+async function fetchCrossref(doi: string, mailto: string): Promise<{ data: Partial<Document> } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
   try {
+    const userAgent = mailto
+      ? `ScholarNote/0.1 (mailto:${mailto})`
+      : 'ScholarNote/0.1 (mailto:support@scholarnote.app)'
     const response = await net.fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'ScholarNote/0.1 (mailto:support@scholarnote.app)' }
+      headers: { 'User-Agent': userAgent }
     })
     if (!response.ok) return null
     const body = await response.json() as {
@@ -169,40 +242,46 @@ async function fetchCrossref(doi: string): Promise<{ data: Partial<Document> } |
   }
 }
 
-async function fetchArxiv(id: string): Promise<{ data: Partial<Document> } | null> {
+async function fetchArxiv(id: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
   try {
-    const url = `http://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}&max_results=1`
+    const url = `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}&max_results=1`
     const response = await net.fetch(url, { signal: controller.signal })
     if (!response.ok) return null
     const text = await response.text()
 
-    const titleMatch = text.match(/<title>(.*?)<\/title>/)
-    const title = titleMatch ? titleMatch[1].trim() : null
+    const entryMatch = text.match(/<entry>([\s\S]*?)<\/entry>/)
+    if (!entryMatch) return null
+    const entry = entryMatch[1]
 
-    const authorMatches = text.matchAll(/<author>.*?<name>(.*?)<\/name>.*?<\/author>/gs)
-    const authors = [...authorMatches].map((m) => m[1]).join('; ') || null
+    const titleMatch = entry.match(/<title>(.*?)<\/title>/s)
+    const arxivTitle = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : null
+    if (!arxivTitle) return null
 
-    const yearMatch = text.match(/<published>(\d{4})/)
+    const authorMatches = entry.matchAll(/<author>[\s\S]*?<name>(.*?)<\/name>[\s\S]*?<\/author>/gs)
+    const authors = [...authorMatches].map((m) => m[1].trim()).join('; ') || null
+
+    const yearMatch = entry.match(/<published>(\d{4})/)
     const year = yearMatch ? yearMatch[1] : null
 
-    const abstractMatch = text.match(/<summary>(.*?)<\/summary>/s)
+    const abstractMatch = entry.match(/<summary>(.*?)<\/summary>/s)
     const abstractText = abstractMatch ? abstractMatch[1].trim().replace(/\s+/g, ' ') : null
 
-    const urlMatch = text.match(/<id>(.*?)<\/id>/)
-    const arxivUrl = urlMatch ? urlMatch[1].trim() : `https://arxiv.org/abs/${id}`
+    const idMatch = entry.match(/<id>(.*?)<\/id>/)
+    const arxivUrl = idMatch ? idMatch[1].trim() : `https://arxiv.org/abs/${id}`
 
     return {
       data: {
-        title,
+        title: arxivTitle,
         authors: normalizeAuthors(authors),
         year,
         abstract: abstractText,
         url: arxivUrl,
         metadataSource: 'arxiv' as MetadataSource
-      }
+      },
+      confidence: 1
     }
   } catch {
     return null
@@ -211,7 +290,175 @@ async function fetchArxiv(id: string): Promise<{ data: Partial<Document> } | nul
   }
 }
 
-export function createMetadataService(repos: Repositories, win: BrowserWindow) {
+function normalizeTitleForMatch(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+export function titleSimilarity(a: string, b: string): number {
+  const na = normalizeTitleForMatch(a)
+  const nb = normalizeTitleForMatch(b)
+  if (na.length === 0 || nb.length === 0) return 0
+  if (na === nb) return 1
+
+  const wordsA = na.split(' ').filter((w) => w.length > 0)
+  const wordsB = nb.split(' ').filter((w) => w.length > 0)
+  if (wordsA.length === 0 || wordsB.length === 0) return 0
+
+  const setA = new Set(wordsA)
+  const common = wordsB.filter((w) => setA.has(w)).length
+  const minLen = Math.min(wordsA.length, wordsB.length)
+  const overlap = common / minLen
+
+  const shorter = na.length < nb.length ? na : nb
+  const longer = na.length < nb.length ? nb : na
+  let prefixScore = 0
+  if (longer.startsWith(shorter)) {
+    prefixScore = shorter.length / longer.length
+  }
+
+  let lengthPenalty = 1
+  if (shorter.length < longer.length * 0.5) {
+    lengthPenalty = shorter.length / (longer.length * 0.5)
+  }
+
+  return Math.max(overlap, prefixScore) * lengthPenalty
+}
+
+const TITLE_SIMILARITY_THRESHOLD = 0.6
+const TITLE_USE_THRESHOLD = 0.75
+
+export function titlesMatch(a: string, b: string): boolean {
+  return titleSimilarity(a, b) >= TITLE_SIMILARITY_THRESHOLD
+}
+
+async function fetchDblpByTitle(title: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
+
+  try {
+    const url = `https://dblp.org/search/publ/api?q=${encodeURIComponent(title)}&format=json&h=1`
+    const response = await net.fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'ScholarNote/0.1 (mailto:support@scholarnote.app)' }
+    })
+    if (!response.ok) return null
+    const body = await response.json() as {
+      result?: {
+        hits?: {
+          hit?: Array<{
+            '@score'?: string
+            info?: {
+              title?: string
+              authors?: { author?: Array<{ text?: string }> | { text?: string } }
+              year?: string
+              venue?: string
+              volume?: string
+              pages?: string
+              doi?: string
+              ee?: string
+              type?: string
+            }
+          }>
+        }
+      }
+    }
+
+    const hits = body.result?.hits?.hit
+    if (!hits || hits.length === 0) return null
+    const hit = hits[0]
+    const info = hit.info
+    if (!info?.title) return null
+
+    const confidence = titleSimilarity(title, info.title)
+    if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
+
+    const rawAuthors = info.authors?.author
+    let authors: string | null = null
+    if (Array.isArray(rawAuthors)) {
+      authors = rawAuthors.map((a) => a.text ?? '').filter(Boolean).join('; ') || null
+    } else if (rawAuthors?.text) {
+      authors = rawAuthors.text
+    }
+
+    const year = nonEmptyString(info.year) ?? null
+    const venue = nonEmptyString(info.venue) ?? null
+    const volume = nonEmptyString(info.volume) ?? null
+    const doi = nonEmptyString(info.doi) ?? null
+    const ee = nonEmptyString(info.ee) ?? null
+    const url2 = ee ?? doi ? (doi ? `https://doi.org/${doi}` : ee ?? null) : null
+
+    return {
+      data: {
+        title: info.title.replace(/\.\s*$/, ''),
+        authors: normalizeAuthors(authors),
+        year,
+        venue,
+        volume,
+        doi,
+        url: url2,
+        metadataSource: 'dblp' as MetadataSource
+      },
+      confidence
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function fetchArxivByTitle(title: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
+
+  try {
+    const url = `https://export.arxiv.org/api/query?search_query=ti:${encodeURIComponent(`"${title}"`)}&max_results=1`
+    const response = await net.fetch(url, { signal: controller.signal })
+    if (!response.ok) return null
+    const text = await response.text()
+
+    const entryMatch = text.match(/<entry>([\s\S]*?)<\/entry>/)
+    if (!entryMatch) return null
+    const entry = entryMatch[1]
+
+    const titleMatch = entry.match(/<title>(.*?)<\/title>/s)
+    const arxivTitle = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : null
+    if (!arxivTitle) return null
+
+    const confidence = titleSimilarity(title, arxivTitle)
+    if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
+
+    const authorMatches = entry.matchAll(/<author>[\s\S]*?<name>(.*?)<\/name>[\s\S]*?<\/author>/gs)
+    const authors = [...authorMatches].map((m) => m[1].trim()).join('; ') || null
+
+    const yearMatch = entry.match(/<published>(\d{4})/)
+    const year = yearMatch ? yearMatch[1] : null
+
+    const abstractMatch = entry.match(/<summary>(.*?)<\/summary>/s)
+    const abstractText = abstractMatch ? abstractMatch[1].trim().replace(/\s+/g, ' ') : null
+
+    const idMatch = entry.match(/<id>(.*?)<\/id>/)
+    const arxivUrl = idMatch ? idMatch[1].trim() : null
+
+    return {
+      data: {
+        title: arxivTitle,
+        authors: normalizeAuthors(authors),
+        year,
+        abstract: abstractText,
+        url: arxivUrl,
+        metadataSource: 'arxiv' as MetadataSource
+      },
+      confidence
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function createMetadataService(repos: Repositories, win: BrowserWindow | (() => BrowserWindow | null)) {
   let worker: ReturnType<typeof utilityProcess.fork> | null = null
   let workerKilled = false
   const pending = new Map<string, PendingRequest>()
@@ -220,14 +467,24 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
   const MAX_CONCURRENT = 3
   let lastCrossrefMs = 0
   let lastArxivMs = 0
+  let lastDblpMs = 0
   let processing = false
+
+  const getWin = (): BrowserWindow | null => {
+    const w = typeof win === 'function' ? win() : win
+    if (!w || w.isDestroyed()) return null
+    return w
+  }
 
   function ensureWorker(): ReturnType<typeof utilityProcess.fork> {
     if (worker && !workerKilled) return worker
     worker = utilityProcess.fork(join(__dirname, 'worker/pdf-worker.js'), [], {
-      serviceName: 'Metadata Worker'
+      serviceName: 'Metadata Worker',
+      stdio: 'pipe'
     })
+    workerKilled = false
     worker.on('message', (msg: WorkerResponse) => {
+      logger.info(`metadata-worker:message corr=${msg.correlationId}${msg.error ? ` error=${msg.error.type}` : ''}`)
       const req = pending.get(msg.correlationId)
       if (req) {
         clearTimeout(req.timer)
@@ -235,7 +492,8 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
         req.resolve(msg)
       }
     })
-    worker.on('exit', () => {
+    worker.on('exit', (code) => {
+      logger.warn(`metadata-worker:exit code=${code} pending=${pending.size}`)
       for (const [, req] of pending) {
         clearTimeout(req.timer)
         req.reject(new Error('Metadata worker exited unexpectedly'))
@@ -244,6 +502,11 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
       worker = null
       workerKilled = true
     })
+    if (worker.stderr) {
+      worker.stderr.on('data', (chunk: Buffer) => {
+        logger.error(`metadata-worker:stderr ${chunk.toString().trim()}`)
+      })
+    }
     logger.info('metadata-worker:started')
     return worker
   }
@@ -269,6 +532,12 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
         await new Promise((r) => setTimeout(r, 3000 - elapsed))
       }
       lastArxivMs = Date.now()
+    } else if (source === 'dblp') {
+      const elapsed = now - lastDblpMs
+      if (elapsed < 1000) {
+        await new Promise((r) => setTimeout(r, 1000 - elapsed))
+      }
+      lastDblpMs = Date.now()
     } else {
       const elapsed = now - lastCrossrefMs
       if (elapsed < 1000) {
@@ -280,21 +549,30 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
 
   async function processJob(docId: string): Promise<void> {
     const doc = repos.documents.get(docId)
-    if (!doc) return
+    if (!doc) {
+      logger.warn(`metadata:processJob doc-not-found id=${docId}`)
+      return
+    }
 
     const existingStatus = doc.metadataStatus
-    if (existingStatus === 'done') return
+    if (existingStatus === 'done') {
+      logger.info(`metadata:processJob skip-done id=${docId}`)
+      return
+    }
+    logger.info(`metadata:processJob start id=${docId} status=${existingStatus} path=${doc.filePath}`)
 
     let workerResponse: WorkerResponse
     try {
       workerResponse = await requestParse(doc.filePath)
-    } catch {
+    } catch (e) {
+      logger.warn(`metadata:processJob parse-failed id=${docId}: ${e instanceof Error ? e.message : String(e)}`)
       repos.documents.incrementMetadataAttempts(docId)
       repos.documents.setMetadataStatus(docId, 'failed')
       return
     }
 
     if (workerResponse.error) {
+      logger.warn(`metadata:processJob worker-error id=${docId} type=${workerResponse.error.type} msg=${workerResponse.error.message}`)
       repos.documents.incrementMetadataAttempts(docId)
       repos.documents.setMetadataStatus(docId, 'failed')
       return
@@ -307,13 +585,24 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
     if (!doi) {
       doi = extractDoiFromText(text)
     }
+    logger.info(`metadata:processJob parsed id=${docId} doi=${doi} textLen=${text.length}`)
+
+    const infoTitle = nonEmptyString(info['Title']) ?? nonEmptyString(info['title'])
+    const textTitle = infoTitle ?? extractTitleFromText(text)
+    const fileNameTitle = titleFromFileName(doc.fileName)
+    const reliable = isReliableTitle(textTitle, text)
+    const searchTitle = reliable ? textTitle : null
+    const fallbackTitle = reliable ? (textTitle ?? fileNameTitle) : (fileNameTitle ?? textTitle)
+    logger.info(`metadata:processJob title id=${docId} text=${JSON.stringify(textTitle).slice(0, 60)} file=${JSON.stringify(fileNameTitle).slice(0, 60)} reliable=${reliable}`)
 
     let fetchedData: Partial<Document> | null = null
     let source: MetadataSource = 'pdf'
 
     if (doi) {
       await rateGate('crossref')
-      const result = await fetchCrossref(doi)
+      const mailto = repos.settings.get<string>('crossrefMailto', '')
+      const result = await fetchCrossref(doi, mailto)
+      logger.info(`metadata:processJob crossref id=${docId} ok=${!!result}`)
       if (result) {
         fetchedData = result.data
         source = 'crossref'
@@ -325,16 +614,57 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
       if (arxivId) {
         await rateGate('arxiv')
         const result = await fetchArxiv(arxivId)
-        if (result) {
-          fetchedData = result.data
-          source = 'arxiv'
+        logger.info(`metadata:processJob arxiv id=${docId} ok=${!!result}`)
+        if (result && isReliableTitle(result.data.title ?? null, text)) {
+          if (textTitle && titleSimilarity(textTitle, result.data.title ?? '') < TITLE_SIMILARITY_THRESHOLD) {
+            logger.info(`metadata:processJob arxiv id=${docId} mismatch title=${JSON.stringify(result.data.title).slice(0, 60)} vs text=${JSON.stringify(textTitle).slice(0, 60)}`)
+          } else {
+            fetchedData = result.data
+            source = 'arxiv'
+          }
         }
       }
     }
 
+    if (!fetchedData && searchTitle) {
+      logger.info(`metadata:processJob title-search id=${docId} title=${JSON.stringify(searchTitle).slice(0, 80)}`)
+      let weakMatch = false
+      await rateGate('dblp')
+      const dblpResult = await fetchDblpByTitle(searchTitle)
+      logger.info(`metadata:processJob dblp id=${docId} ok=${!!dblpResult}${dblpResult ? ` confidence=${dblpResult.confidence.toFixed(2)}` : ''}`)
+      if (dblpResult) {
+        if (dblpResult.confidence >= TITLE_USE_THRESHOLD) {
+          fetchedData = dblpResult.data
+          source = 'dblp'
+        } else {
+          weakMatch = true
+        }
+      }
+      if (!fetchedData) {
+        await rateGate('arxiv')
+        const arxivResult = await fetchArxivByTitle(searchTitle)
+        logger.info(`metadata:processJob arxiv-title id=${docId} ok=${!!arxivResult}${arxivResult ? ` confidence=${arxivResult.confidence.toFixed(2)}` : ''}`)
+        if (arxivResult) {
+          if (arxivResult.confidence >= TITLE_USE_THRESHOLD) {
+            fetchedData = arxivResult.data
+            source = 'arxiv'
+          } else {
+            weakMatch = true
+          }
+        }
+      }
+      if (weakMatch) {
+        logger.info(`metadata:processJob weak-match id=${docId} will use filename`)
+      }
+    }
+
     if (!fetchedData) {
+      const authorsFromInfo = nonEmptyString(info['Author']) ?? nonEmptyString(info['author'])
+      const finalTitle = fileNameTitle ?? fallbackTitle
       fetchedData = {
-        title: (info['Title'] as string) ?? (info['title'] as string) ?? null
+        title: finalTitle,
+        authors: authorsFromInfo,
+        metadataSource: 'pdf' as MetadataSource
       }
       source = 'pdf'
     }
@@ -343,11 +673,13 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow) {
     if (!current) return
 
     const { patch, remoteValues } = mergeMetadata(current, fetchedData)
+    logger.info(`metadata:processJob merge id=${docId} patchKeys=${Object.keys(patch).join(',') || 'none'} remoteKeys=${Object.keys(remoteValues).join(',') || 'none'}`)
     repos.documents.applyMetadataFields(docId, patch, remoteValues, 'done', source)
 
     const updated = repos.documents.get(docId)
-    if (updated && !win.isDestroyed()) {
-      emitDocumentUpdated(win, updated)
+    const w = getWin()
+    if (updated && w) {
+      emitDocumentUpdated(w, updated)
     }
   }
 

@@ -1,27 +1,51 @@
 import type { ReactNode } from 'react'
 import { useState, useEffect, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import {
+  Files,
+  Clock,
+  Plus,
+  Star,
+  Pencil,
+  Trash2,
+  Settings,
+  FileJson,
+  FileText,
+  FilePlus,
+  FolderPlus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Moon,
+  Sun,
+  Monitor,
+  Loader2
+} from 'lucide-react'
+import { Button, showContextMenu } from '@lobehub/ui'
+import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
+import { useTheme } from '../hooks/useTheme'
 import type { ListMode, Category } from '../../shared/ipc-types'
 import CategoryDialog from './CategoryDialog'
 import type { CategoryDialogState } from './CategoryDialog'
+import SettingsModal from './SettingsModal'
 import { api } from '../ipc'
 
 const DOC_MIME = 'application/x-scholarnote-docids'
 
 interface SidebarProps {
   collapsed: boolean
+  onToggleCollapse: () => void
 }
 
-const SMART_ITEMS: { key: string; mode: ListMode }[] = [
-  { key: 'allFiles', mode: 'all' },
-  { key: 'recentlyRead', mode: 'recentlyRead' },
-  { key: 'recentlyAdded', mode: 'recentlyAdded' },
-  { key: 'starred', mode: 'starred' }
+const SMART_ITEMS: { key: string; mode: ListMode; icon: ReactNode }[] = [
+  { key: 'allFiles', mode: 'all', icon: <Files className="h-4 w-4" /> },
+  { key: 'recentlyRead', mode: 'recentlyRead', icon: <Clock className="h-4 w-4" /> },
+  { key: 'recentlyAdded', mode: 'recentlyAdded', icon: <Plus className="h-4 w-4" /> },
+  { key: 'starred', mode: 'starred', icon: <Star className="h-4 w-4" /> }
 ]
 
 function SidebarItem({
+  icon,
   label,
   muted = false,
   active = false,
@@ -30,6 +54,7 @@ function SidebarItem({
   onDragOver,
   onDrop
 }: {
+  icon?: ReactNode
   label: string
   muted?: boolean
   active?: boolean
@@ -40,8 +65,8 @@ function SidebarItem({
 }) {
   return (
     <div
-      className={`cursor-pointer truncate rounded px-2 py-1 hover:bg-hover ${
-        active ? 'bg-active text-foreground' : muted ? 'text-muted' : 'text-foreground'
+      className={`sidebar-item ${
+        active ? 'sidebar-item-active' : muted ? 'text-muted' : 'text-foreground'
       }`}
       onClick={onClick}
       onContextMenu={onContextMenu}
@@ -53,7 +78,8 @@ function SidebarItem({
         if (e.key === 'Enter' && onClick) onClick()
       }}
     >
-      {label}
+      {icon && <span className="flex-shrink-0 opacity-70">{icon}</span>}
+      <span className="truncate">{label}</span>
     </div>
   )
 }
@@ -61,131 +87,66 @@ function SidebarItem({
 function SidebarSection({
   title,
   onContextMenu,
+  action,
   children
 }: {
   title: string
   onContextMenu?: (e: React.MouseEvent) => void
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
-    <div className="mb-3">
+    <div className="mb-4">
       <div
-        className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted cursor-context-menu"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted cursor-context-menu"
         onContextMenu={onContextMenu}
       >
-        {title}
+        <span className="flex-1">{title}</span>
+        {action}
       </div>
       <div className="px-1">{children}</div>
     </div>
   )
 }
 
-function CategoryContextMenu({
-  x,
-  y,
-  category,
-  onCreate,
-  onRename,
-  onDelete,
-  onClose
-}: {
-  x: number
-  y: number
-  category?: Category
-  onCreate: () => void
-  onRename: () => void
-  onDelete: () => void
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-
-  useEffect(() => {
-    const handle = (_e: MouseEvent) => onClose()
-    const handleKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') onClose()
-    }
-    setTimeout(() => {
-      document.addEventListener('click', handle)
-      document.addEventListener('keydown', handleKey)
-    }, 0)
-    return () => {
-      document.removeEventListener('click', handle)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="fixed z-50 min-w-[160px] rounded border border-border bg-panel py-1 shadow-lg"
-      style={{ left: x, top: y }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div
-        className="cursor-pointer px-3 py-1.5 text-xs text-foreground hover:bg-hover"
-        onClick={() => {
-          onCreate()
-          onClose()
-        }}
-      >
-        {t('sidebar.createCategory')}
-      </div>
-      {category && (
-        <>
-          <div
-            className="cursor-pointer px-3 py-1.5 text-xs text-foreground hover:bg-hover"
-            onClick={() => {
-              onRename()
-              onClose()
-            }}
-          >
-            {t('sidebar.renameCategory')}
-          </div>
-          <div
-            className="cursor-pointer px-3 py-1.5 text-xs text-error hover:bg-hover"
-            onClick={() => {
-              onDelete()
-              onClose()
-            }}
-          >
-            {t('sidebar.deleteCategory')}
-          </div>
-        </>
-      )}
-    </div>,
-    document.body
-  )
-}
-
-export default function Sidebar({ collapsed }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { t } = useTranslation()
   const listMode = useDocumentStore((s) => s.listMode)
   const setListMode = useDocumentStore((s) => s.setListMode)
   const categories = useDocumentStore((s) => s.categories)
   const fetchCategories = useDocumentStore((s) => s.fetchCategories)
+  const fetchDocuments = useDocumentStore((s) => s.fetchDocuments)
   const createCategory = useDocumentStore((s) => s.createCategory)
   const renameCategory = useDocumentStore((s) => s.renameCategory)
   const deleteCategory = useDocumentStore((s) => s.deleteCategory)
-  const focusedDocId = useDocumentStore((s) => s.focusedDocId)
 
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; category?: Category } | null>(null)
+  const handleAddFiles = useCallback(async () => {
+    try {
+      await api.import.addFiles([])
+    } catch { void 0 }
+    void fetchDocuments()
+  }, [fetchDocuments])
+
+  const handleAddFolder = useCallback(async () => {
+    try {
+      await api.import.addFolder('')
+    } catch { void 0 }
+    void fetchDocuments()
+  }, [fetchDocuments])
+  const focusedDocId = useDocumentStore((s) => s.focusedDocId)
+  const importProgress = useDocumentStore((s) => s.importProgress)
+
   const [dialog, setDialog] = useState<CategoryDialogState | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null)
-  const [folderGroups, setFolderGroups] = useState<Array<{ path: string; count: number }>>([])
+  const [showSettings, setShowSettings] = useState(false)
+  const [pendingCatImports, setPendingCatImports] = useState<Set<string>>(new Set())
+  const { mode: themeMode, setMode: setThemeMode } = useTheme()
+  const selectedIds = useDocumentStore((s) => s.selectedIds)
+
+  const isMac = document.documentElement.dataset.platform === 'mac'
 
   useEffect(() => {
     void fetchCategories()
-    api.documents.folderGroups().then(setFolderGroups).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    const cb = () => {
-      api.documents.folderGroups().then(setFolderGroups).catch(() => {})
-    }
-    api.events.onDocumentUpdated(cb)
-    return () => {
-      api.events.off('document:updated', cb)
-    }
   }, [])
 
   const handleCategoryClick = useCallback(
@@ -195,66 +156,141 @@ export default function Sidebar({ collapsed }: SidebarProps) {
     [setListMode]
   )
 
+  const handleCreate = useCallback(() => {
+    setDialog({ mode: 'create' })
+  }, [])
+
+  const handleRename = useCallback(
+    (cat: Category) => {
+      setDialog({ mode: 'rename', category: cat })
+    },
+    []
+  )
+
+  const handleDelete = useCallback(
+    (cat: Category) => {
+      setDeleteConfirm(cat)
+    },
+    []
+  )
+
   const handleSectionContext = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
-      setCtxMenu({ x: e.clientX, y: e.clientY })
+      const items: ContextMenuItem[] = [
+        {
+          key: 'create',
+          label: t('sidebar.createCategory'),
+          icon: <Plus className="h-3.5 w-3.5" />,
+          onClick: handleCreate,
+        },
+      ]
+      showContextMenu(items)
     },
-    []
+    [t, handleCreate]
   )
 
   const handleItemContext = useCallback(
     (e: React.MouseEvent, cat: Category) => {
       e.preventDefault()
       e.stopPropagation()
-      setCtxMenu({ x: e.clientX, y: e.clientY, category: cat })
+      const items: ContextMenuItem[] = [
+        {
+          key: 'create',
+          label: t('sidebar.createCategory'),
+          icon: <Plus className="h-3.5 w-3.5" />,
+          onClick: handleCreate,
+        },
+        {
+          key: 'rename',
+          label: t('sidebar.renameCategory'),
+          icon: <Pencil className="h-3.5 w-3.5" />,
+          onClick: () => handleRename(cat),
+        },
+        {
+          key: 'delete',
+          label: t('sidebar.deleteCategory'),
+          icon: <Trash2 className="h-3.5 w-3.5" />,
+          onClick: () => handleDelete(cat),
+          danger: true,
+        },
+      ]
+      showContextMenu(items)
     },
-    []
+    [t, handleCreate, handleRename, handleDelete]
   )
 
   const handleDragOverCategory = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(DOC_MIME)) {
+    if (
+      e.dataTransfer.types.includes(DOC_MIME) ||
+      e.dataTransfer.types.includes('Files')
+    ) {
       e.preventDefault()
       e.dataTransfer.dropEffect = 'move'
     }
   }, [])
 
   const handleDropCategory = useCallback(
-    (catId: string, e: React.DragEvent) => {
-      e.preventDefault()
+    async (catId: string, e: React.DragEvent) => {
       const raw = e.dataTransfer.getData(DOC_MIME)
-      if (!raw) return
-      try {
-        const ids: string[] = JSON.parse(raw)
-        if (ids.length === 1) {
-          api.categories.assign(ids[0], catId).catch(() => {})
-        } else {
-          api.documents.bulkCategorize(ids, catId).catch(() => {})
+      if (raw) {
+        e.preventDefault()
+        try {
+          const ids: string[] = JSON.parse(raw)
+          if (ids.length === 1) {
+            await api.categories.assign(ids[0], catId)
+          } else {
+            await api.documents.bulkCategorize(ids, catId)
+          }
+          void fetchCategories()
+        } catch {
+          void 0
         }
+        return
+      }
+
+      const files = e.dataTransfer.files
+      if (files && files.length > 0) {
+        e.preventDefault()
+        const paths: string[] = []
+        for (let i = 0; i < files.length; i++) {
+          try {
+            const p = api.getPathForFile(files[i] as File)
+            if (p && p.toLowerCase().endsWith('.pdf')) {
+              paths.push(p)
+            }
+          } catch {
+            void 0
+          }
+        }
+        if (paths.length === 0) return
+
+        setPendingCatImports((prev) => new Set(prev).add(catId))
+        useDocumentStore.setState((s) => ({
+          categories: s.categories.map((c) =>
+            c.id === catId ? { ...c, count: (c.count ?? 0) + paths.length } : c
+          )
+        }))
+
+        try {
+          const addedIds = await api.import.addFiles(paths)
+          for (const id of addedIds) {
+            await api.categories.assign(id, catId)
+          }
+        } catch {
+          void 0
+        }
+        setPendingCatImports((prev) => {
+          const next = new Set(prev)
+          next.delete(catId)
+          return next
+        })
         void fetchCategories()
-      } catch {
-        void 0
+        void fetchDocuments()
       }
     },
-    [fetchCategories]
+    [fetchCategories, fetchDocuments]
   )
-
-  const handleCreate = useCallback(() => {
-    setCtxMenu(null)
-    setDialog({ mode: 'create' })
-  }, [])
-
-  const handleRename = useCallback(() => {
-    if (!ctxMenu?.category) return
-    setDialog({ mode: 'rename', category: ctxMenu.category })
-    setCtxMenu(null)
-  }, [ctxMenu])
-
-  const handleDelete = useCallback(() => {
-    if (!ctxMenu?.category) return
-    setDeleteConfirm(ctxMenu.category)
-    setCtxMenu(null)
-  }, [ctxMenu])
 
   const confirmDeleteCategory = useCallback(async () => {
     if (!deleteConfirm) return
@@ -287,17 +323,124 @@ export default function Sidebar({ collapsed }: SidebarProps) {
     [dialog, createCategory, renameCategory, fetchCategories]
   )
 
+  const cycleTheme = useCallback(() => {
+    if (themeMode === 'system') setThemeMode('light')
+    else if (themeMode === 'light') setThemeMode('dark')
+    else setThemeMode('system')
+  }, [themeMode, setThemeMode])
+
+  const ThemeIcon = themeMode === 'dark' ? Moon : themeMode === 'light' ? Sun : Monitor
+  const themeTitle =
+    themeMode === 'dark' ? t('settings.themeDark') : themeMode === 'light' ? t('settings.themeLight') : t('settings.themeSystem')
+
   if (collapsed) {
-    return <div className="w-12 shrink-0 border-r border-border bg-panel" />
+    const toolbarLeft = isMac ? 78 : 8
+    return (
+      <>
+        <div
+          className="sidebar-floating-toolbar no-drag"
+          style={{ left: `${toolbarLeft}px` }}
+        >
+          <Button
+            type="text"
+            size="small"
+            className="min-w-0 p-1.5"
+            onClick={onToggleCollapse}
+            title={t('settings.sidebarCollapsed')}
+            aria-label={t('settings.sidebarCollapsed')}
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </Button>
+          <Button
+            type="text"
+            size="small"
+            className="min-w-0 p-1.5"
+            onClick={handleAddFiles}
+            title={t('topbar.addFile')}
+            aria-label={t('topbar.addFile')}
+          >
+            <FilePlus className="h-4 w-4" />
+          </Button>
+          <Button
+            type="text"
+            size="small"
+            className="min-w-0 p-1.5"
+            onClick={handleAddFolder}
+            title={t('topbar.addFolder')}
+            aria-label={t('topbar.addFolder')}
+          >
+            <FolderPlus className="h-4 w-4" />
+          </Button>
+        </div>
+        <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      </>
+    )
   }
 
   return (
-    <div className="w-56 shrink-0 overflow-y-auto border-r border-border bg-panel">
-      <nav className="py-2">
-        <div className="mb-3 px-1">
+    <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
+      {/* Header: drag region for window controls + action buttons */}
+      <div className={`drag-region flex h-10 shrink-0 items-center gap-0.5 px-2 ${isMac ? 'pl-[68px]' : ''}`}>
+        <div className="flex items-center gap-0.5 no-drag">
+          <Button
+            type="text"
+            size="small"
+            className="min-w-0 p-1.5"
+            onClick={handleAddFiles}
+            title={t('topbar.addFile')}
+            aria-label={t('topbar.addFile')}
+          >
+            <FilePlus className="h-4 w-4" />
+          </Button>
+          <Button
+            type="text"
+            size="small"
+            className="min-w-0 p-1.5"
+            onClick={handleAddFolder}
+            title={t('topbar.addFolder')}
+            aria-label={t('topbar.addFolder')}
+          >
+            <FolderPlus className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="ml-auto flex items-center gap-0.5 no-drag">
+          <Button
+            type="text"
+            size="small"
+            className="min-w-0 p-1.5"
+            onClick={onToggleCollapse}
+            title={t('settings.sidebarCollapsed')}
+            aria-label={t('settings.sidebarCollapsed')}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Import progress */}
+      {importProgress && (
+        <div className="mx-2 mb-1 flex items-center gap-2 text-[11px] text-muted">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel-2">
+            <div
+              className="h-full rounded-full bg-accent transition-all duration-200"
+              style={{
+                width: `${importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0}%`
+              }}
+            />
+          </div>
+          <span className="whitespace-nowrap">
+            {t('topbar.importing', { current: importProgress.current, total: importProgress.total })}
+          </span>
+        </div>
+      )}
+
+      {/* Scrollable nav */}
+      <nav className="min-h-0 flex-1 overflow-y-auto py-2">
+        <div className="mb-4 px-1">
           {SMART_ITEMS.map((item) => (
             <SidebarItem
               key={item.key}
+              icon={item.icon}
               label={t(`sidebar.${item.key}`)}
               active={listMode.mode === item.mode}
               onClick={() => setListMode({ mode: item.mode })}
@@ -307,55 +450,77 @@ export default function Sidebar({ collapsed }: SidebarProps) {
         <SidebarSection
           title={t('sidebar.categories')}
           onContextMenu={handleSectionContext}
+          action={
+            <Button
+              type="text"
+              size="small"
+              className="no-drag -mr-1 p-0.5 text-muted hover:text-foreground"
+              onClick={handleCreate}
+              title={t('sidebar.createCategory')}
+              aria-label={t('sidebar.createCategory')}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          }
         >
           {categories.length === 0 ? (
             <div className="px-2 py-1 text-[11px] italic text-muted">
               {t('sidebar.emptyCategories')}
             </div>
           ) : (
-            categories.map((c) => (
-              <SidebarItem
-                key={c.id}
-                label={`${c.name} (${c.count ?? 0})`}
-                active={listMode.mode === 'category' && listMode.categoryId === c.id}
-                onClick={() => handleCategoryClick(c)}
-                onContextMenu={(e) => handleItemContext(e, c)}
-                onDragOver={handleDragOverCategory}
-                onDrop={(e) => handleDropCategory(c.id, e)}
-              />
-            ))
-          )}
-        </SidebarSection>
-        <SidebarSection title={t('sidebar.folderGrouping')}>
-          {folderGroups.length === 0 ? (
-            <div className="px-2 py-1 text-[11px] italic text-muted">
-              {t('sidebar.emptyCategories')}
-            </div>
-          ) : (
-            folderGroups.map((fg) => (
-              <SidebarItem
-                key={fg.path}
-                label={`\uD83D\uDCC1 ${fg.path} (${fg.count})`}
-                muted
-                active={listMode.mode === 'folder' && listMode.folderPath === fg.path}
-                onClick={() => setListMode({ mode: 'folder', folderPath: fg.path })}
-              />
-            ))
+            categories.map((c) => {
+              const isPending = pendingCatImports.has(c.id)
+              return (
+                <div key={c.id} className="relative">
+                  <SidebarItem
+                    icon={isPending ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : undefined}
+                    label={`${c.name} (${c.count ?? 0})`}
+                    active={listMode.mode === 'category' && listMode.categoryId === c.id}
+                    onClick={() => handleCategoryClick(c)}
+                    onContextMenu={(e) => handleItemContext(e, c)}
+                    onDragOver={handleDragOverCategory}
+                    onDrop={(e) => handleDropCategory(c.id, e)}
+                  />
+                  {isPending && <div className="cat-drop-pulse absolute inset-0" />}
+                </div>
+              )
+            })
           )}
         </SidebarSection>
       </nav>
 
-      {ctxMenu && (
-        <CategoryContextMenu
-          x={ctxMenu.x}
-          y={ctxMenu.y}
-          category={ctxMenu.category}
-          onCreate={handleCreate}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onClose={() => setCtxMenu(null)}
+      {/* Footer: settings, export, theme */}
+      <div className="mt-auto border-t border-border px-1 py-2">
+        <SidebarItem
+          icon={<Settings className="h-4 w-4" />}
+          label={t('topbar.settings')}
+          onClick={() => setShowSettings(true)}
         />
-      )}
+        <SidebarItem
+          icon={<FileJson className="h-4 w-4" />}
+          label={t('topbar.exportJson')}
+          onClick={() => { void api.export.toJson() }}
+        />
+        <SidebarItem
+          icon={<FileText className="h-4 w-4" />}
+          label={t('topbar.exportBibtex')}
+          onClick={() => { void api.export.toBibtex(selectedIds) }}
+          muted={selectedIds.length === 0}
+          active={false}
+        />
+        <div className="mt-1 px-1">
+          <Button
+            type="text"
+            size="small"
+            className="sidebar-item flex w-full items-center gap-2 px-2.5 text-xs text-foreground"
+            onClick={cycleTheme}
+            title={themeTitle}
+          >
+            <ThemeIcon className="h-4 w-4 flex-shrink-0 opacity-70" />
+            <span className="truncate">{themeTitle}</span>
+          </Button>
+        </div>
+      </div>
 
       <CategoryDialog
         state={dialog}
@@ -372,28 +537,28 @@ export default function Sidebar({ collapsed }: SidebarProps) {
       />
 
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-96 rounded border border-border bg-panel p-4 shadow-lg">
+        <div className="dialog-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="dialog-panel w-96" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm text-foreground">
               {t('sidebar.deleteCategoryConfirm', { name: deleteConfirm.name })}
             </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="rounded bg-panel-2 px-3 py-1.5 text-xs text-foreground hover:bg-hover"
-                onClick={() => setDeleteConfirm(null)}
-              >
+            <div className="mt-5 flex justify-end gap-2">
+              <Button onClick={() => setDeleteConfirm(null)}>
                 {t('common.cancel')}
-              </button>
-              <button
-                className="rounded bg-error px-3 py-1.5 text-xs text-white hover:opacity-90"
+              </Button>
+              <Button
+                danger
                 onClick={confirmDeleteCategory}
               >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                 {t('common.delete')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+    </aside>
   )
 }

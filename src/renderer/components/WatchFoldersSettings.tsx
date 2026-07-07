@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback } from 'react'
+import { Plus, X } from 'lucide-react'
 import type { WatchFolder } from '../../shared/ipc-types'
 import { api } from '../ipc'
 
@@ -69,15 +70,9 @@ export default function WatchFoldersSettings({ open, onClose }: WatchFoldersSett
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={handleBackdrop}
-    >
-      <div
-        className="w-96 rounded border border-border bg-panel p-4 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 text-sm font-semibold text-foreground">
+    <div className="dialog-overlay" onClick={handleBackdrop}>
+      <div className="dialog-panel w-96" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 text-sm font-semibold text-foreground">
           {t('settings.watchFolders')}
         </div>
 
@@ -90,7 +85,7 @@ export default function WatchFoldersSettings({ open, onClose }: WatchFoldersSett
           {folders.map((f) => (
             <div
               key={f.id}
-              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-hover"
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-hover"
             >
               <label className="flex cursor-pointer items-center">
                 <input
@@ -104,33 +99,34 @@ export default function WatchFoldersSettings({ open, onClose }: WatchFoldersSett
                 {f.path}
               </span>
               <button
-                className="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-panel-2 hover:text-foreground"
+                className="rounded-lg p-1 text-muted hover:bg-panel-2 hover:text-error"
                 onClick={() => handleRemove(f.id)}
               >
-                {t('common.remove')}
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}
         </div>
 
         {error && (
-          <div className="mt-2 rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
+          <div className="mt-3 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
             {error}
           </div>
         )}
 
-        <div className="mt-3 flex justify-end gap-2">
+        <div className="mt-4 flex justify-end gap-2">
           <button
-            className="rounded bg-panel-2 px-3 py-1.5 text-xs text-foreground hover:bg-hover"
+            className="rounded-lg bg-panel-2 px-4 py-2 text-xs text-foreground hover:bg-hover"
             onClick={onClose}
           >
             {t('common.cancel')}
           </button>
           <button
-            className="rounded bg-accent px-3 py-1.5 text-xs text-white hover:opacity-90"
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs text-white hover:opacity-90"
             onClick={handleAdd}
           >
-            + {t('common.add')}
+            <Plus className="h-3.5 w-3.5" />
+            {t('common.add')}
           </button>
         </div>
       </div>

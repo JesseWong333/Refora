@@ -166,8 +166,8 @@ describe('DetailPanel', () => {
         fireEvent.click(titleDisplay)
       })
 
-      const input = screen.getByDisplayValue('Test Paper') as HTMLInputElement
-      expect(input.tagName).toBe('INPUT')
+      const input = screen.getByDisplayValue('Test Paper') as HTMLTextAreaElement
+      expect(input.tagName).toBe('TEXTAREA')
 
       await act(async () => {
         fireEvent.change(input, { target: { value: 'New Title' } })
@@ -187,7 +187,7 @@ describe('DetailPanel', () => {
       const titleDisplay = screen.getByText('Test Paper')
       fireEvent.click(titleDisplay)
 
-      const input = screen.getByDisplayValue('Test Paper') as HTMLInputElement
+      const input = screen.getByDisplayValue('Test Paper') as HTMLTextAreaElement
       fireEvent.change(input, { target: { value: 'New Title' } })
       fireEvent.blur(input)
 
@@ -212,7 +212,7 @@ describe('DetailPanel', () => {
         fireEvent.click(titleDisplay)
       })
 
-      const input = screen.getByDisplayValue('Test Paper') as HTMLInputElement
+      const input = screen.getByDisplayValue('Test Paper') as HTMLTextAreaElement
       await act(async () => {
         fireEvent.change(input, { target: { value: 'Changed Value' } })
         fireEvent.keyDown(input, { key: 'Escape' })
@@ -240,10 +240,10 @@ describe('DetailPanel', () => {
         fireEvent.click(titleDisplay)
       })
 
-      const input = screen.getByDisplayValue('Test Paper') as HTMLInputElement
+      const input = screen.getByDisplayValue('Test Paper') as HTMLTextAreaElement
       await act(async () => {
         fireEvent.change(input, { target: { value: 'Enter Saved' } })
-        fireEvent.keyDown(input, { key: 'Enter' })
+        fireEvent.keyDown(input, { key: 'Enter', metaKey: true })
       })
 
       expect(mockUpdateDoc).toHaveBeenCalledWith('1', { title: 'Enter Saved' })
@@ -309,7 +309,7 @@ describe('DetailPanel', () => {
         fireEvent.click(placeholder)
       })
 
-      const input = screen.getByDisplayValue('') as HTMLInputElement
+      const input = screen.getByDisplayValue('') as HTMLTextAreaElement
       expect(input).toBeInTheDocument()
     })
   })

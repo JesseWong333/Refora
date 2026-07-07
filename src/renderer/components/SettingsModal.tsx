@@ -1,23 +1,35 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
+import { Modal, Button, Input, Select } from '@lobehub/ui'
+import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
-import WatchFoldersSettings from './WatchFoldersSettings'
 
 interface SettingsModalProps {
   open: boolean
   onClose: () => void
 }
 
+const THEME_OPTIONS = [
+  { label: 'System', value: 'system' },
+  { label: 'Light', value: 'light' },
+  { label: 'Dark', value: 'dark' },
+]
+
+const LANG_OPTIONS = [
+  { label: '中文', value: 'zh' },
+  { label: 'English', value: 'en' },
+]
+
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { t, i18n } = useTranslation()
+  const { mode: themeMode, setMode: setThemeMode } = useTheme()
   const [libraryFolderPath, setLibraryFolderPath] = useState('')
   const [proxyUrl, setProxyUrl] = useState('')
   const [crossrefMailto, setCrossrefMailto] = useState('')
   const [moveToLibrary, setMoveToLibrary] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showWatchFolders, setShowWatchFolders] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -41,10 +53,6 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     } catch {
       setError('Failed to load settings')
     }
-  }
-
-  const handleBackdrop = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose()
   }
 
   const handleChooseFolder = async () => {
@@ -104,7 +112,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }
 
-  const handleLanguageChange = async (lang: AppLanguage) => {
+  const handleThemeChange = (value: string) => {
+    setThemeMode(value as 'system' | 'dark' | 'light')
+  }
+
+  const handleLanguageChange = async (value: string) => {
+    const lang = value as AppLanguage
     setError(null)
     try {
       await api.settings.set('language', lang)
@@ -115,133 +128,108 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }
 
-  if (!open) return null
-
   const currentLang = (i18n.language?.startsWith('zh') ? 'zh' : 'en') as AppLanguage
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={handleBackdrop}
+    <Modal
+      open={open}
+      onCancel={onClose}
+      title={t('settings.title')}
+      footer={
+        <Button onClick={onClose} type="primary">
+          {t('common.cancel')}
+        </Button>
+      }
+      destroyOnClose
     >
-      <div
-        className="w-[420px] rounded border border-border bg-panel p-4 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 text-sm font-semibold text-foreground">
-          {t('settings.title')}
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted">{t('settings.libraryFolder')}</label>
-            <div className="flex gap-2">
-              <span className="min-w-0 flex-1 truncate rounded bg-panel-2 px-2 py-1.5 text-xs text-foreground">
-                {libraryFolderPath || '—'}
-              </span>
-              <button
-                className="shrink-0 rounded bg-accent px-3 py-1.5 text-xs text-white hover:opacity-90"
-                onClick={handleChooseFolder}
-              >
-                {t('settings.chooseFolder')}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted">{t('settings.watchFolders')}</label>
-            <button
-              className="self-start rounded bg-panel-2 px-3 py-1.5 text-xs text-foreground hover:bg-hover"
-              onClick={() => setShowWatchFolders(true)}
-            >
-              {t('settings.watchFolders')}...
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted">{t('settings.proxy')}</label>
-            <input
-              className="rounded bg-panel-2 px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-accent"
-              value={proxyUrl}
-              onChange={(e) => setProxyUrl(e.target.value)}
-              onBlur={saveProxy}
-              placeholder="http://proxy:8080"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted">{t('settings.crossrefMailto')}</label>
-            <input
-              className="rounded bg-panel-2 px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-accent"
-              value={crossrefMailto}
-              onChange={(e) => setCrossrefMailto(e.target.value)}
-              onBlur={saveMailto}
-              placeholder="user@example.com"
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-muted">{t('settings.theme')}</label>
-            <span className="text-xs text-foreground">{t('settings.themeDark')}</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-muted">{t('settings.language')}</label>
-            <select
-              className="rounded bg-panel-2 px-2 py-1 text-xs text-foreground outline-none"
-              value={currentLang}
-              onChange={(e) => handleLanguageChange(e.target.value as AppLanguage)}
-            >
-              <option value="zh">{t('settings.zh')}</option>
-              <option value="en">{t('settings.en')}</option>
-            </select>
-          </div>
-
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              className="m-0"
-              checked={moveToLibrary}
-              onChange={handleMoveToLibraryToggle}
-            />
-            <span className="text-xs text-foreground">
-              {t('settings.moveToLibraryOnCategorize')}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">{t('settings.libraryFolder')}</label>
+          <div className="flex gap-2">
+            <span className="min-w-0 flex-1 truncate rounded-lg bg-panel-2 px-3 py-1.5 text-xs text-foreground">
+              {libraryFolderPath || '\u2014'}
             </span>
-          </label>
-
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              className="m-0"
-              checked={sidebarCollapsed}
-              onChange={handleSidebarToggle}
-            />
-            <span className="text-xs text-foreground">
-              {t('settings.sidebarCollapsed')}
-            </span>
-          </label>
-        </div>
-
-        {error && (
-          <div className="mt-3 rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
-            {error}
+            <Button size="small" onClick={handleChooseFolder}>
+              {t('settings.chooseFolder')}
+            </Button>
           </div>
-        )}
-
-        <div className="mt-4 flex justify-end">
-          <button
-            className="rounded bg-accent px-4 py-1.5 text-xs text-white hover:opacity-90"
-            onClick={onClose}
-          >
-            {t('common.cancel')}
-          </button>
+          <span className="text-[11px] text-muted">{t('settings.libraryFolderAutoImportHint')}</span>
         </div>
 
-        <WatchFoldersSettings
-          open={showWatchFolders}
-          onClose={() => setShowWatchFolders(false)}
-        />
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">{t('settings.proxy')}</label>
+          <Input
+            value={proxyUrl}
+            onChange={(e) => setProxyUrl(e.target.value)}
+            onBlur={saveProxy}
+            placeholder="http://proxy:8080"
+            size="small"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">{t('settings.crossrefMailto')}</label>
+          <Input
+            value={crossrefMailto}
+            onChange={(e) => setCrossrefMailto(e.target.value)}
+            onBlur={saveMailto}
+            placeholder="user@example.com"
+            size="small"
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="text-xs text-muted">{t('settings.theme')}</label>
+          <Select
+            value={themeMode}
+            onChange={handleThemeChange}
+            options={THEME_OPTIONS}
+            size="small"
+            style={{ width: 120 }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="text-xs text-muted">{t('settings.language')}</label>
+          <Select
+            value={currentLang}
+            onChange={handleLanguageChange}
+            options={LANG_OPTIONS}
+            size="small"
+            style={{ width: 120 }}
+          />
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            className="m-0"
+            checked={moveToLibrary}
+            onChange={handleMoveToLibraryToggle}
+          />
+          <span className="text-xs text-foreground">
+            {t('settings.moveToLibraryOnCategorize')}
+          </span>
+        </label>
+
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            className="m-0"
+            checked={sidebarCollapsed}
+            onChange={handleSidebarToggle}
+          />
+          <span className="text-xs text-foreground">
+            {t('settings.sidebarCollapsed')}
+          </span>
+        </label>
       </div>
-    </div>
+
+      {error && (
+        <div className="mt-4 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+          {error}
+        </div>
+      )}
+    </Modal>
   )
 }

@@ -16,10 +16,26 @@ export default {
         warning: 'var(--color-warning)',
         error: 'var(--color-error)',
         hover: 'var(--color-hover)',
-        active: 'var(--color-active)'
+        active: 'var(--color-active)',
+        overlay: 'var(--color-overlay)'
+      },
+      borderRadius: {
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+        floating: 'var(--sidebar-radius)'
+      },
+      boxShadow: {
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        floating: 'var(--sidebar-shadow)'
+      },
+      spacing: {
+        'floating-inset': 'var(--sidebar-inset)'
       },
       fontFamily: {
-        sans: ['var(--font-sans)', 'system-ui', 'sans-serif']
+        sans: ['var(--font-sans)', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'system-ui', 'sans-serif']
       }
     }
   },

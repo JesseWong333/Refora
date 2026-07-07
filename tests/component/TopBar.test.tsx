@@ -1,24 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import TopBar from '@renderer/components/TopBar'
 
-let mockState: {
-  isImporting: boolean
-  importProgress: { current: number; total: number } | null
-  searchQuery: string
-  selectedIds: string[]
-  performSearch: ReturnType<typeof vi.fn>
-  clearSearch: ReturnType<typeof vi.fn>
-  fetchDocuments: ReturnType<typeof vi.fn>
-}
-
-vi.mock('@renderer/store/documentStore', () => ({
-  useDocumentStore: (selector?: (state: typeof mockState) => unknown) => {
-    if (selector) return selector(mockState)
-    return mockState
+const mocks = vi.hoisted(() => {
+  const state: Record<string, unknown> = {
+    categories: [],
+    listMode: { mode: 'all' },
+    focusedDocId: null,
+    selectedIds: [] as string[],
+    importProgress: null as { current: number; total: number } | null,
+    setListMode: vi.fn(),
+    fetchCategories: vi.fn(),
+    createCategory: vi.fn(),
+    renameCategory: vi.fn(),
+    deleteCategory: vi.fn(),
   }
-}))
+  return { state }
+})
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -29,128 +27,76 @@ vi.mock('react-i18next', () => ({
       return key
     },
     i18n: { changeLanguage: vi.fn() }
-  })
+  }),
 }))
 
-vi.mock('@renderer/components/WatchFoldersSettings', () => ({
-  default: () => null
+vi.mock('@renderer/store/documentStore', () => ({
+  useDocumentStore: (selector?: (s: Record<string, unknown>) => unknown) => {
+    if (selector) return selector(mocks.state)
+    return mocks.state
+  },
 }))
 
 vi.mock('@renderer/components/SettingsModal', () => ({
   default: () => null
 }))
 
-function setupDefaultState() {
-  mockState = {
-    isImporting: false,
-    importProgress: null,
-    searchQuery: '',
-    selectedIds: [],
-    performSearch: vi.fn(),
-    clearSearch: vi.fn(),
-    fetchDocuments: vi.fn()
-  }
-}
+import Sidebar from '@renderer/components/Sidebar'
 
-function renderTopBar(extraProps?: Partial<{ sidebarCollapsed: boolean }>) {
-  const props = {
-    sidebarCollapsed: false,
-    onToggleSidebar: vi.fn(),
-    ...extraProps
-  }
-  return render(<TopBar {...props} />)
-}
-
-describe('TopBar', () => {
+describe('Sidebar header actions', () => {
   beforeEach(() => {
-    setupDefaultState()
-    vi.spyOn(window.api.import, 'addFiles').mockResolvedValue({ ok: true, data: { added: [], skipped: [], errors: [] } })
-    vi.spyOn(window.api.import, 'addFolder').mockResolvedValue({ ok: true, data: { added: [], skipped: [], errors: [] } })
-    vi.spyOn(window.api.export, 'toJson').mockResolvedValue({ ok: true, data: undefined })
-    vi.spyOn(window.api.export, 'toBibtex').mockResolvedValue({ ok: true, data: undefined })
+    vi.clearAllMocks()
+    mocks.state.importProgress = null
+    mocks.state.categories = []
   })
 
   afterEach(() => {
     cleanup()
   })
 
-  it('mounts without crash', () => {
-    expect(() => renderTopBar()).not.toThrow()
-    expect(screen.getByText('topbar.addFile')).toBeInTheDocument()
+  it('renders add file / add folder / collapse buttons in header', () => {
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    expect(screen.getByLabelText('topbar.addFile')).toBeInTheDocument()
+    expect(screen.getByLabelText('topbar.addFolder')).toBeInTheDocument()
+    expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
   })
 
-  it('renders Add File button and calls api.import.addFiles on click', async () => {
-    renderTopBar()
-    const btn = screen.getByText('topbar.addFile')
-    expect(btn).not.toBeDisabled()
-
-    await userEvent.click(btn)
-
-    expect(window.api.import.addFiles).toHaveBeenCalledOnce()
+  it('renders settings and export buttons in footer', () => {
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    expect(screen.getByText('topbar.settings')).toBeInTheDocument()
+    expect(screen.getByText('topbar.exportJson')).toBeInTheDocument()
+    expect(screen.getByText('topbar.exportBibtex')).toBeInTheDocument()
   })
 
-  it('renders Add Folder button and calls api.import.addFolder on click', async () => {
-    renderTopBar()
-    const btn = screen.getByText('topbar.addFolder')
-    expect(btn).not.toBeDisabled()
-
-    await userEvent.click(btn)
-
-    expect(window.api.import.addFolder).toHaveBeenCalledOnce()
+  it('shows import progress bar when importProgress is set', () => {
+    mocks.state.importProgress = { current: 2, total: 5 }
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    expect(screen.getByText('topbar.importing')).toBeInTheDocument()
   })
 
-  it('renders search input and calls performSearch on typing', async () => {
-    renderTopBar()
-
-    const input = screen.getByPlaceholderText('topbar.search')
-    expect(input).toBeInTheDocument()
-
-    await userEvent.type(input, 'hello')
-
-    expect(mockState.performSearch).toHaveBeenCalled()
-  })
-
-  it('clears search on Escape key', () => {
-    mockState.searchQuery = 'hello'
-    renderTopBar()
-
-    const input = screen.getByPlaceholderText('topbar.search') as HTMLInputElement
-    expect(input.value).toBe('hello')
-
-    fireEvent.keyDown(input, { key: 'Escape' })
-    expect(mockState.clearSearch).toHaveBeenCalledOnce()
-  })
-
-  it('shows import progress bar and disables buttons when isImporting is true', () => {
-    mockState.isImporting = true
-    mockState.importProgress = { current: 2, total: 5 }
-    renderTopBar()
-
-    const progressText = screen.getByText('topbar.importing')
-    expect(progressText).toBeInTheDocument()
-
-    const addFileBtn = screen.getByText('topbar.addFile')
-    const addFolderBtn = screen.getByText('topbar.addFolder')
-    expect(addFileBtn).toBeDisabled()
-    expect(addFolderBtn).toBeDisabled()
-  })
-
-  it('hides progress bar and enables buttons when isImporting is false', () => {
-    mockState.isImporting = false
-    mockState.importProgress = null
-    renderTopBar()
-
+  it('hides progress bar when importProgress is null', () => {
+    mocks.state.importProgress = null
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.queryByText('topbar.importing')).not.toBeInTheDocument()
-
-    expect(screen.getByText('topbar.addFile')).not.toBeDisabled()
-    expect(screen.getByText('topbar.addFolder')).not.toBeDisabled()
   })
 
-  it('disables Export BibTeX button when no documents selected', () => {
-    mockState.selectedIds = []
-    renderTopBar()
+  it('calls onToggleCollapse when collapse button is clicked', async () => {
+    const toggleSpy = vi.fn()
+    render(<Sidebar collapsed={false} onToggleCollapse={toggleSpy} />)
+    await userEvent.click(screen.getByLabelText('settings.sidebarCollapsed'))
+    expect(toggleSpy).toHaveBeenCalledOnce()
+  })
 
-    const bibtexBtn = screen.getByText('topbar.exportBibtex')
-    expect(bibtexBtn).toBeDisabled()
+  it('renders expand button when collapsed', () => {
+    render(<Sidebar collapsed={true} onToggleCollapse={vi.fn()} />)
+    expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
+  })
+
+  it('calls api.import.addFiles when add file button is clicked', async () => {
+    const addFilesSpy = vi.fn().mockResolvedValue({ ok: true, data: { added: [], skipped: [], errors: [] } })
+    ;(window.api as Record<string, unknown> & { import: { addFiles: () => Promise<unknown> } }).import.addFiles = addFilesSpy
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    await userEvent.click(screen.getByLabelText('topbar.addFile'))
+    expect(addFilesSpy).toHaveBeenCalled()
   })
 })

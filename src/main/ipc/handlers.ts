@@ -88,6 +88,7 @@ function findPdfsRecursively(dir: string): string[] {
 export interface IpcHandlerDeps {
   repos: Repositories
   win: BrowserWindow
+  getWin?: () => BrowserWindow | null
   importer?: {
     importFiles: (paths: string[], isWatch: boolean) => Promise<ImportResult>
     destroy: () => void
@@ -103,7 +104,19 @@ export interface IpcHandlerDeps {
 }
 
 export function createIpcHandlers(deps: IpcHandlerDeps) {
-  const { repos, win, importer, metadataService, watcher } = deps
+  const { repos, importer, metadataService, watcher } = deps
+
+  const getWin = (): BrowserWindow | null => {
+    const w = deps.getWin ? deps.getWin() : deps.win
+    if (!w || w.isDestroyed()) return null
+    return w
+  }
+
+  const requireWin = (): BrowserWindow => {
+    const w = getWin()
+    if (!w) throw new Error('No active window')
+    return w
+  }
 
   const handlers = {
     [IpcChannel.Bootstrap]: (): Result<BootstrapData> => wrap(() => bootstrapFromSettings(repos)),
@@ -149,7 +162,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.DocumentsBulkRefreshMetadata]: (ids: string[]): Result<void> =>
       metadataService ? (metadataService.bulkRefreshMetadata(ids), { ok: true, data: undefined }) : notImplemented('documents.bulkRefreshMetadata'),
     [IpcChannel.DocumentsOpenPdf]: async (id: string): Promise<Result<Document>> =>
-      asyncWrap(() => openPdf(repos, win, id)),
+      asyncWrap(() => openPdf(repos, getWin(), id)),
     [IpcChannel.DocumentsOpenInFinder]: (id: string): Result<void> =>
       wrap(() => {
         const doc = repos.documents.get(id)
@@ -167,7 +180,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       asyncWrap(async () => {
         let path = newPath
         if (!path) {
-          const result = await dialog.showOpenDialog(win, {
+          const result = await dialog.showOpenDialog(requireWin(), {
             title: 'Select PDF File',
             properties: ['openFile'],
             filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
@@ -180,7 +193,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           path = result.filePaths[0]
         }
         const doc = relocate(repos, id, path)
-        emitDocumentUpdated(win, doc)
+        const w = getWin()
+        if (w) emitDocumentUpdated(w, doc)
         return doc
       }),
     [IpcChannel.DocumentsRestoreFile]: (id: string): Result<Document> =>
@@ -189,14 +203,14 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const doc = repos.documents.get(id)
         return doc as Document
       }),
-    [IpcChannel.DocumentsFolderGroups]: (): Result<Array<{ path: string; count: number }>> =>
-      wrap(() => repos.documents.listFolderGroups()),
 
     [IpcChannel.ImportAddFiles]: async (paths: string[]): Promise<Result<string[]>> => {
       if (!importer) return notImplemented('import.addFiles') as Result<string[]>
       let filePaths = paths
       if (filePaths.length === 0) {
-        const result = await dialog.showOpenDialog(win, {
+        const w = requireWin()
+        w.focus()
+        const result = await dialog.showOpenDialog(w, {
           title: 'Add PDF Files',
           properties: ['openFile', 'multiSelections'],
           filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
@@ -212,7 +226,9 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
 
     [IpcChannel.ImportAddFolder]: async (_dir: string): Promise<Result<string[]>> => {
       if (!importer) return notImplemented('import.addFolder') as Result<string[]>
-      const result = await dialog.showOpenDialog(win, {
+      const w = requireWin()
+      w.focus()
+      const result = await dialog.showOpenDialog(w, {
         title: 'Add Folder',
         properties: ['openDirectory']
       })
@@ -227,7 +243,9 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
 
     [IpcChannel.ImportFromJson]: async (_file: string): Promise<Result<number>> =>
       asyncWrap(async () => {
-        const result = await dialog.showOpenDialog(win, {
+        const w = requireWin()
+        w.focus()
+        const result = await dialog.showOpenDialog(w, {
           title: 'Import JSON',
           properties: ['openFile'],
           filters: [{ name: 'JSON files', extensions: ['json'] }]
@@ -235,7 +253,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (result.canceled || result.filePaths.length === 0) return 0
         const filePath = result.filePaths[0]
 
-        const modeChoice = await dialog.showMessageBox(win, {
+        const modeChoice = await dialog.showMessageBox(w, {
           type: 'question',
           title: 'Import Mode',
           message: 'How should the import handle existing data?',
@@ -292,7 +310,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       asyncWrap(async () => {
         let absPath = path ? resolvePath(path) : ''
         if (!absPath) {
-          const result = await dialog.showOpenDialog(win, {
+          const result = await dialog.showOpenDialog(requireWin(), {
             title: 'Select Watch Folder',
             properties: ['openDirectory']
           })
@@ -334,7 +352,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
 
     [IpcChannel.DialogOpenDirectory]: async (): Promise<Result<string | null>> =>
       asyncWrap(async () => {
-        const result = await dialog.showOpenDialog(win, {
+        const result = await dialog.showOpenDialog(requireWin(), {
           title: 'Select Folder',
           properties: ['openDirectory']
         })
@@ -360,12 +378,15 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
               throw new RepoError('library_inside_watch', 'Library folder cannot be inside a watch folder.')
             }
           }
+          watcher?.startLibraryWatcher(resolvePath(value))
+        } else if (key === 'libraryFolderPath') {
+          watcher?.stopLibraryWatcher()
         }
       }),
 
     [IpcChannel.ExportToJson]: async (): Promise<Result<string>> =>
       asyncWrap(async () => {
-        const result = await dialog.showSaveDialog(win, {
+        const result = await dialog.showSaveDialog(requireWin(), {
           title: 'Export JSON',
           defaultPath: `scholarnote-export-${new Date().toISOString().slice(0, 10)}.json`,
           filters: [{ name: 'JSON files', extensions: ['json'] }]
@@ -379,7 +400,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (ids.length === 0) return ''
         const docs = ids.map((id) => repos.documents.get(id)).filter(Boolean) as Document[]
         if (docs.length === 0) return ''
-        const result = await dialog.showSaveDialog(win, {
+        const result = await dialog.showSaveDialog(requireWin(), {
           title: 'Export BibTeX',
           defaultPath: `scholarnote-export-${new Date().toISOString().slice(0, 10)}.bib`,
           filters: [{ name: 'BibTeX files', extensions: ['bib'] }]

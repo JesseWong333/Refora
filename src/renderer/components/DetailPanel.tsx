@@ -1,5 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { RefreshCw, ArrowLeftRight, X, Trash2, FolderOpen, FileText } from 'lucide-react'
+
+function autoResize(el: HTMLTextAreaElement) {
+  el.style.height = 'auto'
+  el.style.height = el.scrollHeight + 'px'
+}
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
 import type {
@@ -59,15 +65,18 @@ function InlineField({
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(value)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const inputRef = useRef<HTMLInputElement>(null)
-  const statusRef = useRef<ReturnType<typeof setTimeout>>()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const statusRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     setText(value)
   }, [value])
 
   useEffect(() => {
-    if (editing) inputRef.current?.focus()
+    if (editing && textareaRef.current) {
+      textareaRef.current.focus()
+      autoResize(textareaRef.current)
+    }
   }, [editing])
 
   const save = useCallback(async () => {
@@ -130,14 +139,21 @@ function InlineField({
       </span>
       <div className="flex items-center gap-1">
         {editing ? (
-          <input
-            ref={inputRef}
-            className="field-input flex-1"
+          <textarea
+            ref={textareaRef}
+            className="field-input flex-1 min-h-[2.5rem] resize-none text-sm"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            rows={1}
+            onChange={(e) => {
+              setText(e.target.value)
+              autoResize(e.target)
+            }}
             onBlur={save}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') save()
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                save()
+              }
               if (e.key === 'Escape') {
                 e.stopPropagation()
                 setText(value)
@@ -160,11 +176,11 @@ function InlineField({
         )}
         {hasRemoteDiff && !editing && (
           <button
-            className="flex-shrink-0 text-xs text-accent hover:text-accent-hover"
+            className="flex-shrink-0 text-accent hover:text-accent-hover"
             title={t('detail.applyRemote') ?? 'Apply remote value'}
             onClick={applyRemote}
           >
-            {'\u21BB'}
+            <ArrowLeftRight className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -184,8 +200,8 @@ function NoteField({
   const { t } = useTranslation()
   const [text, setText] = useState(value ?? '')
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const saveRef = useRef<ReturnType<typeof setTimeout>>()
-  const statusRef = useRef<ReturnType<typeof setTimeout>>()
+  const saveRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const statusRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     setText(value ?? '')
@@ -301,9 +317,9 @@ function CategoryChips({
             <button
               className="ml-0.5 text-muted hover:text-error"
               onClick={() => unassign(c.id)}
-              title={t('common.delete') ?? 'Remove'}
+              title={t('common.remove') ?? 'Remove'}
             >
-              {'\u00D7'}
+              <X className="h-3 w-3" />
             </button>
           </span>
         ))}
@@ -385,14 +401,15 @@ function SingleDetail({ doc }: { doc: Document }) {
     !doc.filePath.startsWith(doc.originalFolderPath)
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3">
+    <div className="flex flex-col gap-4 px-5 py-4">
       <div className="flex items-center justify-between">
         <button
-          className="text-[11px] text-accent hover:text-accent-hover"
+          className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover disabled:opacity-50"
           onClick={handleRefresh}
           disabled={refreshing}
         >
-          {refreshing ? '\u23F3' : t('detail.refreshMetadata')}
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          <span>{t('detail.refreshMetadata')}</span>
         </button>
       </div>
 
@@ -425,10 +442,11 @@ function SingleDetail({ doc }: { doc: Document }) {
           </span>
           {!doc.fileMissing && (
             <button
-              className="text-xs text-accent hover:text-accent-hover flex-shrink-0"
+              className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover flex-shrink-0"
               onClick={() => openInFinder(doc.id)}
             >
-              {t('common.openInFinder')}
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span>{t('common.openInFinder')}</span>
             </button>
           )}
           {doc.fileMissing && (
@@ -458,10 +476,11 @@ function SingleDetail({ doc }: { doc: Document }) {
       <CategoryChips docId={doc.id} docCategories={doc.categories} />
 
       <button
-        className="self-start text-xs text-error hover:underline"
+        className="flex items-center gap-1.5 self-start text-xs text-error hover:opacity-80"
         onClick={() => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm'))}
       >
-        {t('common.delete')}
+        <Trash2 className="h-3.5 w-3.5" />
+        <span>{t('common.delete')}</span>
       </button>
     </div>
   )
@@ -486,21 +505,22 @@ function BulkBar({
   }, [])
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3">
+    <div className="flex flex-col gap-4 px-5 py-4">
       <div className="text-sm font-semibold text-foreground">
         {t('common.multiSelected', { count })}
       </div>
       <div className="flex flex-col gap-2">
         <button
-          className="toolbar-btn justify-start text-error"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-error hover:bg-hover"
           onClick={() => requestDeleteConfirm(selectedIds, t('dialog.deleteConfirm'))}
         >
-          {t('common.delete')} ({count})
+          <Trash2 className="h-4 w-4" />
+          <span>{t('common.delete')} ({count})</span>
         </button>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted">{t('sidebar.categories')}</span>
           <select
-            className="rounded border border-border bg-panel px-2 py-1 text-xs text-foreground"
+            className="rounded-lg border border-border bg-panel px-2 py-1.5 text-xs text-foreground"
             value=""
             onChange={(e) => {
               if (e.target.value) bulkCategorize(selectedIds, e.target.value)
@@ -515,23 +535,25 @@ function BulkBar({
           </select>
         </div>
         <button
-          className="toolbar-btn justify-start"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground hover:bg-hover"
           onClick={() => bulkRefreshMetadata(selectedIds)}
         >
-          {t('detail.refreshMetadata')} ({count})
+          <RefreshCw className="h-4 w-4" />
+          <span>{t('detail.refreshMetadata')} ({count})</span>
         </button>
         <button
-          className="toolbar-btn justify-start"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground hover:bg-hover"
           onClick={() => void api.export.toBibtex(selectedIds)}
         >
-          {t('common.exportBibtexTitle')} ({count})
+          <FileText className="h-4 w-4" />
+          <span>{t('common.exportBibtexTitle')} ({count})</span>
         </button>
       </div>
     </div>
   )
 }
 
-export default function DetailPanel() {
+export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
   const documents = useDocumentStore((s) => s.documents)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
@@ -542,10 +564,22 @@ export default function DetailPanel() {
 
   if (selectedIds.length >= 2) {
     return (
-      <div className="flex w-96 shrink-0 flex-col overflow-y-auto border-l border-border bg-panel">
+    <div className="relative flex shrink-0 flex-col bg-panel">
+        <div className="drag-region flex h-9 shrink-0 items-center justify-end px-2">
+          <button
+            className="toolbar-btn p-1 no-drag"
+            onClick={onClose}
+            title={t('common.close')}
+            aria-label={t('common.close')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
         <BulkBar count={selectedIds.length} selectedIds={selectedIds} />
         {toastMessage && (
-          <div className="fixed bottom-4 right-4 z-50 rounded border border-border bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
+          <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
+            style={{ boxShadow: 'var(--shadow-md)' }}
+          >
             {toastMessage}
           </div>
         )}
@@ -555,12 +589,24 @@ export default function DetailPanel() {
 
   if (!focusedDoc) {
     return (
-      <div className="flex w-96 shrink-0 flex-col border-l border-border bg-panel">
+      <div className="relative flex shrink-0 flex-col bg-panel">
+        <div className="drag-region flex h-9 shrink-0 items-center justify-end px-2">
+          <button
+            className="toolbar-btn p-1 no-drag"
+            onClick={onClose}
+            title={t('common.close')}
+            aria-label={t('common.close')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
         <div className="flex flex-1 items-center justify-center px-4 py-16 text-xs text-muted">
           {t('common.selectDocHint')}
         </div>
         {toastMessage && (
-          <div className="fixed bottom-4 right-4 z-50 rounded border border-border bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
+          <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
+            style={{ boxShadow: 'var(--shadow-md)' }}
+          >
             {toastMessage}
           </div>
         )}
@@ -569,10 +615,22 @@ export default function DetailPanel() {
   }
 
   return (
-    <div className="flex w-96 shrink-0 flex-col overflow-y-auto border-l border-border bg-panel">
+    <div className="relative flex shrink-0 flex-col bg-panel">
+      <div className="drag-region flex h-9 shrink-0 items-center justify-end px-2">
+        <button
+          className="toolbar-btn p-1 no-drag"
+          onClick={onClose}
+          title={t('common.close')}
+          aria-label={t('common.close')}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
       <SingleDetail doc={focusedDoc} />
       {toastMessage && (
-        <div className="fixed bottom-4 right-4 z-50 rounded border border-border bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
+        <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
+          style={{ boxShadow: 'var(--shadow-md)' }}
+        >
           {toastMessage}
         </div>
       )}

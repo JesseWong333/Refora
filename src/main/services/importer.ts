@@ -1,11 +1,12 @@
 import { statSync, existsSync } from 'node:fs'
-import { basename, dirname, resolve as resolvePath, join } from 'node:path'
+import { basename, dirname, resolve as resolvePath, join, parse as parsePath } from 'node:path'
 import { dialog, utilityProcess, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
 import type { Repositories } from '../db/repositories'
 import { newId } from '../db/repositories/documents'
 import { emitImportProgress } from '../ipc/events'
 import { logger } from './logger'
+import { copyToLibrary } from './library'
 
 interface WorkerRequest {
   correlationId: string
@@ -34,17 +35,25 @@ export interface ImportResult {
   errors: Array<{ path: string; message: string }>
 }
 
-export function createImporter(repos: Repositories, win: BrowserWindow) {
+export function createImporter(repos: Repositories, win: BrowserWindow | (() => BrowserWindow | null)) {
   let worker: ReturnType<typeof utilityProcess.fork> | null = null
   let workerKilled = false
   const pending = new Map<string, PendingRequest>()
   const emitter = new EventEmitter()
 
+  const getWin = (): BrowserWindow | null => {
+    const w = typeof win === 'function' ? win() : win
+    if (!w || w.isDestroyed()) return null
+    return w
+  }
+
   function ensureWorker(): ReturnType<typeof utilityProcess.fork> {
     if (worker && !workerKilled) return worker
     worker = utilityProcess.fork(join(__dirname, 'worker/pdf-worker.js'), [], {
-      serviceName: 'PDF Worker'
+      serviceName: 'PDF Worker',
+      stdio: 'pipe'
     })
+    workerKilled = false
     worker.on('message', (msg: WorkerResponse) => {
       const req = pending.get(msg.correlationId)
       if (req) {
@@ -92,7 +101,9 @@ export function createImporter(repos: Repositories, win: BrowserWindow) {
   }
 
   async function showDuplicateDialog(fileName: string): Promise<boolean> {
-    const result = await dialog.showMessageBox(win, {
+    const w = getWin()
+    if (!w) return true
+    const result = await dialog.showMessageBox(w, {
       type: 'question',
       title: 'Duplicate File',
       message: 'This file appears to be a duplicate.',
@@ -117,7 +128,8 @@ export function createImporter(repos: Repositories, win: BrowserWindow) {
       const raw = paths[i]
 
       if (total >= 3) {
-        emitImportProgress(win, { current, total })
+        const w = getWin()
+        if (w) emitImportProgress(w, { current, total })
       }
 
       const abs = validateFilePath(raw)
@@ -218,12 +230,26 @@ export function createImporter(repos: Repositories, win: BrowserWindow) {
         fileMissing: 0
       })
 
+      const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
+      if (libraryFolder) {
+        try {
+          const inLibrary = abs.startsWith(libraryFolder + '/') || abs === libraryFolder
+          if (!inLibrary) {
+            const newPath = copyToLibrary(abs, libraryFolder)
+            repos.documents.updateFilePath(doc.id, newPath, parsePath(newPath).base)
+          }
+        } catch (copyErr) {
+          logger.warn(`import:copy-to-library failed ${abs}: ${copyErr instanceof Error ? copyErr.message : String(copyErr)}`)
+        }
+      }
+
       added.push(doc.id)
       logger.info(`import:added ${doc.id} — ${abs}`)
     }
 
     if (total >= 3) {
-      emitImportProgress(win, { current: total, total })
+      const w = getWin()
+      if (w) emitImportProgress(w, { current: total, total })
     }
 
     emitter.emit('import:complete', { added, skipped, errors })

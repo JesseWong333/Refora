@@ -154,9 +154,6 @@ export function createDocumentsRepository(db: SqliteDb) {
     } else if (filter.mode === 'category') {
       where = 'WHERE id IN (SELECT documentId FROM document_categories WHERE categoryId = ?)'
       params.push(filter.categoryId)
-    } else if (filter.mode === 'folder') {
-      where = 'WHERE originalFolderPath = ?'
-      params.push(filter.folderPath)
     }
     const order = orderByClause(filter.mode, filter.sort)
     const rows = db.prepare(`SELECT * FROM documents ${where} ${order}`).all(...params) as Record<
@@ -383,15 +380,6 @@ export function createDocumentsRepository(db: SqliteDb) {
     return get(id) as Document
   }
 
-  function listFolderGroups(): Array<{ path: string; count: number }> {
-    const rows = db
-      .prepare(
-        'SELECT originalFolderPath AS path, COUNT(*) AS count FROM documents GROUP BY originalFolderPath ORDER BY originalFolderPath'
-      )
-      .all() as Array<{ path: string; count: number }>
-    return rows
-  }
-
   return {
     list,
     search,
@@ -410,8 +398,7 @@ export function createDocumentsRepository(db: SqliteDb) {
     setFileMissing,
     getResumableMetadataRows,
     setRemoteValues,
-    applyMetadataFields,
-    listFolderGroups
+    applyMetadataFields
   }
 }
 

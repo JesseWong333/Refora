@@ -336,7 +336,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({ importProgress: { current: payload.current, total: payload.total } })
     if (payload.current >= payload.total) {
       set({ isImporting: false, importProgress: null })
-      void get().fetchDocuments()
     }
   },
 
@@ -367,7 +366,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     api.events.onDocumentUpdated(docUpdatedCb[0])
 
     importProgressCb[0] = (payload: ImportProgress) => {
-      if (!get().isImporting && payload.total >= 3) {
+      if (!get().isImporting) {
         get().startImport(payload.total)
       }
       get().updateImportProgress(payload)

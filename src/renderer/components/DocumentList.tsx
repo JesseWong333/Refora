@@ -1,12 +1,14 @@
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useRef, useState, useEffect, useCallback } from 'react'
-import { createPortal } from 'react-dom'
+import { useRef, useState, useCallback } from 'react'
+import { ChevronUp, ChevronDown, Star, AlertTriangle, Zap, Check, FileText, FolderOpen, Copy, RefreshCw, Trash2, Search, FolderTree, Plus } from 'lucide-react'
+import { Input, showContextMenu } from '@lobehub/ui'
+import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
-import type { Document, ColumnId, SortField, ListColumn } from '../../shared/ipc-types'
+import type { Document, ColumnId, SortField, ListColumn, Category } from '../../shared/ipc-types'
 
-const ROW_HEIGHT = 28
+const ROW_HEIGHT = 36
 const MIN_COL_WIDTH = 40
 const DOC_MIME = 'application/x-scholarnote-docids'
 
@@ -109,8 +111,8 @@ function ColumnHeader({
     >
       <span className="truncate">{label}</span>
       {isSorted && (
-        <span className="ml-0.5 text-[10px] leading-none">
-          {sortDir === 'asc' ? '\u25B2' : '\u25BC'}
+        <span className="ml-0.5">
+          {sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </span>
       )}
       <div
@@ -118,132 +120,6 @@ function ColumnHeader({
         onMouseDown={handleResizeStart}
       />
     </div>
-  )
-}
-
-function ColumnContextMenu({
-  x,
-  y,
-  columns,
-  onToggle,
-  onClose
-}: {
-  x: number
-  y: number
-  columns: ListColumn[]
-  onToggle: (id: ColumnId) => void
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-
-  useEffect(() => {
-    const handle = (_e: MouseEvent) => onClose()
-    const handleKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') onClose()
-    }
-    setTimeout(() => {
-      document.addEventListener('click', handle)
-      document.addEventListener('keydown', handleKey)
-    }, 0)
-    return () => {
-      document.removeEventListener('click', handle)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
-
-  const sorted = [...columns].sort((a, b) => a.order - b.order)
-
-  return createPortal(
-    <div
-      className="fixed z-50 min-w-[160px] rounded border border-border bg-panel py-1 shadow-lg"
-      style={{ left: x, top: y, maxHeight: '80vh', overflowY: 'auto' }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {sorted.map((col) => (
-        <div
-          key={col.id}
-          className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggle(col.id)
-            onClose()
-          }}
-        >
-          <span className="w-4 text-center">{col.visible ? '\u2713' : ''}</span>
-          <span>{t(`list.${col.id}` as never)}</span>
-        </div>
-      ))}
-    </div>,
-    document.body
-  )
-}
-
-function RowContextMenu({
-  x,
-  y,
-  onOpenInFinder,
-  onCopyPath,
-  onRefreshMetadata,
-  onDelete,
-  onClose
-}: {
-  x: number
-  y: number
-  onOpenInFinder: () => void
-  onCopyPath: () => void
-  onRefreshMetadata: () => void
-  onDelete: () => void
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-
-  useEffect(() => {
-    const handle = (_e: MouseEvent) => onClose()
-    const handleKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') onClose()
-    }
-    setTimeout(() => {
-      document.addEventListener('click', handle)
-      document.addEventListener('keydown', handleKey)
-    }, 0)
-    return () => {
-      document.removeEventListener('click', handle)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
-
-  const items = [
-    { label: t('common.openInFinder'), action: onOpenInFinder },
-    { label: t('common.copyPath'), action: onCopyPath },
-    { label: t('detail.refreshMetadata'), action: onRefreshMetadata },
-    { label: t('common.delete'), action: onDelete, danger: true }
-  ]
-
-  return createPortal(
-    <div
-      className="fixed z-50 min-w-[180px] rounded border border-border bg-panel py-1 shadow-lg"
-      style={{ left: x, top: y }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {items.map((item, i) => (
-        <div
-          key={i}
-          className={`cursor-pointer px-3 py-1.5 text-xs hover:bg-hover ${
-            item.danger ? 'text-error' : 'text-foreground'
-          }`}
-          onClick={(e) => {
-            e.stopPropagation()
-            item.action()
-            onClose()
-          }}
-        >
-          {item.label}
-        </div>
-      ))}
-    </div>,
-    document.body
   )
 }
 
@@ -278,7 +154,11 @@ const LABEL_MAP: Record<string, string> = {
   starred: 'sidebar.starred'
 }
 
-export default function DocumentList() {
+interface DocumentListProps {
+  sidebarCollapsed?: boolean
+}
+
+export default function DocumentList({ sidebarCollapsed = false }: DocumentListProps = {}) {
   const { t } = useTranslation()
   const documents = useDocumentStore((s) => s.documents)
   const isLoading = useDocumentStore((s) => s.isLoading)
@@ -296,10 +176,14 @@ export default function DocumentList() {
   const refreshMetadata = useDocumentStore((s) => s.refreshMetadata)
   const isSearching = useDocumentStore((s) => s.isSearching)
   const searchResults = useDocumentStore((s) => s.searchResults)
+  const searchQuery = useDocumentStore((s) => s.searchQuery)
+  const performSearch = useDocumentStore((s) => s.performSearch)
+  const clearSearch = useDocumentStore((s) => s.clearSearch)
+  const categories = useDocumentStore((s) => s.categories)
+  const createCategory = useDocumentStore((s) => s.createCategory)
+  const fetchDocuments = useDocumentStore((s) => s.fetchDocuments)
 
   const parentRef = useRef<HTMLDivElement>(null)
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; docId: string; filePath: string } | null>(null)
-  const [colCtxMenu, setColCtxMenu] = useState<{ x: number; y: number } | null>(null)
 
   const cols = visibleColumns(listColumnState.columns)
 
@@ -344,33 +228,118 @@ export default function DocumentList() {
     [setFocusedDoc]
   )
 
-  const handleRowContextMenu = useCallback(
-    (doc: Document, e: React.MouseEvent) => {
-      e.preventDefault()
-      setCtxMenu({ x: e.clientX, y: e.clientY, docId: doc.id, filePath: doc.filePath })
-    },
-    []
-  )
-
   const handleCopyPath = useCallback((filePath: string) => {
     navigator.clipboard.writeText(filePath).catch(() => {})
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleRowContextMenu = useCallback(
+    (doc: Document, e: React.MouseEvent) => {
+      e.preventDefault()
+      const effectiveIds =
+        selectedIds.length > 0 && selectedIds.includes(doc.id) ? selectedIds : [doc.id]
+      const assignToCategory = async (catId: string) => {
+        try {
+          if (effectiveIds.length === 1) {
+            await api.categories.assign(effectiveIds[0], catId)
+          } else {
+            await api.documents.bulkCategorize(effectiveIds, catId)
+          }
+        } catch (err) {
+          const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Failed to categorize'
+          useDocumentStore.getState().showToast(msg)
+        }
+      }
+      const createAndAssign = async () => {
+        const name = window.prompt(t('sidebar.categoryName'))
+        if (!name || !name.trim()) return
+        const cat = await createCategory(name.trim())
+        if (cat) await assignToCategory(cat.id)
+      }
+
+      const categoryItems: ContextMenuItem[] = categories.length
+        ? categories.map((c: Category) => ({
+            key: `cat-${c.id}`,
+            label: `${c.name} (${c.count ?? 0})`,
+            onClick: () => { void assignToCategory(c.id) },
+          }))
+        : [{
+            key: 'no-categories',
+            label: t('sidebar.emptyCategories'),
+            disabled: true,
+            onClick: () => {},
+          }]
+
+      const items: ContextMenuItem[] = [
+        {
+          key: 'addToCategory',
+          label: t('sidebar.addToCategory'),
+          icon: <FolderTree className="h-3.5 w-3.5" />,
+          type: 'submenu',
+          children: [
+            ...categoryItems,
+            { type: 'divider' as const, key: 'cat-divider' },
+            {
+              key: 'create-category',
+              label: t('sidebar.createCategory'),
+              icon: <Plus className="h-3.5 w-3.5" />,
+              onClick: () => { void createAndAssign() },
+            },
+          ],
+        },
+        { type: 'divider' as const, key: 'divider-1' },
+        {
+          key: 'openInFinder',
+          label: t('common.openInFinder'),
+          icon: <FolderOpen className="h-3.5 w-3.5" />,
+          onClick: () => openInFinder(doc.id),
+        },
+        {
+          key: 'copyPath',
+          label: t('common.copyPath'),
+          icon: <Copy className="h-3.5 w-3.5" />,
+          onClick: () => handleCopyPath(doc.filePath),
+        },
+        {
+          key: 'refreshMetadata',
+          label: t('detail.refreshMetadata'),
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          onClick: () => refreshMetadata(doc.id),
+        },
+        {
+          key: 'delete',
+          label: t('common.delete'),
+          icon: <Trash2 className="h-3.5 w-3.5" />,
+          onClick: () => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm')),
+          danger: true,
+        },
+      ]
+      showContextMenu(items)
+    },
+    [t, openInFinder, handleCopyPath, refreshMetadata, requestDeleteConfirm, selectedIds, categories, createCategory]
+  )
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     const files = e.dataTransfer.files
     if (files.length === 0) return
     e.preventDefault()
     const paths: string[] = []
     for (let i = 0; i < files.length; i++) {
-      const f = files[i] as File & { path?: string }
-      if (f.path && f.path.toLowerCase().endsWith('.pdf')) {
-        paths.push(f.path)
+      try {
+        const p = api.getPathForFile(files[i] as File)
+        if (p && p.toLowerCase().endsWith('.pdf')) {
+          paths.push(p)
+        }
+      } catch {
+        void 0
       }
     }
     if (paths.length > 0) {
-      api.import.addFiles(paths).catch(() => {})
+      try {
+        await api.import.addFiles(paths)
+      } catch { void 0 }
+      void fetchDocuments()
     }
-  }, [])
+  }, [fetchDocuments])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('Files')) {
@@ -386,6 +355,22 @@ export default function DocumentList() {
       e.dataTransfer.effectAllowed = 'move'
     },
     [selectedIds]
+  )
+
+  const sortedColumns = [...listColumnState.columns].sort((a, b) => a.order - b.order)
+
+  const handleColContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const colItems: ContextMenuItem[] = sortedColumns.map((col) => ({
+        key: col.id,
+        label: t(`list.${col.id}` as never),
+        icon: col.visible ? <Check className="h-3.5 w-3.5" /> : <span className="inline-block w-[14px]" />,
+        onClick: () => toggleColumn(col.id),
+      }))
+      showContextMenu(colItems)
+    },
+    [sortedColumns, t, toggleColumn]
   )
 
   const colHeaderBar =
@@ -404,10 +389,7 @@ export default function DocumentList() {
             sortDir={listColumnState.sort.dir}
             onSort={() => setSort(col.id)}
             onResize={handleResize}
-            onContextMenu={(e) => {
-              e.preventDefault()
-              setColCtxMenu({ x: e.clientX, y: e.clientY })
-            }}
+            onContextMenu={handleColContextMenu}
           />
         ))}
       </div>
@@ -419,8 +401,37 @@ export default function DocumentList() {
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted">
-        {headerLabel}
+      <div className="flex items-center gap-2 border-b border-border py-2 drag-region">
+        {sidebarCollapsed && (
+          <div
+            className="no-drag self-stretch shrink-0"
+            aria-hidden="true"
+            style={{ width: 'var(--toolbar-preserve, 168px)' }}
+          />
+        )}
+        <div className="mx-auto flex w-1/2 items-center gap-2">
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
+          <Input
+            className="flex-1 no-drag"
+            size="small"
+            placeholder={t('topbar.search')}
+            value={searchQuery}
+            onChange={(e) => performSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                clearSearch()
+              }
+            }}
+          />
+          {isSearching ? (
+            <span className="shrink-0 text-xs text-muted">
+              {isLoading ? '' : `${displayDocs.length} ${t('common.results')}`}
+            </span>
+          ) : (
+            <span className="shrink-0 text-xs text-muted font-medium whitespace-nowrap">{headerLabel}</span>
+          )}
+        </div>
       </div>
 
       {colHeaderBar}
@@ -484,15 +495,12 @@ export default function DocumentList() {
                     </div>
                     <div className="w-8 flex-shrink-0 flex items-center justify-center text-center">
                       {isMissing ? (
-                        <span
-                          className="text-xs text-warning cursor-default"
-                          title={t('detail.relocate') ?? 'Relocate'}
-                        >
-                          {'\u26A0'}
+                        <span title={t('detail.relocate') ?? 'Relocate'}>
+                          <AlertTriangle className="h-4 w-4 text-warning" />
                         </span>
                       ) : (
                         <button
-                          className="text-[10px] font-bold text-accent hover:text-accent-hover cursor-pointer"
+                          className="flex items-center justify-center text-accent hover:text-accent-hover cursor-pointer"
                           title={t('detail.open')}
                           aria-label={t('detail.open')}
                           onClick={(e) => {
@@ -500,13 +508,13 @@ export default function DocumentList() {
                             openPdf(doc.id)
                           }}
                         >
-                          PDF
+                          <FileText className="h-4 w-4" />
                         </button>
                       )}
                     </div>
                     <div className="w-8 flex-shrink-0 text-center">
                       <button
-                        className="text-sm cursor-pointer"
+                        className="cursor-pointer"
                         title={t('sidebar.starred')}
                         aria-label={t('sidebar.starred')}
                         onClick={(e) => {
@@ -514,7 +522,11 @@ export default function DocumentList() {
                           toggleStar(doc.id)
                         }}
                       >
-                        {doc.starred ? '\u2605' : '\u2606'}
+                        <Star
+                          className={`h-4 w-4 ${
+                            doc.starred ? 'fill-yellow-400 text-yellow-400' : 'text-muted'
+                          }`}
+                        />
                       </button>
                     </div>
                     {cols.map((col) => (
@@ -534,7 +546,7 @@ export default function DocumentList() {
                     ))}
                     {hasError && !isMissing && (
                       <div className="ml-1 flex-shrink-0" title={`${t('common.networkError')} (${doc.metadataAttempts})`}>
-                        <span className="text-[10px] text-error">{'\u26A1'}</span>
+                        <Zap className="h-3.5 w-3.5 text-error" aria-hidden="true" />
                       </div>
                     )}
                   </div>
@@ -544,28 +556,6 @@ export default function DocumentList() {
           </div>
         )}
       </div>
-
-      {colCtxMenu && (
-        <ColumnContextMenu
-          x={colCtxMenu.x}
-          y={colCtxMenu.y}
-          columns={listColumnState.columns}
-          onToggle={toggleColumn}
-          onClose={() => setColCtxMenu(null)}
-        />
-      )}
-
-      {ctxMenu && (
-        <RowContextMenu
-          x={ctxMenu.x}
-          y={ctxMenu.y}
-          onOpenInFinder={() => openInFinder(ctxMenu.docId)}
-          onCopyPath={() => handleCopyPath(ctxMenu.filePath)}
-          onRefreshMetadata={() => refreshMetadata(ctxMenu.docId)}
-          onDelete={() => requestDeleteConfirm([ctxMenu.docId], t('dialog.deleteConfirm'))}
-          onClose={() => setCtxMenu(null)}
-        />
-      )}
     </div>
   )
 }

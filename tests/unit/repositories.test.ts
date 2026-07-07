@@ -153,11 +153,6 @@ describe('documents repository', () => {
     expect(ids(repos.documents.list({ mode: 'category', categoryId: cat.id }))).toEqual(['d3', 'd1'])
   })
 
-  it('list(mode=folder) filters by originalFolderPath', () => {
-    seedListDocs()
-    expect(ids(repos.documents.list({ mode: 'folder', folderPath: '/folderA' }))).toEqual(['d3', 'd1'])
-  })
-
   it('search uses FTS MATCH for >=3 chars and LIKE for 1-2 chars', () => {
     seedListDocs()
     expect(ids(repos.documents.search('Alpha'))).toEqual(['d1'])

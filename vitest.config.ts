@@ -20,6 +20,11 @@ export default defineConfig({
     ],
     globals: false,
     setupFiles: ['tests/setup.ts'],
+    server: {
+      deps: {
+        inline: ['@lobehub/ui']
+      }
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],

@@ -4,7 +4,12 @@ import {
   extractDoiFromText,
   extractDoiFromInfo,
   extractArxivFromText,
-  normalizeAuthors
+  normalizeAuthors,
+  titlesMatch,
+  titleSimilarity,
+  titleFromFileName,
+  isReliableTitle,
+  looksLikePosterOrNonPaper
 } from '../../src/main/services/metadata'
 import type { Document, EditableField } from '../../src/shared/ipc-types'
 
@@ -112,6 +117,23 @@ describe('mergeMetadata', () => {
     const { patch } = mergeMetadata(current, fetched)
     expect(patch.title).toBeUndefined()
     expect(patch.year).toBe('2024')
+  })
+
+  it('skips empty/whitespace-only fetched values so they do not clobber real data', () => {
+    const current = makeDoc({ title: 'Real Title From Somewhere' })
+    const fetched = {
+      title: '',
+      authors: '   ',
+      year: '2024',
+      metadataSource: 'pdf' as const
+    }
+    const { patch, remoteValues } = mergeMetadata(current, fetched)
+    expect(patch.title).toBeUndefined()
+    expect(patch.authors).toBeUndefined()
+    expect(patch.year).toBe('2024')
+    expect(remoteValues.title).toBeUndefined()
+    expect(remoteValues.authors).toBeUndefined()
+    expect(remoteValues.year?.value).toBe('2024')
   })
 })
 
@@ -224,5 +246,172 @@ describe('arXiv extraction', () => {
 
   it('returns null when no arXiv ID found', () => {
     expect(extractArxivFromText('No arXiv ID here')).toBeNull()
+  })
+})
+
+describe('titlesMatch', () => {
+  it('matches identical titles', () => {
+    expect(titlesMatch('Cross-view Transformers', 'Cross-view Transformers')).toBe(true)
+  })
+
+  it('matches ignoring trailing period and case', () => {
+    expect(titlesMatch(
+      'Cross-view Transformers for real-time Map-view Semantic Segmentation',
+      'Cross-view Transformers for real-time Map-view Semantic Segmentation.'
+    )).toBe(true)
+  })
+
+  it('matches when one title is a prefix of the other (subtitle split)', () => {
+    expect(titlesMatch(
+      'SCube: Instant Large-Scale Scene Reconstruction',
+      'SCube: Instant Large-Scale Scene Reconstruction using VoxSplats'
+    )).toBe(true)
+  })
+
+  it('matches with high word overlap even if not prefix', () => {
+    expect(titlesMatch(
+      'Attention Is All You Need',
+      'Attention Is All You Need: a transformer model'
+    )).toBe(true)
+  })
+
+  it('rejects unrelated titles', () => {
+    expect(titlesMatch(
+      'Cross-view Transformers for real-time Map-view Semantic Segmentation',
+      'A Survey of Graph Neural Networks'
+    )).toBe(false)
+  })
+
+  it('rejects empty input', () => {
+    expect(titlesMatch('', 'Some Title')).toBe(false)
+    expect(titlesMatch('   ', 'Some Title')).toBe(false)
+  })
+})
+
+describe('titleSimilarity', () => {
+  it('returns 1.0 for identical titles', () => {
+    expect(titleSimilarity('Attention Is All You Need', 'Attention Is All You Need')).toBe(1)
+  })
+
+  it('returns high similarity for near-identical titles (trailing period)', () => {
+    const s = titleSimilarity(
+      'Cross-view Transformers for real-time Map-view Semantic Segmentation',
+      'Cross-view Transformers for real-time Map-view Semantic Segmentation.'
+    )
+    expect(s).toBeGreaterThan(0.9)
+  })
+
+  it('returns high similarity for prefix/subtitle match', () => {
+    const s = titleSimilarity(
+      'SCube: Instant Large-Scale Scene Reconstruction',
+      'SCube: Instant Large-Scale Scene Reconstruction using VoxSplats'
+    )
+    expect(s).toBeGreaterThan(0.75)
+  })
+
+  it('returns low similarity for unrelated titles', () => {
+    const s = titleSimilarity(
+      'Cross-view Transformers for real-time Map-view Semantic Segmentation',
+      'A Survey of Graph Neural Networks'
+    )
+    expect(s).toBeLessThan(0.3)
+  })
+
+  it('returns a middling value for partial overlap (below use threshold)', () => {
+    const s = titleSimilarity(
+      'Image Segmentation',
+      'Image Segmentation Methods and Applications Survey Review'
+    )
+    expect(s).toBeGreaterThanOrEqual(0.6)
+    expect(s).toBeLessThan(0.75)
+  })
+
+  it('penalizes large length mismatch', () => {
+    const s = titleSimilarity('Cat', 'Cat Dog Bird Fish Tree House Car Book Pen Lamp')
+    expect(s).toBeLessThan(0.5)
+  })
+
+  it('returns 0 for empty input', () => {
+    expect(titleSimilarity('', 'Some Title')).toBe(0)
+  })
+})
+
+describe('titleFromFileName', () => {
+  it('strips .pdf and underscores, capitalizes', () => {
+    expect(titleFromFileName('zhou2022crossview.pdf')).toBe('Zhou 2022 crossview')
+  })
+
+  it('splits camelCase boundaries', () => {
+    expect(titleFromFileName('CrossViewTransformers.pdf')).toBe('Cross View Transformers')
+  })
+
+  it('handles already-readable filenames', () => {
+    expect(titleFromFileName('SCube Instant Large-Scale Scene Reconstruction.pdf')).toBe('SCube Instant Large-Scale Scene Reconstruction')
+  })
+
+  it('returns null for empty filename', () => {
+    expect(titleFromFileName('.pdf')).toBeNull()
+    expect(titleFromFileName('')).toBeNull()
+  })
+
+  it('handles simple keyword filenames', () => {
+    expect(titleFromFileName('scube.pdf')).toBe('Scube')
+  })
+
+  it('drops a leading pure-number token', () => {
+    expect(titleFromFileName('2022_crossview_transformers.pdf')).toBe('Crossview transformers')
+  })
+})
+
+describe('looksLikePosterOrNonPaper', () => {
+  it('detects poster keyword in head text', () => {
+    expect(looksLikePosterOrNonPaper('Conference Poster\nDeep Learning for Vision')).toBe(true)
+  })
+
+  it('detects slides keyword', () => {
+    expect(looksLikePosterOrNonPaper('Lecture Slides\nSlide 1\nIntroduction')).toBe(true)
+  })
+
+  it('returns false for a normal paper abstract', () => {
+    const paper = 'Cross-view Transformers for real-time Map-view Semantic Segmentation\n Brady Zhou\n Abstract\n We present cross-view transformers, an efficient attention-based model for map-view semantic segmentation from multiple cameras. Our architecture implicitly learns a mapping from individual camera views into a canonical map-view representation using a camera-aware cross-view attention mechanism. Each camera uses positional embeddings that depend on its intrinsic and extrinsic calibration.'
+    expect(looksLikePosterOrNonPaper(paper)).toBe(false)
+  })
+
+  it('returns false for normal prose text', () => {
+    expect(looksLikePosterOrNonPaper('This is a long sentence of normal academic prose that fills up the first few lines of the document without any short fragment lines.')).toBe(false)
+  })
+})
+
+describe('isReliableTitle', () => {
+  it('accepts a real paper title', () => {
+    const text = 'Cross-view Transformers for real-time Map-view Semantic Segmentation\n Abstract\n We present cross-view transformers.'
+    expect(isReliableTitle('Cross-view Transformers for real-time Map-view Semantic Segmentation', text)).toBe(true)
+  })
+
+  it('rejects null/empty/short titles', () => {
+    expect(isReliableTitle(null, 'some text')).toBe(false)
+    expect(isReliableTitle('', 'some text')).toBe(false)
+    expect(isReliableTitle('Hi', 'some text')).toBe(false)
+  })
+
+  it('rejects figure/table noise lines', () => {
+    expect(isReliableTitle('Figure 1: Overview of the architecture', 'Figure 1: Overview')).toBe(false)
+    expect(isReliableTitle('Table 3 Results', 'Table 3')).toBe(false)
+  })
+
+  it('rejects titles that are actually DOIs', () => {
+    expect(isReliableTitle('10.1109/CVPR52688.2022.01339', '10.1109/CVPR52688.2022.01339')).toBe(false)
+  })
+
+  it('rejects titles when the text looks like a poster', () => {
+    expect(isReliableTitle('Some Reasonable Title Here', 'Conference Poster\nDeep Learning')).toBe(false)
+  })
+
+  it('rejects titles with too few words', () => {
+    expect(isReliableTitle('Two Words', 'Two Words\n Abstract\n long body text here with abstract keyword.')).toBe(false)
+  })
+
+  it('rejects titles with low alphabetic ratio', () => {
+    expect(isReliableTitle('1234567890!@#$%^&*()', '1234567890!@#$%^&*()')).toBe(false)
   })
 })

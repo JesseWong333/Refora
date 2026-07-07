@@ -1,5 +1,6 @@
 import { createReadStream, readFileSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { dirname, join } from 'node:path'
 const parentPort = process.parentPort
 
 interface WorkerRequest {
@@ -30,13 +31,21 @@ async function parsePdf(filePath: string, maxPages: number): Promise<{ info: Rec
   const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
   pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs')
 
+  const pdfRoot = dirname(dirname(dirname(require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs'))))
+  const standardFontDataUrl = join(pdfRoot, 'standard_fonts') + '/'
+  const cMapUrl = join(pdfRoot, 'cmaps') + '/'
+
   const data = new Uint8Array(readFileSync(filePath))
 
   const loadingTask = pdfjsLib.getDocument({
     data,
     useWorkerFetch: false,
     isEvalSupported: false,
-    useSystemFonts: false
+    useSystemFonts: false,
+    disableAutoFetch: true,
+    standardFontDataUrl,
+    cMapUrl,
+    cMapPacked: true
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,8 +65,21 @@ async function parsePdf(filePath: string, maxPages: number): Promise<{ info: Rec
       try {
         const page = await pdfDoc.getPage(i)
         const content = await page.getTextContent()
-        const pageText = content.items.map((item: { str: string }) => item.str).join(' ')
-        textParts.push(pageText)
+        const items = content.items as Array<{ str: string; transform?: number[] }>
+        const lines: string[] = []
+        let currentLine: string[] = []
+        let lastY: number | null = null
+        for (const item of items) {
+          const y = item.transform ? item.transform[5] : null
+          if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) {
+            lines.push(currentLine.join(' '))
+            currentLine = []
+          }
+          currentLine.push(item.str)
+          lastY = y
+        }
+        if (currentLine.length > 0) lines.push(currentLine.join(' '))
+        textParts.push(lines.join('\n'))
       } catch {
         textParts.push('')
       }

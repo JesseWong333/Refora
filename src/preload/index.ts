@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IpcChannel } from '../shared/ipc-channels'
 import type {
   BootstrapData,
@@ -65,8 +65,7 @@ const api: ScholarNoteApi = {
     refreshMetadata: (id: string) => invoke<Document>(IpcChannel.DocumentsRefreshMetadata, id),
     relocateFile: (id: string, newPath: string) =>
       invoke<Document>(IpcChannel.DocumentsRelocateFile, id, newPath),
-    restoreFile: (id: string) => invoke<Document>(IpcChannel.DocumentsRestoreFile, id),
-    folderGroups: () => invoke<Array<{path: string; count: number}>>(IpcChannel.DocumentsFolderGroups)
+    restoreFile: (id: string) => invoke<Document>(IpcChannel.DocumentsRestoreFile, id)
   },
 
   import: {
@@ -105,6 +104,8 @@ const api: ScholarNoteApi = {
   dialog: {
     openDirectory: () => invoke<string | null>(IpcChannel.DialogOpenDirectory)
   },
+
+  getPathForFile: (file: unknown) => webUtils.getPathForFile(file as File),
 
   export: {
     toJson: () => invoke<string>(IpcChannel.ExportToJson),

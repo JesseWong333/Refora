@@ -11,14 +11,12 @@ export type ListMode =
   | 'recentlyAdded'
   | 'starred'
   | 'category'
-  | 'folder'
 
 export type SortField = 'title' | 'authors' | 'year' | 'venue' | 'addedAt' | 'filePath'
 
 export interface ListFilter {
   mode: ListMode
   categoryId?: string
-  folderPath?: string
   sort?: { field: SortField; dir: 'asc' | 'desc' }
 }
 
@@ -35,7 +33,7 @@ export type EditableField =
   | 'note'
 
 export type MetadataStatus = 'pending' | 'done' | 'failed'
-export type MetadataSource = 'pdf' | 'crossref' | 'arxiv' | 'manual'
+export type MetadataSource = 'pdf' | 'crossref' | 'arxiv' | 'dblp' | 'manual'
 
 export interface RemoteValue {
   value: string
@@ -157,7 +155,6 @@ export interface ScholarNoteApi {
     refreshMetadata(id: string): Promise<Document>
     relocateFile(id: string, newPath: string): Promise<Document>
     restoreFile(id: string): Promise<Document>
-    folderGroups(): Promise<Array<{path: string; count: number}>>
   }
   import: {
     addFiles(paths: string[]): Promise<string[]>
@@ -186,6 +183,7 @@ export interface ScholarNoteApi {
   dialog: {
     openDirectory(): Promise<string | null>
   }
+  getPathForFile(file: unknown): string
   export: {
     toJson(): Promise<string>
     toBibtex(ids: string[]): Promise<string>

@@ -234,4 +234,54 @@ describe('createWatcher', () => {
       expect(fakeWatcher.close).toHaveBeenCalledTimes(2)
     })
   })
+
+  describe('library folder watcher', () => {
+    it('startLibraryWatcher watches the library folder and imports added PDFs', () => {
+      vi.useFakeTimers()
+      w.startLibraryWatcher('/lib')
+
+      expect(watchMockFn).toHaveBeenCalledWith('/lib', expect.any(Object))
+
+      fakeWatcher.emit('add', '/lib/new.pdf')
+      vi.advanceTimersByTime(500)
+
+      expect(importFiles).toHaveBeenCalledWith(['/lib/new.pdf'], true)
+    })
+
+    it('startLibraryWatcher restarts when folder changes', () => {
+      w.startLibraryWatcher('/lib')
+      const firstCall = watchMockFn.mock.calls.length
+
+      w.startLibraryWatcher('/newlib')
+
+      expect(watchMockFn.mock.calls.length).toBeGreaterThan(firstCall)
+      expect(watchMockFn).toHaveBeenCalledWith('/newlib', expect.any(Object))
+      expect(fakeWatcher.close).toHaveBeenCalled()
+    })
+
+    it('startLibraryWatcher is a no-op when same folder already watched', () => {
+      w.startLibraryWatcher('/lib')
+      const callCount = watchMockFn.mock.calls.length
+
+      w.startLibraryWatcher('/lib')
+
+      expect(watchMockFn.mock.calls.length).toBe(callCount)
+    })
+
+    it('stopLibraryWatcher closes the library watcher', () => {
+      w.startLibraryWatcher('/lib')
+
+      w.stopLibraryWatcher()
+
+      expect(fakeWatcher.close).toHaveBeenCalled()
+    })
+
+    it('destroy stops the library watcher too', () => {
+      w.startLibraryWatcher('/lib')
+
+      w.destroy()
+
+      expect(fakeWatcher.close).toHaveBeenCalled()
+    })
+  })
 })

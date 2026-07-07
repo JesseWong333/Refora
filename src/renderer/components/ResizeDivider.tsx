@@ -1,0 +1,64 @@
+import { useRef, useCallback } from 'react'
+
+interface ResizeDividerProps {
+  onResize: (delta: number) => void
+  orientation?: 'vertical' | 'horizontal'
+}
+
+export default function ResizeDivider({ onResize, orientation = 'vertical' }: ResizeDividerProps) {
+  const startRef = useRef({ pos: 0 })
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      startRef.current = { pos: orientation === 'vertical' ? e.clientX : e.clientY }
+
+      const onMouseMove = (ev: MouseEvent) => {
+        const current = orientation === 'vertical' ? ev.clientX : ev.clientY
+        const delta = current - startRef.current.pos
+        startRef.current = { pos: current }
+        onResize(delta)
+      }
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove)
+        document.removeEventListener('mouseup', onMouseUp)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+
+      document.addEventListener('mousemove', onMouseMove)
+      document.addEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = orientation === 'vertical' ? 'col-resize' : 'row-resize'
+      document.body.style.userSelect = 'none'
+    },
+    [onResize, orientation]
+  )
+
+  return (
+    <div
+      className={
+        orientation === 'vertical'
+          ? 'group relative z-20 w-px shrink-0 cursor-col-resize bg-border'
+          : 'group relative z-20 h-px shrink-0 cursor-row-resize bg-border'
+      }
+      onMouseDown={handleMouseDown}
+    >
+      <div
+        className={
+          orientation === 'vertical'
+            ? 'absolute inset-y-0 -left-1 -right-1'
+            : 'absolute inset-x-0 -top-1 -bottom-1'
+        }
+      />
+      <div
+        className={
+          orientation === 'vertical'
+            ? 'pointer-events-none absolute inset-y-0 left-0 w-px bg-accent opacity-0 group-hover:opacity-100'
+            : 'pointer-events-none absolute inset-x-0 top-0 h-px bg-accent opacity-0 group-hover:opacity-100'
+        }
+      />
+    </div>
+  )
+}

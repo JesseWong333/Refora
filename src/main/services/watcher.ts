@@ -26,6 +26,8 @@ function createDebouncedImporter(deps: WatcherDeps) {
 
 export function createWatcher(deps: WatcherDeps) {
   const watchers = new Map<string, FSWatcher>()
+  let libraryWatcher: FSWatcher | null = null
+  let libraryWatchPath = ''
   const debouncedImport = createDebouncedImporter(deps)
 
   function start(wf: WatchFolder): void {
@@ -82,9 +84,47 @@ export function createWatcher(deps: WatcherDeps) {
     }
   }
 
-  function destroy(): void {
-    stopAll()
+  function stopLibraryWatcher(): void {
+    if (libraryWatcher) {
+      void libraryWatcher.close()
+      libraryWatcher = null
+      libraryWatchPath = ''
+      logger.info('watch:stopped library')
+    }
   }
 
-  return { start, stop, startAll, stopAll, destroy }
+  function startLibraryWatcher(folder: string): void {
+    if (libraryWatchPath === folder && libraryWatcher) return
+    stopLibraryWatcher()
+    if (!folder || !existsSync(folder)) {
+      logger.warn(`watch:library skip nonexistent: ${folder}`)
+      return
+    }
+
+    const inst = watch(folder, {
+      depth: undefined,
+      awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 },
+      ignored: (testPath: string) => !testPath.toLowerCase().endsWith('.pdf')
+    })
+
+    inst.on('add', (filePath: string) => {
+      logger.info(`watch:library:add ${filePath}`)
+      debouncedImport(filePath)
+    })
+
+    inst.on('error', (err: Error) => {
+      logger.error(`watch:library:error ${err.message}`)
+    })
+
+    libraryWatcher = inst
+    libraryWatchPath = folder
+    logger.info(`watch:library:started ${folder}`)
+  }
+
+  function destroy(): void {
+    stopAll()
+    stopLibraryWatcher()
+  }
+
+  return { start, stop, startAll, stopAll, startLibraryWatcher, stopLibraryWatcher, destroy }
 }

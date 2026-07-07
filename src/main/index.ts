@@ -9,9 +9,11 @@ import { createMetadataService } from './services/metadata'
 import { createWatcher } from './services/watcher'
 import { checkMissing } from './services/files'
 import { writeExportFile, importFromJsonFile } from './services/export'
+import { emitImportProgress } from './ipc/events'
 import type { Repositories } from './db/repositories'
 
-const isDev = !app.isPackaged
+let isDev = false
+const IS_MAC = process.platform === 'darwin'
 
 type DbConnection = ReturnType<typeof openDatabase>
 let db: DbConnection | null = null
@@ -21,6 +23,7 @@ let metadataService: ReturnType<typeof createMetadataService> | null = null
 let watcher: ReturnType<typeof createWatcher> | null = null
 let missingCheckInterval: ReturnType<typeof setInterval> | null = null
 let repos: Repositories | null = null
+let isQuitting = false
 
 function detectLanguage(): 'zh' | 'en' {
   try {
@@ -48,6 +51,7 @@ function applyCsp(): void {
 }
 
 function buildMenu(): Menu {
+  const getWin = (): BrowserWindow | null => (win && !win.isDestroyed() ? win : null)
   const template: Electron.MenuItemConstructorOptions[] = [
     { role: 'appMenu' },
     {
@@ -57,8 +61,9 @@ function buildMenu(): Menu {
           label: 'Add File',
           accelerator: 'Cmd+I',
           click: async () => {
-            if (!win || !importer) return
-            const result = await dialog.showOpenDialog(win, {
+            const w = getWin()
+            if (!w || !importer) return
+            const result = await dialog.showOpenDialog(w, {
               title: 'Add PDF Files',
               properties: ['openFile', 'multiSelections'],
               filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
@@ -70,8 +75,9 @@ function buildMenu(): Menu {
         {
           label: 'Add Folder',
           click: async () => {
-            if (!win || !importer) return
-            const result = await dialog.showOpenDialog(win, {
+            const w = getWin()
+            if (!w || !importer) return
+            const result = await dialog.showOpenDialog(w, {
               title: 'Add Folder',
               properties: ['openDirectory']
             })
@@ -95,22 +101,19 @@ function buildMenu(): Menu {
             void importer.importFiles(findPdfs(dir), false)
           }
         },
-        {
-          label: 'Watch Folder',
-          click: () => logger.info('menu:watch-folder')
-        },
         { type: 'separator' },
         {
           label: 'Import JSON\u2026',
           click: async () => {
-            if (!win || !repos) return
-            const result = await dialog.showOpenDialog(win, {
+            const w = getWin()
+            if (!w || !repos) return
+            const result = await dialog.showOpenDialog(w, {
               title: 'Import JSON',
               properties: ['openFile'],
               filters: [{ name: 'JSON files', extensions: ['json'] }]
             })
             if (result.canceled || result.filePaths.length === 0) return
-            const modeChoice = await dialog.showMessageBox(win, {
+            const modeChoice = await dialog.showMessageBox(w, {
               type: 'question',
               title: 'Import Mode',
               message: 'How should the import handle existing data?',
@@ -129,8 +132,9 @@ function buildMenu(): Menu {
           label: 'Export JSON\u2026',
           accelerator: 'Cmd+E',
           click: async () => {
-            if (!win || !repos) return
-            const result = await dialog.showSaveDialog(win, {
+            const w = getWin()
+            if (!w || !repos) return
+            const result = await dialog.showSaveDialog(w, {
               title: 'Export JSON',
               defaultPath: `scholarnote-export-${new Date().toISOString().slice(0, 10)}.json`,
               filters: [{ name: 'JSON files', extensions: ['json'] }]
@@ -143,8 +147,9 @@ function buildMenu(): Menu {
           label: 'Export BibTeX\u2026',
           accelerator: 'Cmd+Shift+B',
           click: () => {
-            if (win && !win.isDestroyed()) {
-              win.webContents.send('menu:export-bibtex')
+            const w = getWin()
+            if (w) {
+              w.webContents.send('menu:export-bibtex')
             }
           }
         }
@@ -169,6 +174,10 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     backgroundColor: '#1e1e1e',
     show: false,
     title: 'ScholarNote',
+    ...(IS_MAC && {
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 14, y: 13 }
+    }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -181,15 +190,19 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
 
   let saveBoundsTimeout: ReturnType<typeof setTimeout> | null = null
   const saveBounds = () => {
-    if (!repos || bw.isDestroyed()) return
-    const bounds = bw.getBounds()
-    repos.settings.set('windowBounds', {
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-      isMaximized: bw.isMaximized()
-    })
+    if (!repos || isQuitting || bw.isDestroyed()) return
+    try {
+      const bounds = bw.getBounds()
+      repos.settings.set('windowBounds', {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        isMaximized: bw.isMaximized()
+      })
+    } catch (e) {
+      logger.warn(`saveBounds: ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
   const debouncedSaveBounds = () => {
     if (saveBoundsTimeout) clearTimeout(saveBoundsTimeout)
@@ -221,6 +234,7 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
 }
 
 void app.whenReady().then(() => {
+  isDev = !app.isPackaged
   initLogger()
   logger.info(`app:ready (dev=${isDev})`)
   applyCsp()
@@ -233,15 +247,15 @@ void app.whenReady().then(() => {
   const r = repos
   const savedBounds = r.settings.get<{ x?: number; y?: number; width?: number; height?: number } | null>('windowBounds', null)
   win = createWindow(savedBounds)
-  importer = createImporter(r, win)
-  metadataService = createMetadataService(r, win)
+  importer = createImporter(r, () => win)
+  metadataService = createMetadataService(r, () => win)
   watcher = createWatcher({
     importFiles: (paths, isWatch) => importer!.importFiles(paths, isWatch),
     getLibraryFolder: () => r.settings.get<string>('libraryFolderPath', '')
   })
 
   Menu.setApplicationMenu(buildMenu())
-  registerIpcHandlers({ repos: r, win, importer, metadataService, watcher })
+  registerIpcHandlers({ repos: r, win, getWin: () => win, importer, metadataService, watcher })
 
   importer.onComplete((result) => {
     if (result.errors.length > 0 && win && !win.isDestroyed()) {
@@ -253,6 +267,9 @@ void app.whenReady().then(() => {
     for (const id of result.added) {
       metadataService?.enqueue(id)
     }
+    if (result.added.length > 0 && win && !win.isDestroyed()) {
+      emitImportProgress(win, { current: result.added.length, total: result.added.length })
+    }
   })
 
   metadataService.resumeOnStartup()
@@ -262,6 +279,8 @@ void app.whenReady().then(() => {
       const enabledFolders = r.watchFolders.getEnabled()
       watcher.startAll(enabledFolders)
       logger.info(`watch:started ${enabledFolders.length} watchers`)
+      const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
+      if (libraryFolder) watcher.startLibraryWatcher(libraryFolder)
     }
   })
 
@@ -271,11 +290,11 @@ void app.whenReady().then(() => {
   }
 
   setImmediate(() => {
-    checkMissing(r, win!)
+    checkMissing(r, win)
   })
 
   missingCheckInterval = setInterval(() => {
-    checkMissing(r, win!)
+    if (!isQuitting) checkMissing(r, win)
   }, 5 * 60 * 1000)
 
   app.on('activate', () => {
@@ -289,6 +308,7 @@ void app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
   if (missingCheckInterval) {
     clearInterval(missingCheckInterval)
     missingCheckInterval = null

@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => {
     categories: [] as Category[],
     listMode: { mode: 'all' } as ListFilter,
     focusedDocId: null as string | null,
+    selectedIds: [] as string[],
     setListMode,
     fetchCategories,
     createCategory,
@@ -49,6 +50,10 @@ vi.mock('@renderer/store/documentStore', () => ({
   ),
 }))
 
+vi.mock('../../src/renderer/components/SettingsModal', () => ({
+  default: vi.fn(() => null)
+}))
+
 import Sidebar from '../../src/renderer/components/Sidebar'
 
 describe('Sidebar', () => {
@@ -57,7 +62,6 @@ describe('Sidebar', () => {
     mocks.state.categories = defaultCategories
     mocks.state.listMode = { mode: 'all' }
     mocks.state.focusedDocId = null
-    ;(window.api as Record<string, unknown> & { documents: { folderGroups: () => Promise<unknown> } }).documents.folderGroups = async () => []
   })
 
   afterEach(() => {
@@ -65,12 +69,12 @@ describe('Sidebar', () => {
   })
 
   it('renders without crashing', () => {
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('sidebar.allFiles')).toBeInTheDocument()
   })
 
   it('renders all 4 smart list items', () => {
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('sidebar.allFiles')).toBeInTheDocument()
     expect(screen.getByText('sidebar.recentlyRead')).toBeInTheDocument()
     expect(screen.getByText('sidebar.recentlyAdded')).toBeInTheDocument()
@@ -78,13 +82,13 @@ describe('Sidebar', () => {
   })
 
   it('calls setListMode with { mode: "all" } when All Files is clicked', async () => {
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     await userEvent.click(screen.getByText('sidebar.allFiles'))
     expect(mocks.setListMode).toHaveBeenCalledWith({ mode: 'all' })
   })
 
   it('renders categories section with names and counts', () => {
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('sidebar.categories')).toBeInTheDocument()
     expect(screen.getByText('ML (5)')).toBeInTheDocument()
     expect(screen.getByText('NLP (3)')).toBeInTheDocument()
@@ -93,37 +97,37 @@ describe('Sidebar', () => {
 
   it('shows empty state placeholder when categories array is empty', () => {
     mocks.state.categories = []
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     const emptyMessages = screen.getAllByText('sidebar.emptyCategories')
     expect(emptyMessages.length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('ML (5)')).not.toBeInTheDocument()
   })
 
   it('calls setListMode with category mode and correct categoryId on category click', async () => {
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     await userEvent.click(screen.getByText('ML (5)'))
     expect(mocks.setListMode).toHaveBeenCalledWith({ mode: 'category', categoryId: 'cat1' })
   })
 
-  it('applies bg-active class to the active smart list item', () => {
+  it('applies sidebar-item-active class to the active smart list item', () => {
     mocks.state.listMode = { mode: 'starred' }
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
 
-    const starredItem = screen.getByText('sidebar.starred')
-    expect(starredItem.className).toContain('bg-active')
+    const starredItem = screen.getByText('sidebar.starred').closest('[class*="sidebar-item"]')
+    expect(starredItem?.className).toContain('sidebar-item-active')
 
-    const allFilesItem = screen.getByText('sidebar.allFiles')
-    expect(allFilesItem.className).not.toContain('bg-active')
+    const allFilesItem = screen.getByText('sidebar.allFiles').closest('[class*="sidebar-item"]')
+    expect(allFilesItem?.className).not.toContain('sidebar-item-active')
   })
 
-  it('applies bg-active class to the active category item', () => {
+  it('applies sidebar-item-active class to the active category item', () => {
     mocks.state.listMode = { mode: 'category', categoryId: 'cat2' }
-    render(<Sidebar collapsed={false} />)
+    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
 
-    const nlpItem = screen.getByText('NLP (3)')
-    expect(nlpItem.className).toContain('bg-active')
+    const nlpItem = screen.getByText('NLP (3)').closest('[class*="sidebar-item"]')
+    expect(nlpItem?.className).toContain('sidebar-item-active')
 
-    const mlItem = screen.getByText('ML (5)')
-    expect(mlItem.className).not.toContain('bg-active')
+    const mlItem = screen.getByText('ML (5)').closest('[class*="sidebar-item"]')
+    expect(mlItem?.className).not.toContain('sidebar-item-active')
   })
 })

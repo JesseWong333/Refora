@@ -1,4 +1,21 @@
 import '@testing-library/jest-dom/vitest'
+import { vi } from 'vitest'
+
+vi.mock('@emoji-mart/data', () => ({ default: {} }))
+vi.mock('@emoji-mart/react', () => ({ default: () => null }))
+
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+  })),
+})
 
 const noopPromise = async () => ({ ok: true, data: undefined })
 
@@ -24,7 +41,6 @@ const noopPromise = async () => ({ ok: true, data: undefined })
     refreshMetadata: noopPromise,
     relocateFile: noopPromise,
     restoreFile: noopPromise,
-    folderGroups: async () => ({ ok: true, data: [] })
   },
   import: {
     addFiles: async () => ({ ok: true, data: { added: [], skipped: [], errors: [] } }),
@@ -50,6 +66,10 @@ const noopPromise = async () => ({ ok: true, data: undefined })
     get: async () => ({ ok: true, data: null }),
     set: noopPromise
   },
+  dialog: {
+    openDirectory: async () => null
+  },
+  getPathForFile: (_file: unknown) => '',
   export: {
     toJson: noopPromise,
     toBibtex: noopPromise

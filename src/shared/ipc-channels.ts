@@ -15,7 +15,6 @@ export const IpcChannel = {
   DocumentsRefreshMetadata: 'documents:refreshMetadata',
   DocumentsRelocateFile: 'documents:relocateFile',
   DocumentsRestoreFile: 'documents:restoreFile',
-  DocumentsFolderGroups: 'documents:folderGroups',
 
   ImportAddFiles: 'import:addFiles',
   ImportAddFolder: 'import:addFolder',

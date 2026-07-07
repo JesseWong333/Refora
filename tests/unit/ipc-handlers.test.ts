@@ -110,7 +110,7 @@ describe('IPC handlers (data layer)', () => {
     )
   }
 
-  it('documents.list covers all six ListMode values through IPC', () => {
+  it('documents.list covers all ListMode values through IPC', () => {
     seedListDocs()
     const cat = repos.categories.create('Cat A')
     repos.categories.assign('d1', cat.id)
@@ -127,7 +127,6 @@ describe('IPC handlers (data layer)', () => {
     expect(list({ mode: 'recentlyAdded' })).toEqual(['d3', 'd2', 'd1'])
     expect(list({ mode: 'starred' })).toEqual(['d3', 'd1'])
     expect(list({ mode: 'category', categoryId: cat.id })).toEqual(['d3', 'd1'])
-    expect(list({ mode: 'folder', folderPath: '/folderA' })).toEqual(['d3', 'd1'])
   })
 
   it('documents.update rejects non-editable fields with forbidden_field (never throws)', () => {
