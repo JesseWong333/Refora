@@ -234,6 +234,14 @@ describe('documents repository', () => {
     expect(ids(rows).sort()).toEqual(['f1', 'p1', 'p2'])
   })
 
+  it('countPendingMetadata counts only pending documents', () => {
+    repos.documents.insert(makeDoc('p1', { metadataStatus: 'pending' }))
+    repos.documents.insert(makeDoc('p2', { metadataStatus: 'pending' }))
+    repos.documents.insert(makeDoc('f1', { metadataStatus: 'failed' }))
+    repos.documents.insert(makeDoc('d1', { metadataStatus: 'done' }))
+    expect(repos.documents.countPendingMetadata()).toBe(2)
+  })
+
   it('bulkDelete removes multiple documents', () => {
     repos.documents.insert(makeDoc('b1'))
     repos.documents.insert(makeDoc('b2'))

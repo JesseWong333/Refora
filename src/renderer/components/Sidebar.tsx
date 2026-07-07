@@ -135,6 +135,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   }, [fetchDocuments])
   const focusedDocId = useDocumentStore((s) => s.focusedDocId)
   const importProgress = useDocumentStore((s) => s.importProgress)
+  const pendingMetadataCount = useDocumentStore((s) => s.pendingMetadataCount)
 
   const [dialog, setDialog] = useState<CategoryDialogState | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null)
@@ -415,6 +416,16 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           </div>
           <span className="whitespace-nowrap">
             {t('topbar.importing', { current: importProgress.current, total: importProgress.total })}
+          </span>
+        </div>
+      )}
+
+      {/* Background metadata refresh indicator */}
+      {!importProgress && pendingMetadataCount > 0 && (
+        <div className="mx-2 mb-1 flex items-center gap-2 text-[11px] text-muted">
+          <Loader2 className="h-3 w-3 animate-spin text-accent" />
+          <span className="whitespace-nowrap">
+            {t('topbar.refreshingMetadata', { count: pendingMetadataCount })}
           </span>
         </div>
       )}

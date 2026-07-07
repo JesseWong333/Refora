@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ListFilter, Category } from '../../src/shared/ipc-types'
+import type { ListFilter, Category, Document } from '../../src/shared/ipc-types'
 
 const defaultCategories: Category[] = [
   { id: 'cat1', name: 'ML', sortOrder: 0, moveToLibrary: null, createdAt: 0, count: 5 },
@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => {
     listMode: { mode: 'all' } as ListFilter,
     focusedDocId: null as string | null,
     selectedIds: [] as string[],
+    documents: [] as Document[],
+    importProgress: null as { current: number; total: number } | null,
+    pendingMetadataCount: 0,
     setListMode,
     fetchCategories,
     createCategory,
@@ -62,6 +65,9 @@ describe('Sidebar', () => {
     mocks.state.categories = defaultCategories
     mocks.state.listMode = { mode: 'all' }
     mocks.state.focusedDocId = null
+    mocks.state.documents = []
+    mocks.state.importProgress = null
+    mocks.state.pendingMetadataCount = 0
   })
 
   afterEach(() => {
@@ -129,5 +135,29 @@ describe('Sidebar', () => {
 
     const mlItem = screen.getByText('ML (5)').closest('[class*="sidebar-item"]')
     expect(mlItem?.className).not.toContain('sidebar-item-active')
+  })
+
+  describe('metadata refresh indicator', () => {
+    it('shows the refresh indicator when pendingMetadataCount > 0 and no import progress', () => {
+      mocks.state.pendingMetadataCount = 2
+      mocks.state.importProgress = null
+      render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+      expect(screen.getByText('topbar.refreshingMetadata')).toBeInTheDocument()
+    })
+
+    it('hides the refresh indicator when pendingMetadataCount is 0', () => {
+      mocks.state.pendingMetadataCount = 0
+      mocks.state.importProgress = null
+      render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+      expect(screen.queryByText('topbar.refreshingMetadata')).not.toBeInTheDocument()
+    })
+
+    it('hides the refresh indicator while import progress is active', () => {
+      mocks.state.pendingMetadataCount = 5
+      mocks.state.importProgress = { current: 1, total: 3 }
+      render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+      expect(screen.queryByText('topbar.refreshingMetadata')).not.toBeInTheDocument()
+      expect(screen.getByText('topbar.importing')).toBeInTheDocument()
+    })
   })
 })

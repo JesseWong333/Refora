@@ -37,6 +37,7 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
 const mockList = vi.fn()
 const mockSearch = vi.fn()
 const mockSetStarred = vi.fn()
+const mockCountPendingMetadata = vi.fn()
 const mockOnDocUpdated = vi.fn()
 const mockOnImportProgress = vi.fn()
 const mockOnImportToast = vi.fn()
@@ -55,7 +56,8 @@ function resetStoreState(): void {
     isLoading: false,
     listMode: { mode: 'all' },
     isImporting: false,
-    importProgress: null
+    importProgress: null,
+    pendingMetadataCount: 0
   })
 }
 
@@ -72,12 +74,14 @@ beforeEach(() => {
   mockList.mockResolvedValue([])
   mockSearch.mockResolvedValue([])
   mockSetStarred.mockResolvedValue(undefined)
+  mockCountPendingMetadata.mockResolvedValue(0)
 
   const api = window.api as unknown as Record<string, unknown>
   const docs = api.documents as Record<string, unknown>
   docs.list = mockList
   docs.search = mockSearch
   docs.setStarred = mockSetStarred
+  docs.countPendingMetadata = mockCountPendingMetadata
 
   const events = api.events as Record<string, unknown>
   events.onDocumentUpdated = mockOnDocUpdated
@@ -91,6 +95,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.clearAllTimers()
 })
 
 describe('DocumentStore', () => {
@@ -206,6 +211,18 @@ describe('DocumentStore', () => {
       expect(mockList).toHaveBeenCalled()
     })
 
+    it('triggers initial pending metadata count refresh on init', async () => {
+      vi.useFakeTimers()
+      mockCountPendingMetadata.mockClear()
+      try {
+        useDocumentStore.getState().init()
+        await vi.advanceTimersByTimeAsync(300)
+        expect(mockCountPendingMetadata).toHaveBeenCalledTimes(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('does not re-subscribe if already initialized', () => {
       useDocumentStore.getState().init()
       const listCalls = mockList.mock.calls.length
@@ -213,6 +230,37 @@ describe('DocumentStore', () => {
       useDocumentStore.getState().init()
 
       expect(mockList).toHaveBeenCalledTimes(listCalls)
+    })
+  })
+
+  describe('refreshPendingMetadataCount', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('updates pendingMetadataCount after debounce', async () => {
+      mockCountPendingMetadata.mockResolvedValue(3)
+      useDocumentStore.getState().refreshPendingMetadataCount()
+
+      await vi.advanceTimersByTimeAsync(300)
+
+      expect(useDocumentStore.getState().pendingMetadataCount).toBe(3)
+      expect(mockCountPendingMetadata).toHaveBeenCalledTimes(1)
+    })
+
+    it('debounces rapid calls into a single fetch', async () => {
+      mockCountPendingMetadata.mockResolvedValue(1)
+      useDocumentStore.getState().refreshPendingMetadataCount()
+      useDocumentStore.getState().refreshPendingMetadataCount()
+      useDocumentStore.getState().refreshPendingMetadataCount()
+
+      await vi.advanceTimersByTimeAsync(300)
+
+      expect(mockCountPendingMetadata).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -227,6 +275,63 @@ describe('DocumentStore', () => {
       expect(mockEventsOff).toHaveBeenCalledWith('menu:export-bibtex', expect.any(Function))
       expect(mockEventsOff).toHaveBeenCalledTimes(4)
       expect(useDocumentStore.getState().initialized).toBe(false)
+    })
+  })
+
+  describe('startImport / updateImportProgress', () => {
+    it('startImport sets isImporting and importProgress', () => {
+      useDocumentStore.getState().startImport(5)
+      expect(useDocumentStore.getState().isImporting).toBe(true)
+      expect(useDocumentStore.getState().importProgress).toEqual({ current: 0, total: 5 })
+    })
+
+    it('updateImportProgress updates current without completing when current < total', () => {
+      useDocumentStore.getState().startImport(3)
+      mockList.mockClear()
+
+      useDocumentStore.getState().updateImportProgress({ current: 1, total: 3 })
+
+      expect(useDocumentStore.getState().importProgress).toEqual({ current: 1, total: 3 })
+      expect(useDocumentStore.getState().isImporting).toBe(true)
+      expect(mockList).not.toHaveBeenCalled()
+    })
+
+    it('clears import state and fetches documents when current reaches total', async () => {
+      useDocumentStore.getState().startImport(2)
+      mockList.mockClear()
+      mockList.mockResolvedValue([makeDoc({ id: 'imported-1' })])
+
+      useDocumentStore.getState().updateImportProgress({ current: 2, total: 2 })
+
+      expect(useDocumentStore.getState().isImporting).toBe(false)
+      expect(useDocumentStore.getState().importProgress).toBeNull()
+      expect(mockList).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not re-trigger fetchDocuments on a second completion event', async () => {
+      useDocumentStore.getState().startImport(2)
+      mockList.mockClear()
+      mockList.mockResolvedValue([])
+
+      useDocumentStore.getState().updateImportProgress({ current: 2, total: 2 })
+      await new Promise((r) => setTimeout(r, 0))
+      const callsAfterFirst = mockList.mock.calls.length
+
+      useDocumentStore.getState().updateImportProgress({ current: 0, total: 0 })
+
+      await new Promise((r) => setTimeout(r, 0))
+      expect(mockList.mock.calls.length).toBe(callsAfterFirst)
+    })
+
+    it('fetches documents on completion even when nothing was imported (total=0)', async () => {
+      useDocumentStore.getState().startImport(0)
+      mockList.mockClear()
+      mockList.mockResolvedValue([])
+
+      useDocumentStore.getState().updateImportProgress({ current: 0, total: 0 })
+
+      expect(useDocumentStore.getState().isImporting).toBe(false)
+      expect(mockList).toHaveBeenCalledTimes(1)
     })
   })
 

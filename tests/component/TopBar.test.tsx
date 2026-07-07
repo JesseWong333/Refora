@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => {
     listMode: { mode: 'all' },
     focusedDocId: null,
     selectedIds: [] as string[],
+    documents: [],
     importProgress: null as { current: number; total: number } | null,
+    pendingMetadataCount: 0,
     setListMode: vi.fn(),
     fetchCategories: vi.fn(),
     fetchDocuments: vi.fn().mockResolvedValue(undefined),
@@ -49,6 +51,8 @@ describe('Sidebar header actions', () => {
     vi.clearAllMocks()
     mocks.state.importProgress = null
     mocks.state.categories = []
+    mocks.state.documents = []
+    mocks.state.pendingMetadataCount = 0
   })
 
   afterEach(() => {

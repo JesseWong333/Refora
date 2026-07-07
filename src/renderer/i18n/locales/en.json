@@ -21,6 +21,7 @@
     "exportBibtex": "Export BibTeX…",
     "exportJson": "Export JSON…",
     "importing": "Importing {{current}}/{{total}} PDFs…",
+    "refreshingMetadata": "Refreshing metadata ({{count}})…",
     "search": "Search…",
     "settings": "Settings"
   },

@@ -60,6 +60,7 @@ const api: ReforaApi = {
       invoke<void>(IpcChannel.DocumentsBulkCategorize, ids, catId),
     bulkRefreshMetadata: (ids: string[]) =>
       invoke<void>(IpcChannel.DocumentsBulkRefreshMetadata, ids),
+    countPendingMetadata: () => invoke<number>(IpcChannel.DocumentsCountPendingMetadata),
     openPdf: (id: string) => invoke<Document>(IpcChannel.DocumentsOpenPdf, id),
     openInFinder: (id: string) => invoke<void>(IpcChannel.DocumentsOpenInFinder, id),
     refreshMetadata: (id: string) => invoke<Document>(IpcChannel.DocumentsRefreshMetadata, id),

@@ -44,6 +44,7 @@ interface DocumentState {
   confirmDelete: { ids: string[]; message: string } | null
   isImporting: boolean
   importProgress: { current: number; total: number } | null
+  pendingMetadataCount: number
   isLoading: boolean
   initialized: boolean
   categories: Category[]
@@ -74,6 +75,7 @@ interface DocumentState {
   confirmDeleteAction: () => Promise<void>
   cancelDelete: () => void
   patchDocument: (id: string, doc: Document) => void
+  refreshPendingMetadataCount: () => void
   startImport: (total: number) => void
   updateImportProgress: (payload: ImportProgress) => void
   endImport: () => void
@@ -94,6 +96,7 @@ const menuExportBibtexCb: Array<null | (() => void)> = [null]
 
 let toastTimeout: ReturnType<typeof setTimeout> | null = null
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
+let pendingMetadataTimeout: ReturnType<typeof setTimeout> | null = null
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   documents: [],
@@ -105,6 +108,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   confirmDelete: null,
   isImporting: false,
   importProgress: null,
+  pendingMetadataCount: 0,
   isLoading: false,
   initialized: false,
   categories: [],
@@ -339,20 +343,38 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }))
   },
 
+  refreshPendingMetadataCount: () => {
+    if (pendingMetadataTimeout) clearTimeout(pendingMetadataTimeout)
+    pendingMetadataTimeout = setTimeout(async () => {
+      try {
+        const count = await api.documents.countPendingMetadata()
+        set({ pendingMetadataCount: count })
+      } catch {
+        void 0
+      }
+    }, 300)
+  },
+
   startImport: (total: number) => {
     set({ isImporting: true, importProgress: { current: 0, total } })
   },
 
   updateImportProgress: (payload: ImportProgress) => {
-    set({ importProgress: { current: payload.current, total: payload.total } })
     if (payload.current >= payload.total) {
+      if (!get().isImporting) return
+      set({ importProgress: { current: payload.current, total: payload.total } })
       set({ isImporting: false, importProgress: null })
+      void get().fetchDocuments()
+      get().refreshPendingMetadataCount()
+      return
     }
+    set({ importProgress: { current: payload.current, total: payload.total } })
   },
 
   endImport: () => {
     set({ isImporting: false, importProgress: null })
     void get().fetchDocuments()
+    get().refreshPendingMetadataCount()
   },
 
   init: (listColumnState: ListColumnState | null) => {
@@ -373,6 +395,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
             : state.searchResults
         }
       })
+      get().refreshPendingMetadataCount()
     }
     api.events.onDocumentUpdated(docUpdatedCb[0])
 
@@ -397,6 +420,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     api.events.onMenuExportBibtex(menuExportBibtexCb[0])
 
     void get().fetchDocuments()
+    get().refreshPendingMetadataCount()
   },
 
   fetchCategories: async () => {
@@ -486,6 +510,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       menuExportBibtexCb[0] = null
     }
     if (toastTimeout) clearTimeout(toastTimeout)
+    if (pendingMetadataTimeout) clearTimeout(pendingMetadataTimeout)
     set({ initialized: false })
   }
 }))

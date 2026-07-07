@@ -178,6 +178,16 @@ describe('IPC handlers (data layer)', () => {
     expect((r as { ok: false; error: { code: string } }).error.code).toBe('not_implemented')
   })
 
+  it('documents.countPendingMetadata returns the pending metadata count', () => {
+    repos.documents.insert(makeDoc('p1', { metadataStatus: 'pending' }))
+    repos.documents.insert(makeDoc('p2', { metadataStatus: 'pending' }))
+    repos.documents.insert(makeDoc('d1', { metadataStatus: 'done' }))
+
+    const r = handlers[IpcChannel.DocumentsCountPendingMetadata]() as Result<number>
+    expect(isOk(r)).toBe(true)
+    expect((r as { ok: true; data: number }).data).toBe(2)
+  })
+
   it('documents.openPdf resolves { ok: false } for missing doc', async () => {
     const r = await handlers[IpcChannel.DocumentsOpenPdf]('missing') as Result<unknown>
     expect(r.ok).toBe(false)

@@ -10,6 +10,7 @@ export const IpcChannel = {
   DocumentsBulkDelete: 'documents:bulkDelete',
   DocumentsBulkCategorize: 'documents:bulkCategorize',
   DocumentsBulkRefreshMetadata: 'documents:bulkRefreshMetadata',
+  DocumentsCountPendingMetadata: 'documents:countPendingMetadata',
   DocumentsOpenPdf: 'documents:openPdf',
   DocumentsOpenInFinder: 'documents:openInFinder',
   DocumentsRefreshMetadata: 'documents:refreshMetadata',
