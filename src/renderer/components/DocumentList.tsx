@@ -402,7 +402,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="flex items-center gap-2 border-b border-border py-2 drag-region">
+      <div className="flex h-12 items-center gap-2 border-b border-border drag-region">
         {sidebarCollapsed && (
           <div
             className="no-drag self-stretch shrink-0"
@@ -410,10 +410,10 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             style={{ width: 'var(--toolbar-preserve, 168px)' }}
           />
         )}
-        <div className="mx-auto flex w-1/2 items-center gap-2">
+        <div className="mx-auto flex items-center gap-[10px]">
           <Search className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
           <Input
-            className="doc-search-input flex-1 no-drag"
+            className="doc-search-input w-[280px] no-drag"
             size="small"
             placeholder={t('topbar.search')}
             value={searchQuery}
@@ -426,11 +426,11 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             }}
           />
           {isSearching ? (
-            <span className="shrink-0 text-xs text-muted">
+            <span className="shrink-0 text-sm text-muted">
               {isLoading ? '' : `${displayDocs.length} ${t('common.results')}`}
             </span>
           ) : (
-            <span className="shrink-0 text-xs text-muted font-medium whitespace-nowrap">{headerLabel}</span>
+            <span className="shrink-0 text-sm text-muted font-medium whitespace-nowrap">{headerLabel}</span>
           )}
         </div>
       </div>

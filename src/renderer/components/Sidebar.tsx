@@ -341,36 +341,28 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           className="sidebar-floating-toolbar no-drag"
           style={{ left: `${toolbarLeft}px` }}
         >
-          <Button
-            type="text"
-            size="small"
-            className="min-w-0 p-1.5"
+          <button
             onClick={onToggleCollapse}
             title={t('settings.sidebarCollapsed')}
             aria-label={t('settings.sidebarCollapsed')}
           >
             <PanelLeftOpen className="h-4 w-4" />
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            className="min-w-0 p-1.5"
+          </button>
+          <div className="toolbar-sep" aria-hidden="true" />
+          <button
             onClick={handleAddFiles}
             title={t('topbar.addFile')}
             aria-label={t('topbar.addFile')}
           >
             <FilePlus className="h-4 w-4" />
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            className="min-w-0 p-1.5"
+          </button>
+          <button
             onClick={handleAddFolder}
             title={t('topbar.addFolder')}
             aria-label={t('topbar.addFolder')}
           >
             <FolderPlus className="h-4 w-4" />
-          </Button>
+          </button>
         </div>
         <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
       </>
@@ -379,41 +371,34 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
   return (
     <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
-      {/* Header: drag region for window controls + action buttons */}
-      <div className={`drag-region flex h-10 shrink-0 items-center gap-0.5 px-2 ${isMac ? 'pl-[68px]' : ''}`}>
-        <div className="flex items-center gap-0.5 no-drag">
-          <Button
-            type="text"
-            size="small"
-            className="min-w-0 p-1.5"
+      {/* Header: drag region with action buttons on the right */}
+      <div className={`drag-region flex h-10 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
+        <div className="ml-auto flex items-center no-drag">
+          <button
+            className="sidebar-header-btn"
             onClick={handleAddFiles}
             title={t('topbar.addFile')}
             aria-label={t('topbar.addFile')}
           >
             <FilePlus className="h-4 w-4" />
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            className="min-w-0 p-1.5"
+          </button>
+          <button
+            className="sidebar-header-btn"
             onClick={handleAddFolder}
             title={t('topbar.addFolder')}
             aria-label={t('topbar.addFolder')}
           >
             <FolderPlus className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="ml-auto flex items-center gap-0.5 no-drag">
-          <Button
-            type="text"
-            size="small"
-            className="min-w-0 p-1.5"
+          </button>
+          <div className="mx-1 h-3.5 w-px bg-border" aria-hidden="true" />
+          <button
+            className="sidebar-header-btn"
             onClick={onToggleCollapse}
             title={t('settings.sidebarCollapsed')}
             aria-label={t('settings.sidebarCollapsed')}
           >
             <PanelLeftClose className="h-4 w-4" />
-          </Button>
+          </button>
         </div>
       </div>
 
