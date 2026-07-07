@@ -78,12 +78,12 @@ describe('db migrations + schema', () => {
     db = createDb()
   })
 
-  it('creates the v1 schema on a fresh db and sets user_version=1', () => {
+  it('runs all migrations on a fresh db and sets user_version to the latest', () => {
     expect(userVersion(db)).toBe(0)
     const result = runMigrations(adapt(db))
     expect(result.from).toBe(0)
-    expect(result.to).toBe(1)
-    expect(userVersion(db)).toBe(1)
+    expect(result.to).toBe(2)
+    expect(userVersion(db)).toBe(2)
 
     for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts']) {
       const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)
@@ -115,9 +115,38 @@ describe('db migrations + schema', () => {
   it('is idempotent: running migrations twice does not error or change version', () => {
     runMigrations(adapt(db))
     const second = runMigrations(adapt(db))
-    expect(second.from).toBe(1)
-    expect(second.to).toBe(1)
-    expect(userVersion(db)).toBe(1)
+    expect(second.from).toBe(2)
+    expect(second.to).toBe(2)
+    expect(userVersion(db)).toBe(2)
+  })
+
+  it('drops the legacy moveToLibrary column from categories', () => {
+    runMigrations(adapt(db))
+    const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
+    const names = cols.map((c) => c.name)
+    expect(names).not.toContain('moveToLibrary')
+    expect(names).toContain('name')
+    expect(names).toContain('sortOrder')
+    expect(names).toContain('createdAt')
+  })
+
+  it('drops moveToLibrary from a pre-migration v1 schema', () => {
+    db.exec('PRAGMA user_version = 0')
+    db.exec(`
+      CREATE TABLE categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        sortOrder INTEGER NOT NULL DEFAULT 0,
+        moveToLibrary INTEGER,
+        createdAt INTEGER NOT NULL,
+        UNIQUE(name)
+      );
+    `)
+    db.exec(`PRAGMA user_version = 1`)
+    const result = runMigrations(adapt(db))
+    expect(result.to).toBe(2)
+    const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
+    expect(cols.map((c) => c.name)).not.toContain('moveToLibrary')
   })
 
   it('cascades document deletion to document_categories (foreign_keys=ON)', () => {
@@ -216,7 +245,6 @@ describe('settings seeding', () => {
     expect(map.get('sidebarCollapsed')).toBe(JSON.stringify('0'))
     expect(map.get('lastWatchScanAt')).toBe(JSON.stringify(0))
     expect(map.get('language')).toBe(JSON.stringify('en'))
-    expect(map.get('moveToLibraryOnCategorize')).toBe(JSON.stringify('1'))
     expect(map.get('proxyUrl')).toBe(JSON.stringify(''))
     expect(map.get('windowBounds')).toBe(JSON.stringify(null))
     expect(map.get('listColumnState')).toBe(JSON.stringify(null))

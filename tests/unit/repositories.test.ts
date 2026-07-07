@@ -261,17 +261,13 @@ describe('categories repository', () => {
     repos = createRepositories(db as unknown as SqliteDb)
   })
 
-  it('create/list/rename/setMoveToLibrary/delete', () => {
+  it('create/list/rename/delete', () => {
     const cat = repos.categories.create('Physics')
     expect(cat.name).toBe('Physics')
-    expect(cat.moveToLibrary).toBeNull()
     expect(repos.categories.list().map((c) => c.name)).toEqual(['Physics'])
 
     repos.categories.rename(cat.id, 'Astrophysics')
     expect(repos.categories.list()[0].name).toBe('Astrophysics')
-
-    repos.categories.setMoveToLibrary(cat.id, 1)
-    expect(repos.categories.list()[0].moveToLibrary).toBe(1)
 
     repos.categories.delete(cat.id)
     expect(repos.categories.list()).toEqual([])

@@ -6,7 +6,7 @@
     "starred": "收藏",
     "categories": "分类",
     "folderGrouping": "文件夹",
-    "emptyCategories": "暂无分类 \u2014 右键创建",
+    "emptyCategories": "暂无分类",
     "createCategory": "创建分类",
     "renameCategory": "重命名分类",
     "deleteCategory": "删除分类",
@@ -52,10 +52,7 @@
     "relocate": "重新定位",
     "restoreOriginal": "恢复到原始位置",
     "open": "打开",
-    "applyRemote": "应用远端值",
-    "moveToLibraryInherit": "继承全局",
-    "moveToLibraryMove": "移入库文件夹",
-    "moveToLibraryKeep": "保留原位"
+    "applyRemote": "应用远端值"
   },
   "settings": {
     "title": "设置",
@@ -65,7 +62,6 @@
     "theme": "主题",
     "language": "语言",
     "proxy": "代理 (HTTP/HTTPS)",
-    "moveToLibraryOnCategorize": "分类时将文件移入库文件夹",
     "watchFolderInsideLibrary": "路径不能在库文件夹内。",
     "libraryInsideWatchFolder": "路径不能在监控文件夹内。",
     "libraryInsideWatch": "库文件夹不能在监控文件夹内。",

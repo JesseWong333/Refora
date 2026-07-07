@@ -4,9 +4,9 @@ import userEvent from '@testing-library/user-event'
 import type { ListFilter, Category, Document } from '../../src/shared/ipc-types'
 
 const defaultCategories: Category[] = [
-  { id: 'cat1', name: 'ML', sortOrder: 0, moveToLibrary: null, createdAt: 0, count: 5 },
-  { id: 'cat2', name: 'NLP', sortOrder: 1, moveToLibrary: null, createdAt: 0, count: 3 },
-  { id: 'cat3', name: 'Vision', sortOrder: 2, moveToLibrary: null, createdAt: 0, count: 7 },
+  { id: 'cat1', name: 'ML', sortOrder: 0, createdAt: 0, count: 5 },
+  { id: 'cat2', name: 'NLP', sortOrder: 1, createdAt: 0, count: 3 },
+  { id: 'cat3', name: 'Vision', sortOrder: 2, createdAt: 0, count: 7 },
 ]
 
 const mocks = vi.hoisted(() => {

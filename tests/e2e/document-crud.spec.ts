@@ -212,10 +212,6 @@ test.describe('Document CRUD', () => {
   })
 
   test('categories CRUD round-trip', async () => {
-    // Disable global move-to-library to avoid move_failed
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await electronPage.evaluate(() => (window as any).api.settings.set('moveToLibraryOnCategorize', '0') as Promise<void>)
-
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
     const ids = await electronPage.evaluate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

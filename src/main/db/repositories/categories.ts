@@ -8,7 +8,6 @@ function mapCategory(row: Record<string, unknown>): Category {
     id: row.id as string,
     name: row.name as string,
     sortOrder: row.sortOrder as number,
-    moveToLibrary: (row.moveToLibrary as number | null) ?? null,
     createdAt: row.createdAt as number
   }
 }
@@ -22,12 +21,12 @@ export function createCategoriesRepository(db: SqliteDb) {
     return rows.map(mapCategory)
   }
 
-  function create(name: string, moveToLibrary?: number): Category {
+  function create(name: string): Category {
     const id = randomUUID()
     const createdAt = Date.now()
     db.prepare(
-      'INSERT INTO categories (id, name, sortOrder, moveToLibrary, createdAt) VALUES (?, ?, ?, ?, ?)'
-    ).run(id, name, 0, moveToLibrary === undefined ? null : moveToLibrary, createdAt)
+      'INSERT INTO categories (id, name, sortOrder, createdAt) VALUES (?, ?, ?, ?)'
+    ).run(id, name, 0, createdAt)
     const row = db.prepare('SELECT * FROM categories WHERE id = ?').get(id) as Record<string, unknown>
     return mapCategory(row)
   }
@@ -39,11 +38,6 @@ export function createCategoriesRepository(db: SqliteDb) {
 
   function remove(id: string): void {
     db.prepare('DELETE FROM categories WHERE id = ?').run(id)
-  }
-
-  function setMoveToLibrary(id: string, value: number | null): void {
-    const result = db.prepare('UPDATE categories SET moveToLibrary = ? WHERE id = ?').run(value, id)
-    if (result.changes === 0) throw new RepoError('not_found', `category not found: ${id}`)
   }
 
   function assign(docId: string, catId: string): void {
@@ -85,7 +79,6 @@ export function createCategoriesRepository(db: SqliteDb) {
     create,
     rename,
     delete: remove,
-    setMoveToLibrary,
     assign,
     unassign,
     listForDocument,

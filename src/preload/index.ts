@@ -77,12 +77,10 @@ const api: ReforaApi = {
 
   categories: {
     list: () => invoke<Category[]>(IpcChannel.CategoriesList),
-    create: (name: string, moveToLibrary?: number) =>
-      invoke<Category>(IpcChannel.CategoriesCreate, name, moveToLibrary),
+    create: (name: string) =>
+      invoke<Category>(IpcChannel.CategoriesCreate, name),
     rename: (id: string, name: string) => invoke<void>(IpcChannel.CategoriesRename, id, name),
     delete: (id: string) => invoke<void>(IpcChannel.CategoriesDelete, id),
-    setMoveToLibrary: (id: string, value: number | null) =>
-      invoke<void>(IpcChannel.CategoriesSetMoveToLibrary, id, value),
     assign: (docId: string, catId: string) =>
       invoke<void>(IpcChannel.CategoriesAssign, docId, catId),
     unassign: (docId: string, catId: string) =>

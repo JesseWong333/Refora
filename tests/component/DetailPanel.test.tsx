@@ -10,7 +10,7 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
-const mockCat: Category = { id: 'c1', name: 'ML', sortOrder: 0, moveToLibrary: null, createdAt: 0 }
+const mockCat: Category = { id: 'c1', name: 'ML', sortOrder: 0, createdAt: 0 }
 
 const mockDoc: Document = {
   id: '1',

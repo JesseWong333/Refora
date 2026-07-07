@@ -306,22 +306,14 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   }, [deleteConfirm, deleteCategory, listMode, focusedDocId, setListMode])
 
   const handleDialogSave = useCallback(
-    async (name: string, moveToLibrary: number | null) => {
+    async (name: string) => {
       if (dialog?.mode === 'create') {
-        await createCategory(name, moveToLibrary ?? undefined)
+        await createCategory(name)
       } else if (dialog?.mode === 'rename' && dialog.category) {
         await renameCategory(dialog.category.id, name)
-        if (moveToLibrary !== dialog.category.moveToLibrary) {
-          try {
-            await api.categories.setMoveToLibrary(dialog.category.id, moveToLibrary)
-            void fetchCategories()
-          } catch {
-            void 0
-          }
-        }
       }
     },
-    [dialog, createCategory, renameCategory, fetchCategories]
+    [dialog, createCategory, renameCategory]
   )
 
   const cycleTheme = useCallback(() => {
@@ -521,14 +513,6 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       <CategoryDialog
         state={dialog}
         onSave={handleDialogSave}
-        onSetMoveToLibrary={async (catId, value) => {
-          try {
-            await api.categories.setMoveToLibrary(catId, value)
-            void fetchCategories()
-          } catch {
-            void 0
-          }
-        }}
         onClose={() => setDialog(null)}
       />
 

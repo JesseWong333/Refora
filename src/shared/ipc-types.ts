@@ -46,7 +46,6 @@ export interface Category {
   id: string
   name: string
   sortOrder: number
-  moveToLibrary: number | null
   createdAt: number
   count?: number
 }
@@ -165,10 +164,9 @@ export interface ReforaApi {
   }
   categories: {
     list(): Promise<Category[]>
-    create(name: string, moveToLibrary?: number): Promise<Category>
+    create(name: string): Promise<Category>
     rename(id: string, name: string): Promise<void>
     delete(id: string): Promise<void>
-    setMoveToLibrary(id: string, value: number | null): Promise<void>
     assign(docId: string, catId: string): Promise<void>
     unassign(docId: string, catId: string): Promise<void>
   }

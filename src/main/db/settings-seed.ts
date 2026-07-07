@@ -9,7 +9,6 @@ export type SettingKey =
   | 'sidebarCollapsed'
   | 'lastWatchScanAt'
   | 'language'
-  | 'moveToLibraryOnCategorize'
   | 'proxyUrl'
   | 'windowBounds'
   | 'listColumnState'
@@ -21,7 +20,6 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'sidebarCollapsed',
   'lastWatchScanAt',
   'language',
-  'moveToLibraryOnCategorize',
   'proxyUrl',
   'windowBounds',
   'listColumnState'
@@ -40,7 +38,6 @@ export function defaultSettings(language: 'zh' | 'en'): Array<[SettingKey, unkno
     ['sidebarCollapsed', '0'],
     ['lastWatchScanAt', 0],
     ['language', language],
-    ['moveToLibraryOnCategorize', '1'],
     ['proxyUrl', ''],
     ['windowBounds', null],
     ['listColumnState', null]

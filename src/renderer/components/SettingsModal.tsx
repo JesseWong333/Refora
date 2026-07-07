@@ -27,7 +27,6 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [libraryFolderPath, setLibraryFolderPath] = useState('')
   const [proxyUrl, setProxyUrl] = useState('')
   const [crossrefMailto, setCrossrefMailto] = useState('')
-  const [moveToLibrary, setMoveToLibrary] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,12 +42,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       const lib = await api.settings.get<string>('libraryFolderPath', '')
       const proxy = await api.settings.get<string>('proxyUrl', '')
       const mailto = await api.settings.get<string>('crossrefMailto', '')
-      const mtl = await api.settings.get<string>('moveToLibraryOnCategorize', '1')
       const sc = await api.settings.get<string>('sidebarCollapsed', '0')
       setLibraryFolderPath(lib)
       setProxyUrl(proxy)
       setCrossrefMailto(mailto)
-      setMoveToLibrary(mtl === '1')
       setSidebarCollapsed(sc === '1')
     } catch {
       setError('Failed to load settings')
@@ -83,18 +80,6 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     try {
       await api.settings.set('crossrefMailto', crossrefMailto)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg)
-    }
-  }
-
-  const handleMoveToLibraryToggle = async () => {
-    const newVal = !moveToLibrary
-    setMoveToLibrary(newVal)
-    try {
-      await api.settings.set('moveToLibraryOnCategorize', newVal ? '1' : '0')
-    } catch (e) {
-      setMoveToLibrary(!newVal)
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg)
     }
@@ -201,18 +186,6 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             style={{ width: 120 }}
           />
         </div>
-
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            className="m-0"
-            checked={moveToLibrary}
-            onChange={handleMoveToLibraryToggle}
-          />
-          <span className="text-xs text-foreground">
-            {t('settings.moveToLibraryOnCategorize')}
-          </span>
-        </label>
 
         <label className="flex cursor-pointer items-center gap-2">
           <input

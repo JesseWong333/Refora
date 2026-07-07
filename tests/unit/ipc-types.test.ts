@@ -49,10 +49,8 @@ describe('ipc-types shapes', () => {
       id: 'c1',
       name: 'ML',
       sortOrder: 0,
-      moveToLibrary: null,
       createdAt: 1
     }
-    expect(cat.moveToLibrary).toBeNull()
     expect(cat.name).toBe('ML')
   })
 

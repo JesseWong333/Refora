@@ -82,7 +82,7 @@ interface DocumentState {
   init: (listColumnState: ListColumnState | null) => void
   destroy: () => void
   fetchCategories: () => Promise<void>
-  createCategory: (name: string, moveToLibrary?: number) => Promise<Category | null>
+  createCategory: (name: string) => Promise<Category | null>
   renameCategory: (id: string, name: string) => Promise<void>
   deleteCategory: (id: string) => Promise<void>
   performSearch: (q: string) => void
@@ -432,9 +432,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
-  createCategory: async (name: string, moveToLibrary?: number): Promise<Category | null> => {
+  createCategory: async (name: string): Promise<Category | null> => {
     try {
-      const cat = await api.categories.create(name, moveToLibrary)
+      const cat = await api.categories.create(name)
       set((s) => ({ categories: [...s.categories, { ...cat, count: 0 }] }))
       return cat
     } catch (e) {

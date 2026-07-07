@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { resolveMovePolicy, moveToLibrary, restoreToOriginal } from '../../src/main/services/library'
+import { moveToLibrary, restoreToOriginal } from '../../src/main/services/library'
 import { RepoError } from '../../src/main/db/repositories/errors'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { Document } from '../../src/shared/ipc-types'
@@ -61,24 +61,6 @@ function mockRepos(docs: Document[]) {
     }
   } as unknown as Repositories
 }
-
-describe('resolveMovePolicy', () => {
-  it('returns true when category override is ON (moveToLibrary=1)', () => {
-    expect(resolveMovePolicy(1, '0')).toBe(true)
-  })
-
-  it('returns false when category override is OFF (moveToLibrary=0)', () => {
-    expect(resolveMovePolicy(0, '1')).toBe(false)
-  })
-
-  it('returns true for null category + global ON', () => {
-    expect(resolveMovePolicy(null, '1')).toBe(true)
-  })
-
-  it('returns false for null category + global OFF', () => {
-    expect(resolveMovePolicy(null, '0')).toBe(false)
-  })
-})
 
 describe('moveToLibrary', () => {
   beforeEach(() => {

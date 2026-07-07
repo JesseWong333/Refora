@@ -16,7 +16,7 @@ import type { Repositories } from '../db/repositories'
 import { RepoError } from '../db/repositories/errors'
 import type { ImportResult } from '../services/importer'
 import { openPdf } from '../services/pdfOpen'
-import { resolveMovePolicy, moveToLibrary, restoreToOriginal } from '../services/library'
+import { moveToLibrary, restoreToOriginal } from '../services/library'
 import { relocate, deleteDocument, bulkDeleteDocuments } from '../services/files'
 import { emitDocumentUpdated } from '../ipc/events'
 import { writeExportFile, importFromJsonFile, toBibtex } from '../services/export'
@@ -140,12 +140,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const cats = repos.categories.list()
         const cat = cats.find((c) => c.id === catId)
         if (!cat) throw new RepoError('not_found', `Category ${catId} not found`)
-        const globalSetting = repos.settings.get<string>('moveToLibraryOnCategorize', '1')
         const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
-        const shouldMove = resolveMovePolicy(cat.moveToLibrary, globalSetting)
         for (const id of ids) {
           repos.categories.assign(id, catId)
-          if (shouldMove && libraryFolder) {
+          if (libraryFolder) {
             const doc = repos.documents.get(id)
             if (!doc) continue
             if (!doc.filePath.startsWith(libraryFolder)) {
@@ -276,13 +274,11 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       const counts = repos.categories.countByCategory()
       return cats.map((c) => ({ ...c, count: counts.get(c.id) ?? 0 }))
     }),
-    [IpcChannel.CategoriesCreate]: (name: string, moveToLibrary?: number): Result<Category> =>
-      wrap(() => repos.categories.create(name, moveToLibrary)),
+    [IpcChannel.CategoriesCreate]: (name: string): Result<Category> =>
+      wrap(() => repos.categories.create(name)),
     [IpcChannel.CategoriesRename]: (id: string, name: string): Result<void> =>
       wrap(() => repos.categories.rename(id, name)),
     [IpcChannel.CategoriesDelete]: (id: string): Result<void> => wrap(() => repos.categories.delete(id)),
-    [IpcChannel.CategoriesSetMoveToLibrary]: (id: string, value: number | null): Result<void> =>
-      wrap(() => repos.categories.setMoveToLibrary(id, value)),
     [IpcChannel.CategoriesAssign]: (docId: string, catId: string): Result<void> =>
       wrap(() => {
         const doc = repos.documents.get(docId)
@@ -290,11 +286,9 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const cats = repos.categories.list()
         const cat = cats.find((c) => c.id === catId)
         if (!cat) throw new RepoError('not_found', `Category ${catId} not found`)
-        const globalSetting = repos.settings.get<string>('moveToLibraryOnCategorize', '1')
         const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
-        const shouldMove = resolveMovePolicy(cat.moveToLibrary, globalSetting)
         const alreadyInLibrary = libraryFolder ? doc.filePath.startsWith(libraryFolder) : false
-        if (shouldMove && !alreadyInLibrary) {
+        if (libraryFolder && !alreadyInLibrary) {
           try {
             const newPath = moveToLibrary(doc.filePath, libraryFolder)
             repos.documents.updateFilePath(docId, newPath, parsePath(newPath).base)

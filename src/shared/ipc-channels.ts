@@ -25,7 +25,6 @@ export const IpcChannel = {
   CategoriesCreate: 'categories:create',
   CategoriesRename: 'categories:rename',
   CategoriesDelete: 'categories:delete',
-  CategoriesSetMoveToLibrary: 'categories:setMoveToLibrary',
   CategoriesAssign: 'categories:assign',
   CategoriesUnassign: 'categories:unassign',
 

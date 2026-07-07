@@ -168,7 +168,6 @@ function serialize(repos: Repositories): string {
     id: c.id,
     name: c.name,
     sortOrder: c.sortOrder,
-    moveToLibrary: c.moveToLibrary,
     createdAt: c.createdAt
   }))
   const documentCategories = repos.categories.getAllDocumentCategories()
@@ -215,7 +214,7 @@ function importReplace(repos: Repositories, data: ExportData): number {
   const catNameToId = new Map<string, string>()
   for (const cat of data.categories) {
     try {
-      const created = repos.categories.create(cat.name, cat.moveToLibrary ?? undefined)
+      const created = repos.categories.create(cat.name)
       catNameToId.set(cat.name, created.id)
     } catch {
       continue
@@ -248,7 +247,7 @@ function importMerge(repos: Repositories, data: ExportData): number {
     const existing = repos.categories.list().find((c) => c.name === cat.name)
     if (!existing) {
       try {
-        repos.categories.create(cat.name, cat.moveToLibrary ?? undefined)
+        repos.categories.create(cat.name)
       } catch {
         continue
       }

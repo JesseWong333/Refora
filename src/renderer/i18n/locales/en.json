@@ -6,7 +6,7 @@
     "starred": "Starred",
     "categories": "Categories",
     "folderGrouping": "Folders",
-    "emptyCategories": "No categories yet \u2014 right-click to create one",
+    "emptyCategories": "No categories yet",
     "createCategory": "Create Category",
     "renameCategory": "Rename Category",
     "deleteCategory": "Delete Category",
@@ -52,10 +52,7 @@
     "relocate": "Relocate",
     "restoreOriginal": "Restore to Original Location",
     "open": "Open",
-    "applyRemote": "Apply remote value",
-    "moveToLibraryInherit": "Inherit global",
-    "moveToLibraryMove": "Move into library",
-    "moveToLibraryKeep": "Keep in place"
+    "applyRemote": "Apply remote value"
   },
   "settings": {
     "title": "Settings",
@@ -65,7 +62,6 @@
     "theme": "Theme",
     "language": "Language",
     "proxy": "Proxy (HTTP/HTTPS)",
-    "moveToLibraryOnCategorize": "Move file into library on categorize",
     "watchFolderInsideLibrary": "Path cannot be inside the library folder.",
     "libraryInsideWatchFolder": "Path cannot be inside a watch folder.",
     "libraryInsideWatch": "Library folder cannot be inside a watch folder.",

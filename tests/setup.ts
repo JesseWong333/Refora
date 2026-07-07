@@ -53,7 +53,6 @@ const noopPromise = async () => ({ ok: true, data: undefined })
     create: noopPromise,
     rename: noopPromise,
     delete: noopPromise,
-    setMoveToLibrary: noopPromise,
     assign: noopPromise,
     unassign: noopPromise
   },

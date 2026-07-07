@@ -3,16 +3,6 @@ import { parse, join } from 'node:path'
 import type { Repositories } from '../db/repositories'
 import { RepoError } from '../db/repositories/errors'
 
-export function resolveMovePolicy(
-  categoryMoveToLibrary: number | null,
-  globalMoveToLibraryOnCategorize: string
-): boolean {
-  if (categoryMoveToLibrary !== null) {
-    return categoryMoveToLibrary === 1
-  }
-  return globalMoveToLibraryOnCategorize === '1'
-}
-
 function collisionSafePath(destPath: string): string {
   if (!existsSync(destPath)) return destPath
   const { dir, name, ext } = parse(destPath)

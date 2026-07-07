@@ -12,21 +12,18 @@ export interface CategoryDialogState {
 
 interface CategoryDialogProps {
   state: CategoryDialogState | null
-  onSave: (name: string, moveToLibrary: number | null) => void
-  onSetMoveToLibrary: (catId: string, value: number | null) => void
+  onSave: (name: string) => void
   onClose: () => void
 }
 
-export default function CategoryDialog({ state, onSave, onSetMoveToLibrary, onClose }: CategoryDialogProps) {
+export default function CategoryDialog({ state, onSave, onClose }: CategoryDialogProps) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
-  const [moveToLibrary, setMoveToLibrary] = useState<number | null>(null)
   const inputRef = useRef<InputRef>(null)
 
   useEffect(() => {
     if (state) {
       setName(state.category?.name ?? '')
-      setMoveToLibrary(state.category?.moveToLibrary ?? null)
     }
   }, [state])
 
@@ -40,14 +37,9 @@ export default function CategoryDialog({ state, onSave, onSetMoveToLibrary, onCl
     const trimmed = name.trim()
     if (!trimmed) return
     if (state.mode === 'rename' && state.category && trimmed !== state.category.name) {
-      onSave(trimmed, moveToLibrary)
+      onSave(trimmed)
     } else if (state.mode === 'create') {
-      onSave(trimmed, moveToLibrary)
-    }
-    if (state.mode === 'rename' && state.category) {
-      if (moveToLibrary !== state.category.moveToLibrary) {
-        onSetMoveToLibrary(state.category.id, moveToLibrary)
-      }
+      onSave(trimmed)
     }
     onClose()
   }
@@ -84,29 +76,6 @@ export default function CategoryDialog({ state, onSave, onSetMoveToLibrary, onCl
               if (e.key === 'Escape') onClose()
             }}
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-            {t('settings.moveToLibraryOnCategorize')}
-          </label>
-          <div className="flex flex-col gap-1.5 text-xs text-foreground">
-            {[
-              { value: null, label: t('detail.moveToLibraryInherit') },
-              { value: 1, label: t('detail.moveToLibraryMove') },
-              { value: 0, label: t('detail.moveToLibraryKeep') }
-            ].map((opt) => (
-              <label key={String(opt.value)} className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="radio"
-                  name="moveToLibrary"
-                  className="m-0"
-                  checked={moveToLibrary === opt.value}
-                  onChange={() => setMoveToLibrary(opt.value)}
-                />
-                {opt.label}
-              </label>
-            ))}
-          </div>
         </div>
       </div>
     </Modal>
