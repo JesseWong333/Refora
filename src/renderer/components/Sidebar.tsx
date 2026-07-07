@@ -334,7 +334,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     themeMode === 'dark' ? t('settings.themeDark') : themeMode === 'light' ? t('settings.themeLight') : t('settings.themeSystem')
 
   if (collapsed) {
-    const toolbarLeft = isMac ? 78 : 8
+    const toolbarLeft = isMac ? 92 : 8
     return (
       <>
         <div

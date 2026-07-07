@@ -402,7 +402,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="flex h-12 items-center gap-2 border-b border-border drag-region">
+      <div className="flex h-14 items-center gap-2 border-b border-border drag-region">
         {sidebarCollapsed && (
           <div
             className="no-drag self-stretch shrink-0"
@@ -414,7 +414,6 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
           <Search className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
           <Input
             className="doc-search-input w-[280px] no-drag"
-            size="small"
             placeholder={t('topbar.search')}
             value={searchQuery}
             onChange={(e) => performSearch(e.target.value)}

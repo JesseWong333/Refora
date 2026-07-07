@@ -37,7 +37,7 @@
   }
 
   [data-platform='mac'] {
-    --toolbar-preserve: 168px;
+    --toolbar-preserve: 212px;
   }
 
   [data-theme='light'] {
@@ -184,7 +184,7 @@
   /* Floating toolbar that sits beside macOS traffic lights when sidebar is collapsed */
   .sidebar-floating-toolbar {
     position: fixed;
-    top: 7px;
+    top: 11px;
     z-index: 50;
     display: flex;
     align-items: center;

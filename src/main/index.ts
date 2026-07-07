@@ -176,7 +176,7 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     title: 'ScholarNote',
     ...(IS_MAC && {
       titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 13 }
+      trafficLightPosition: { x: 22, y: 22 }
     }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
