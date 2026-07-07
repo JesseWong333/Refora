@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Menu, shell, session, dialog } from 'electron'
+import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage } from 'electron'
 import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import { initLogger, logger } from './services/logger'
 import { openDatabase, seedSettings, closeDatabase } from './db/connection'
 import { createRepositories } from './db/repositories'
@@ -238,6 +239,13 @@ void app.whenReady().then(() => {
   initLogger()
   logger.info(`app:ready (dev=${isDev})`)
   applyCsp()
+
+  if (isDev) {
+    const devIconPath = join(__dirname, '../../build/icon.png')
+    if (existsSync(devIconPath)) {
+      app.dock?.setIcon(nativeImage.createFromPath(devIconPath))
+    }
+  }
 
   const dbPath = join(app.getPath('userData'), 'refora.db')
   db = openDatabase(dbPath)

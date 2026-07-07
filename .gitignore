@@ -3,6 +3,8 @@ out/
 dist/
 release/
 build/
+!build/icon.icns
+!build/icon.png
 *.tsbuildinfo
 .DS_Store
 node_modules/.tmp/
