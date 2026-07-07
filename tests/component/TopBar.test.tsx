@@ -45,6 +45,10 @@ vi.mock('@renderer/components/SettingsModal', () => ({
 }))
 
 import Sidebar from '@renderer/components/Sidebar'
+import { AppThemeProvider } from '@renderer/hooks/useTheme'
+
+const renderWithTheme = (ui: React.ReactElement) =>
+  render(ui, { wrapper: ({ children }) => <AppThemeProvider>{children}</AppThemeProvider> })
 
 describe('Sidebar header actions', () => {
   beforeEach(() => {
@@ -60,14 +64,14 @@ describe('Sidebar header actions', () => {
   })
 
   it('renders add file / add folder / collapse buttons in header', () => {
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByLabelText('topbar.addFile')).toBeInTheDocument()
     expect(screen.getByLabelText('topbar.addFolder')).toBeInTheDocument()
     expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
   })
 
   it('renders settings and export buttons in footer', () => {
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('topbar.settings')).toBeInTheDocument()
     expect(screen.getByText('topbar.exportJson')).toBeInTheDocument()
     expect(screen.getByText('topbar.exportBibtex')).toBeInTheDocument()
@@ -75,32 +79,32 @@ describe('Sidebar header actions', () => {
 
   it('shows import progress bar when importProgress is set', () => {
     mocks.state.importProgress = { current: 2, total: 5 }
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('topbar.importing')).toBeInTheDocument()
   })
 
   it('hides progress bar when importProgress is null', () => {
     mocks.state.importProgress = null
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.queryByText('topbar.importing')).not.toBeInTheDocument()
   })
 
   it('calls onToggleCollapse when collapse button is clicked', async () => {
     const toggleSpy = vi.fn()
-    render(<Sidebar collapsed={false} onToggleCollapse={toggleSpy} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={toggleSpy} />)
     await userEvent.click(screen.getByLabelText('settings.sidebarCollapsed'))
     expect(toggleSpy).toHaveBeenCalledOnce()
   })
 
   it('renders expand button when collapsed', () => {
-    render(<Sidebar collapsed={true} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={true} onToggleCollapse={vi.fn()} />)
     expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
   })
 
   it('calls api.import.addFiles when add file button is clicked', async () => {
     const addFilesSpy = vi.fn().mockResolvedValue({ ok: true, data: { added: [], skipped: [], errors: [] } })
     ;(window.api as Record<string, unknown> & { import: { addFiles: () => Promise<unknown> } }).import.addFiles = addFilesSpy
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     await userEvent.click(screen.getByLabelText('topbar.addFile'))
     expect(addFilesSpy).toHaveBeenCalled()
   })

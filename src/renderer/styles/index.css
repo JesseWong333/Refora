@@ -146,6 +146,29 @@
     -webkit-app-region: no-drag;
   }
 
+  /* Document list search box — override lobehub Input defaults so the field
+     stays clearly visible in light mode. The lobehub Input `outlined` variant
+     uses the antd `colorBorderSecondary` token (very faint #e5e5ea in light),
+     which blends into the light toolbar background. We force the app's own
+     border/fill tokens which are tuned per theme. */
+  .doc-search-input:where([class*='ant-input']) {
+    border-color: var(--color-border) !important;
+    background-color: var(--color-panel) !important;
+    color: var(--color-foreground) !important;
+    -webkit-app-region: no-drag;
+  }
+  .doc-search-input:where([class*='ant-input'])::placeholder {
+    color: var(--color-muted) !important;
+  }
+  .doc-search-input:where([class*='ant-input']):hover {
+    border-color: var(--color-accent) !important;
+  }
+  .doc-search-input:where([class*='ant-input']):focus,
+  .doc-search-input:where([class*='ant-input']):focus-within {
+    border-color: var(--color-accent) !important;
+    box-shadow: 0 0 0 1px var(--color-accent) !important;
+  }
+
   .field-input {
     @apply w-full rounded-lg border border-transparent bg-background px-3 py-1.5 text-sm text-foreground hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
   }

@@ -1,11 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, createContext, useContext, useMemo } from 'react'
 import { api } from '../ipc'
 
 export type ThemeMode = 'system' | 'dark' | 'light'
+export type ResolvedTheme = 'dark' | 'light'
+
+interface ThemeContextValue {
+  mode: ThemeMode
+  resolvedTheme: ResolvedTheme
+  setMode: (mode: ThemeMode) => void
+}
 
 const STORAGE_KEY = 'theme'
 
-function getSystemTheme(): 'dark' | 'light' {
+function getSystemTheme(): ResolvedTheme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
@@ -14,7 +21,9 @@ function applyTheme(mode: ThemeMode) {
   document.documentElement.setAttribute('data-theme', resolved)
 }
 
-export function useTheme() {
+const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>('system')
 
   useEffect(() => {
@@ -49,5 +58,18 @@ export function useTheme() {
 
   const resolvedTheme = mode === 'system' ? getSystemTheme() : mode
 
-  return { mode, resolvedTheme, setMode }
+  const value = useMemo<ThemeContextValue>(
+    () => ({ mode, resolvedTheme, setMode }),
+    [mode, resolvedTheme, setMode]
+  )
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext)
+  if (!ctx) {
+    throw new Error('useTheme must be used within <AppThemeProvider>')
+  }
+  return ctx
 }

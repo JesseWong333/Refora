@@ -9,7 +9,7 @@ import ResizeDivider from './components/ResizeDivider'
 import ConfirmDialog from './components/ConfirmDialog'
 import FirstRunWizard from './components/FirstRunWizard'
 import { useAppShortcuts } from './hooks/useAppShortcuts'
-import { useTheme } from './hooks/useTheme'
+import { useTheme, AppThemeProvider } from './hooks/useTheme'
 import { useDocumentStore } from './store/documentStore'
 import { api } from './ipc'
 import type { ListColumnState } from '../shared/ipc-types'
@@ -25,7 +25,15 @@ interface AppProps {
   firstRun: boolean
 }
 
-export default function App({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, firstRun }: AppProps) {
+export default function App(props: AppProps) {
+  return (
+    <AppThemeProvider>
+      <AppInner {...props} />
+    </AppThemeProvider>
+  )
+}
+
+function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, firstRun }: AppProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed)
   const [showWizard, setShowWizard] = useState(firstRun)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)

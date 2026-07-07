@@ -58,6 +58,10 @@ vi.mock('../../src/renderer/components/SettingsModal', () => ({
 }))
 
 import Sidebar from '../../src/renderer/components/Sidebar'
+import { AppThemeProvider } from '../../src/renderer/hooks/useTheme'
+
+const renderWithTheme = (ui: React.ReactElement) =>
+  render(ui, { wrapper: ({ children }) => <AppThemeProvider>{children}</AppThemeProvider> })
 
 describe('Sidebar', () => {
   beforeEach(() => {
@@ -75,12 +79,12 @@ describe('Sidebar', () => {
   })
 
   it('renders without crashing', () => {
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('sidebar.allFiles')).toBeInTheDocument()
   })
 
   it('renders all 4 smart list items', () => {
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('sidebar.allFiles')).toBeInTheDocument()
     expect(screen.getByText('sidebar.recentlyRead')).toBeInTheDocument()
     expect(screen.getByText('sidebar.recentlyAdded')).toBeInTheDocument()
@@ -88,13 +92,13 @@ describe('Sidebar', () => {
   })
 
   it('calls setListMode with { mode: "all" } when All Files is clicked', async () => {
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     await userEvent.click(screen.getByText('sidebar.allFiles'))
     expect(mocks.setListMode).toHaveBeenCalledWith({ mode: 'all' })
   })
 
   it('renders categories section with names and counts', () => {
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     expect(screen.getByText('sidebar.categories')).toBeInTheDocument()
     expect(screen.getByText('ML (5)')).toBeInTheDocument()
     expect(screen.getByText('NLP (3)')).toBeInTheDocument()
@@ -103,21 +107,21 @@ describe('Sidebar', () => {
 
   it('shows empty state placeholder when categories array is empty', () => {
     mocks.state.categories = []
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     const emptyMessages = screen.getAllByText('sidebar.emptyCategories')
     expect(emptyMessages.length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('ML (5)')).not.toBeInTheDocument()
   })
 
   it('calls setListMode with category mode and correct categoryId on category click', async () => {
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
     await userEvent.click(screen.getByText('ML (5)'))
     expect(mocks.setListMode).toHaveBeenCalledWith({ mode: 'category', categoryId: 'cat1' })
   })
 
   it('applies sidebar-item-active class to the active smart list item', () => {
     mocks.state.listMode = { mode: 'starred' }
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
 
     const starredItem = screen.getByText('sidebar.starred').closest('[class*="sidebar-item"]')
     expect(starredItem?.className).toContain('sidebar-item-active')
@@ -128,7 +132,7 @@ describe('Sidebar', () => {
 
   it('applies sidebar-item-active class to the active category item', () => {
     mocks.state.listMode = { mode: 'category', categoryId: 'cat2' }
-    render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
 
     const nlpItem = screen.getByText('NLP (3)').closest('[class*="sidebar-item"]')
     expect(nlpItem?.className).toContain('sidebar-item-active')
@@ -141,21 +145,21 @@ describe('Sidebar', () => {
     it('shows the refresh indicator when pendingMetadataCount > 0 and no import progress', () => {
       mocks.state.pendingMetadataCount = 2
       mocks.state.importProgress = null
-      render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+      renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
       expect(screen.getByText('topbar.refreshingMetadata')).toBeInTheDocument()
     })
 
     it('hides the refresh indicator when pendingMetadataCount is 0', () => {
       mocks.state.pendingMetadataCount = 0
       mocks.state.importProgress = null
-      render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+      renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
       expect(screen.queryByText('topbar.refreshingMetadata')).not.toBeInTheDocument()
     })
 
     it('hides the refresh indicator while import progress is active', () => {
       mocks.state.pendingMetadataCount = 5
       mocks.state.importProgress = { current: 1, total: 3 }
-      render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+      renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
       expect(screen.queryByText('topbar.refreshingMetadata')).not.toBeInTheDocument()
       expect(screen.getByText('topbar.importing')).toBeInTheDocument()
     })
