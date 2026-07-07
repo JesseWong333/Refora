@@ -6,7 +6,7 @@ build/
 *.tsbuildinfo
 .DS_Store
 node_modules/.tmp/
-.klio/
+.kilo/
 .github/
 tests/
 test-results/
