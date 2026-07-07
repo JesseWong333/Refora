@@ -9,6 +9,13 @@ export default function ConfirmDialog() {
   const confirmDeleteAction = useDocumentStore((s) => s.confirmDeleteAction)
   const cancelDelete = useDocumentStore((s) => s.cancelDelete)
 
+  const message =
+    confirmDelete && confirmDelete.message.length > 0
+      ? confirmDelete.message
+      : confirmDelete && confirmDelete.ids.length > 1
+        ? t('dialog.deleteConfirmBulk', { count: confirmDelete.ids.length })
+        : t('dialog.deleteConfirm')
+
   return (
     <Modal
       open={confirmDelete !== null}
@@ -27,9 +34,7 @@ export default function ConfirmDialog() {
       }
       destroyOnClose
     >
-      {confirmDelete && (
-        <p className="text-sm text-foreground">{confirmDelete.message}</p>
-      )}
+      <p className="text-sm text-foreground">{message}</p>
     </Modal>
   )
 }

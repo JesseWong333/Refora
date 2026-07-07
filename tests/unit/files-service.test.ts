@@ -1,17 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { checkMissing, relocate } from '../../src/main/services/files'
+import { checkMissing, relocate, deleteDocument, bulkDeleteDocuments } from '../../src/main/services/files'
 import { RepoError } from '../../src/main/db/repositories/errors'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { Document } from '../../src/shared/ipc-types'
 
-const { mockExistsSync, mockEmitDocumentUpdated } = vi.hoisted(() => ({
+const { mockExistsSync, mockEmitDocumentUpdated, mockTrashItem, mockLogger } = vi.hoisted(() => ({
   mockExistsSync: vi.fn<[string], boolean>(),
-  mockEmitDocumentUpdated: vi.fn()
+  mockEmitDocumentUpdated: vi.fn(),
+  mockTrashItem: vi.fn<[string], Promise<void>>(),
+  mockLogger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn()
+  }
 }))
 
 vi.mock('node:fs', () => ({
   default: { existsSync: mockExistsSync },
   existsSync: mockExistsSync
+}))
+
+vi.mock('electron', () => ({
+  shell: {
+    trashItem: mockTrashItem
+  }
+}))
+
+vi.mock('../../src/main/services/logger', () => ({
+  default: {},
+  logger: mockLogger
 }))
 
 vi.mock('../../src/main/ipc/events', () => ({
@@ -62,6 +79,8 @@ function createMockDocRepo(
     get: (id: string) => Document | null
     updateFilePath: (id: string, filePath: string, fileName: string) => void
     setFileMissing: (id: string, missing: boolean) => void
+    delete: (id: string) => void
+    bulkDelete: (ids: string[]) => void
   }> = {}
 ) {
   const docMap = new Map(docs.map((d) => [d.id, d]))
@@ -75,6 +94,12 @@ function createMockDocRepo(
     setFileMissing: overrides.setFileMissing ?? vi.fn((id: string, missing: boolean) => {
       const doc = docMap.get(id)
       if (doc) doc.fileMissing = missing ? 1 : 0
+    }),
+    delete: overrides.delete ?? vi.fn((id: string) => {
+      docMap.delete(id)
+    }),
+    bulkDelete: overrides.bulkDelete ?? vi.fn((ids: string[]) => {
+      for (const id of ids) docMap.delete(id)
     })
   }
 }
@@ -221,5 +246,136 @@ describe('relocate', () => {
       expect(e).toBeInstanceOf(RepoError)
       expect((e as RepoError).code).toBe('invalid_path')
     }
+  })
+})
+
+describe('deleteDocument', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockTrashItem.mockResolvedValue(undefined)
+  })
+
+  it('trashes the PDF then deletes the DB record', async () => {
+    mockExistsSync.mockReturnValue(true)
+    const doc = mockDoc('d1', { filePath: '/abs/d1.pdf' })
+    const repos = mockRepos([doc])
+
+    await deleteDocument(repos, 'd1')
+
+    expect(mockTrashItem).toHaveBeenCalledWith('/abs/d1.pdf')
+    expect(repos.documents.delete).toHaveBeenCalledWith('d1')
+  })
+
+  it('skips trashing when the document is marked fileMissing', async () => {
+    mockExistsSync.mockReturnValue(true)
+    const doc = mockDoc('d1', { fileMissing: 1 })
+    const repos = mockRepos([doc])
+
+    await deleteDocument(repos, 'd1')
+
+    expect(mockTrashItem).not.toHaveBeenCalled()
+    expect(repos.documents.delete).toHaveBeenCalledWith('d1')
+  })
+
+  it('skips trashing when the file no longer exists on disk', async () => {
+    mockExistsSync.mockReturnValue(false)
+    const doc = mockDoc('d1', { filePath: '/abs/d1.pdf' })
+    const repos = mockRepos([doc])
+
+    await deleteDocument(repos, 'd1')
+
+    expect(mockTrashItem).not.toHaveBeenCalled()
+    expect(repos.documents.delete).toHaveBeenCalledWith('d1')
+  })
+
+  it('still deletes the DB record when trashItem fails (best-effort)', async () => {
+    mockExistsSync.mockReturnValue(true)
+    mockTrashItem.mockRejectedValue(new Error('trash denied'))
+    const doc = mockDoc('d1', { filePath: '/abs/d1.pdf' })
+    const repos = mockRepos([doc])
+
+    await deleteDocument(repos, 'd1')
+
+    expect(mockTrashItem).toHaveBeenCalledWith('/abs/d1.pdf')
+    expect(mockLogger.warn).toHaveBeenCalled()
+    expect(repos.documents.delete).toHaveBeenCalledWith('d1')
+  })
+
+  it('deletes the DB record even when the document is missing', async () => {
+    mockExistsSync.mockReturnValue(true)
+    const repos = mockRepos([])
+
+    await deleteDocument(repos, 'ghost')
+
+    expect(mockTrashItem).not.toHaveBeenCalled()
+    expect(repos.documents.delete).toHaveBeenCalledWith('ghost')
+  })
+})
+
+describe('bulkDeleteDocuments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockTrashItem.mockResolvedValue(undefined)
+  })
+
+  it('trashes all present PDFs then deletes all DB records', async () => {
+    mockExistsSync.mockReturnValue(true)
+    const docs = [
+      mockDoc('d1', { filePath: '/abs/d1.pdf' }),
+      mockDoc('d2', { filePath: '/abs/d2.pdf' }),
+      mockDoc('d3', { filePath: '/abs/d3.pdf' })
+    ]
+    const repos = mockRepos(docs)
+
+    await bulkDeleteDocuments(repos, ['d1', 'd2', 'd3'])
+
+    expect(mockTrashItem).toHaveBeenCalledWith('/abs/d1.pdf')
+    expect(mockTrashItem).toHaveBeenCalledWith('/abs/d2.pdf')
+    expect(mockTrashItem).toHaveBeenCalledWith('/abs/d3.pdf')
+    expect(repos.documents.bulkDelete).toHaveBeenCalledWith(['d1', 'd2', 'd3'])
+  })
+
+  it('skips trashing for fileMissing docs but still bulk-deletes all ids', async () => {
+    mockExistsSync.mockReturnValue(true)
+    const docs = [
+      mockDoc('d1', { filePath: '/abs/d1.pdf' }),
+      mockDoc('d2', { filePath: '/abs/d2.pdf', fileMissing: 1 })
+    ]
+    const repos = mockRepos(docs)
+
+    await bulkDeleteDocuments(repos, ['d1', 'd2'])
+
+    expect(mockTrashItem).toHaveBeenCalledTimes(1)
+    expect(mockTrashItem).toHaveBeenCalledWith('/abs/d1.pdf')
+    expect(repos.documents.bulkDelete).toHaveBeenCalledWith(['d1', 'd2'])
+  })
+
+  it('no-ops on an empty id list', async () => {
+    const repos = mockRepos([])
+
+    await bulkDeleteDocuments(repos, [])
+
+    expect(mockTrashItem).not.toHaveBeenCalled()
+    expect(repos.documents.bulkDelete).not.toHaveBeenCalled()
+  })
+
+  it('still bulk-deletes when some trashItem calls fail (best-effort)', async () => {
+    mockExistsSync.mockReturnValue(true)
+    mockTrashItem
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(undefined)
+    const docs = [
+      mockDoc('d1', { filePath: '/abs/d1.pdf' }),
+      mockDoc('d2', { filePath: '/abs/d2.pdf' }),
+      mockDoc('d3', { filePath: '/abs/d3.pdf' })
+    ]
+    const repos = mockRepos(docs)
+
+    await bulkDeleteDocuments(repos, ['d1', 'd2', 'd3'])
+
+    expect(mockTrashItem).toHaveBeenCalledTimes(3)
+    expect(mockLogger.warn).toHaveBeenCalled()
+    expect(repos.documents.bulkDelete).toHaveBeenCalledWith(['d1', 'd2', 'd3'])
   })
 })

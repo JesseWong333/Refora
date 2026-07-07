@@ -10,6 +10,7 @@ import type {
   Category
 } from '../../shared/ipc-types'
 import { api } from '../ipc'
+import i18n from '../i18n'
 
 const DEFAULT_COLUMNS: ListColumn[] = [
   { id: 'title', visible: true, width: 300, order: 0 },
@@ -228,11 +229,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }))
     try {
       await api.documents.delete(docId)
+      get().showToast(i18n.t('common.movedToTrash', { count: 1 }))
     } catch {
       if (doc) {
         set((s) => ({ documents: [...s.documents, doc] }))
       }
-      get().showToast('Failed to delete document')
+      get().showToast(i18n.t('common.deleteFailed'))
     }
   },
 
@@ -254,13 +256,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }))
     try {
       await api.documents.bulkDelete(ids)
+      get().showToast(i18n.t('common.movedToTrash', { count: ids.length }))
     } catch {
       set((s) => {
         const current = new Set(s.documents.map((d) => d.id))
         const restored = prev.filter((d) => !current.has(d.id))
         return { documents: [...s.documents, ...restored] }
       })
-      get().showToast('Failed to delete documents')
+      get().showToast(i18n.t('common.deleteFailed'))
     }
   },
 

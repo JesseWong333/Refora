@@ -45,6 +45,9 @@
     "filePath": "Path",
     "note": "Notes",
     "refreshMetadata": "Refresh Metadata",
+    "refreshing": "Refreshing\u2026",
+    "refreshSuccess": "Updated",
+    "refreshFailed": "Refresh failed (parse/network)",
     "relocate": "Relocate",
     "restoreOriginal": "Restore to Original Location",
     "open": "Open",
@@ -87,6 +90,8 @@
     "results": "results",
     "importAnyway": "Import Anyway",
     "openInFinder": "Open in Finder",
+    "openFile": "Open File",
+    "showInFolder": "Show in Folder",
     "copyPath": "Copy Path",
     "multiSelected": "{{count}} selected",
     "noResults": "No documents found",
@@ -98,11 +103,15 @@
     "networkError": "Crossref unreachable — using offline metadata",
     "exportBibtexTitle": "Export BibTeX",
     "selectToExport": "Select one or more documents to export",
-    "bibtexExported": "Exported {{count}} entries to BibTeX"
+    "bibtexExported": "Exported {{count}} entries to BibTeX",
+    "movedToTrash": "Moved to Trash ({{count}})",
+    "deleteFailed": "Failed to delete document"
   },
   "dialog": {
     "duplicateWarning": "A file with identical content already exists: {{name}}. Skip this file?",
-    "deleteConfirm": "Remove this document from the library? (The PDF file will not be deleted.)"
+    "deleteTitle": "Delete Document",
+    "deleteConfirm": "Remove this document from the library? The PDF file will be moved to the Trash and can be restored from there.",
+    "deleteConfirmBulk": "Remove {{count}} documents from the library? Their PDF files will be moved to the Trash and can be restored from there."
   },
   "wizard": {
     "title": "Welcome to ScholarNote",

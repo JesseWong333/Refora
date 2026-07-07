@@ -28,7 +28,8 @@ export function mockElectron() {
     },
     shell: {
       openPath: vi.fn().mockResolvedValue(''),
-      showItemInFolder: vi.fn()
+      showItemInFolder: vi.fn(),
+      trashItem: vi.fn().mockResolvedValue(undefined)
     }
   }))
 }

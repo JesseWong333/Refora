@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { runMigrations, type SqliteLike } from '../../src/main/db/migrations'
 import { createRepositories } from '../../src/main/db/repositories'
@@ -8,6 +8,26 @@ import type { SqliteDb } from '../../src/main/db/types'
 import { createIpcHandlers } from '../../src/main/ipc/handlers'
 import { IpcChannel } from '../../src/shared/ipc-channels'
 import type { ListFilter, Result } from '../../src/shared/ipc-types'
+
+const { mockTrashItem } = vi.hoisted(() => ({
+  mockTrashItem: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined)
+}))
+
+vi.mock('electron', () => ({
+  dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn(), showMessageBox: vi.fn() },
+  ipcMain: { handle: vi.fn() },
+  shell: { trashItem: mockTrashItem, showItemInFolder: vi.fn(), openExternal: vi.fn() },
+  session: { defaultSession: { setProxy: vi.fn() } }
+}))
+
+vi.mock('../../src/main/services/logger', () => ({
+  default: {},
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn()
+  }
+}))
 
 const nodeRequire = createRequire(import.meta.url)
 const { DatabaseSync } = nodeRequire('node:sqlite') as {
@@ -96,6 +116,8 @@ describe('IPC handlers (data layer)', () => {
     seedDefaultSettings(adapt(db), 'en')
     repos = createRepositories(db as unknown as SqliteDb)
     handlers = createIpcHandlers({ repos, win: undefined as never, importer: undefined })
+    mockTrashItem.mockReset()
+    mockTrashItem.mockResolvedValue(undefined)
   })
 
   function seedListDocs(): void {
@@ -199,15 +221,25 @@ describe('IPC handlers (data layer)', () => {
     expect((listR as { ok: true; data: { name: string }[] }).data.map((c) => c.name)).toEqual(['Physics'])
   })
 
-  it('documents.delete cascades to document_categories through IPC', () => {
-    repos.documents.insert(makeDoc('d5'))
+  it('documents.delete cascades to document_categories through IPC', async () => {
+    repos.documents.insert(makeDoc('d5', { filePath: '/tmp/ipc-d5.pdf' }))
     const cat = repos.categories.create('Cascade')
     repos.categories.assign('d5', cat.id)
     expect(repos.categories.listForDocument('d5').length).toBe(1)
 
-    const r = handlers[IpcChannel.DocumentsDelete]('d5')
+    const r = await handlers[IpcChannel.DocumentsDelete]('d5')
     expect(r.ok).toBe(true)
     expect(repos.categories.listForDocument('d5').length).toBe(0)
+  })
+
+  it('documents.bulkDelete removes multiple documents through IPC', async () => {
+    repos.documents.insert(makeDoc('b1', { filePath: '/tmp/ipc-b1.pdf' }))
+    repos.documents.insert(makeDoc('b2', { filePath: '/tmp/ipc-b2.pdf' }))
+    repos.documents.insert(makeDoc('b3', { filePath: '/tmp/ipc-b3.pdf', fileMissing: 1 }))
+
+    const r = await handlers[IpcChannel.DocumentsBulkDelete](['b1', 'b2', 'b3'])
+    expect(r.ok).toBe(true)
+    expect(repos.documents.list({ mode: 'all' })).toHaveLength(0)
   })
 
   it('documents.bulkCategorize assigns many docs to a category', () => {

@@ -512,7 +512,14 @@ function BulkBar({
       <div className="flex flex-col gap-2">
         <button
           className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-error hover:bg-hover"
-          onClick={() => requestDeleteConfirm(selectedIds, t('dialog.deleteConfirm'))}
+          onClick={() =>
+            requestDeleteConfirm(
+              selectedIds,
+              count > 1
+                ? t('dialog.deleteConfirmBulk', { count })
+                : t('dialog.deleteConfirm')
+            )
+          }
         >
           <Trash2 className="h-4 w-4" />
           <span>{t('common.delete')} ({count})</span>

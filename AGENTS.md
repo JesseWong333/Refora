@@ -13,8 +13,6 @@ npm run typecheck && npm run lint && npm run test
 
 A task's own Verification assertions must also pass. Do not mark a task done until both the gate and the task's assertions pass.
 
-## Doc navigation
-The master plan (`.kilo/plans/1782864927939-scholarnote-literature-manager.md`) is the spec of record; `docs/*.md` (when they exist) take precedence over it. Load only the section a task needs — never read all docs at once. Task files live in `.kilo/plans/tasks/`; load **one** at a time. `00-INDEX.md` is the entry point (global rules, stack, IPC surface, dependency table, execution order).
 
 ## Security baseline (never violate)
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` (preload), no `remote`.
@@ -25,7 +23,7 @@ The master plan (`.kilo/plans/1782864927939-scholarnote-literature-manager.md`) 
 
 ## Don't-do list
 - No code comments unless asked.
-- Never delete a source PDF from disk (delete = remove DB record only).
+- Deleting a document moves its PDF to the system Trash (via `shell.trashItem`, best-effort) and removes the DB record. Never hard-delete a source PDF with `fs.unlink`; the file must remain recoverable from the Trash.
 - Never read a whole PDF into memory for hashing (stream it).
 - Never git commit unless explicitly asked.
 - If a test fails and you can't fix it, or a task is blocked, STOP and report — don't guess.

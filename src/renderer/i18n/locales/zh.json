@@ -45,6 +45,9 @@
     "filePath": "PDF位置",
     "note": "笔记",
     "refreshMetadata": "刷新元数据",
+    "refreshing": "刷新中…",
+    "refreshSuccess": "已更新",
+    "refreshFailed": "刷新失败（解析/网络）",
     "relocate": "重新定位",
     "restoreOriginal": "恢复到原始位置",
     "open": "打开",
@@ -87,6 +90,8 @@
     "results": "条结果",
     "importAnyway": "仍然导入",
     "openInFinder": "在访达中打开",
+    "openFile": "打开文件",
+    "showInFolder": "在文件夹中显示",
     "copyPath": "复制路径",
     "multiSelected": "已选择 {{count}} 篇",
     "noResults": "未找到文档",
@@ -98,11 +103,15 @@
     "networkError": "Crossref 无法访问 — 使用离线元数据",
     "exportBibtexTitle": "导出 BibTeX",
     "selectToExport": "请选择一篇或多篇文献以导出",
-    "bibtexExported": "已导出 {{count}} 条到 BibTeX"
+    "bibtexExported": "已导出 {{count}} 条到 BibTeX",
+    "movedToTrash": "已移至废纸篓（{{count}}）",
+    "deleteFailed": "删除文献失败"
   },
   "dialog": {
     "duplicateWarning": "已存在相同内容的文件: {{name}}。跳过此文件？",
-    "deleteConfirm": "从库中移除此文献？（PDF文件不会被删除。）"
+    "deleteTitle": "删除文献",
+    "deleteConfirm": "从库中移除此文献？PDF 文件将被移至废纸篓，可从中恢复。",
+    "deleteConfirmBulk": "从库中移除 {{count}} 篇文献？其 PDF 文件将被移至废纸篓，可从中恢复。"
   },
   "wizard": {
     "title": "欢迎使用 ScholarNote",

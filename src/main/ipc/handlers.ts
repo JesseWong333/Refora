@@ -17,7 +17,7 @@ import { RepoError } from '../db/repositories/errors'
 import type { ImportResult } from '../services/importer'
 import { openPdf } from '../services/pdfOpen'
 import { resolveMovePolicy, moveToLibrary, restoreToOriginal } from '../services/library'
-import { relocate } from '../services/files'
+import { relocate, deleteDocument, bulkDeleteDocuments } from '../services/files'
 import { emitDocumentUpdated } from '../ipc/events'
 import { writeExportFile, importFromJsonFile, toBibtex } from '../services/export'
 import type { createWatcher } from '../services/watcher'
@@ -131,9 +131,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       wrap(() => repos.documents.update(id, patch)),
     [IpcChannel.DocumentsSetStarred]: (id: string, value: boolean): Result<void> =>
       wrap(() => repos.documents.setStarred(id, value)),
-    [IpcChannel.DocumentsDelete]: (id: string): Result<void> => wrap(() => repos.documents.delete(id)),
-    [IpcChannel.DocumentsBulkDelete]: (ids: string[]): Result<void> =>
-      wrap(() => repos.documents.bulkDelete(ids)),
+    [IpcChannel.DocumentsDelete]: (id: string): Promise<Result<void>> =>
+      asyncWrap(() => deleteDocument(repos, id)),
+    [IpcChannel.DocumentsBulkDelete]: (ids: string[]): Promise<Result<void>> =>
+      asyncWrap(() => bulkDeleteDocuments(repos, ids)),
     [IpcChannel.DocumentsBulkCategorize]: (ids: string[], catId: string): Result<void> =>
       wrap(() => {
         const cats = repos.categories.list()

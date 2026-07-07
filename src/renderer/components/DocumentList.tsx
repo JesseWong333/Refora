@@ -310,7 +310,13 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
           key: 'delete',
           label: t('common.delete'),
           icon: <Trash2 className="h-3.5 w-3.5" />,
-          onClick: () => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm')),
+          onClick: () =>
+            requestDeleteConfirm(
+              effectiveIds,
+              effectiveIds.length > 1
+                ? t('dialog.deleteConfirmBulk', { count: effectiveIds.length })
+                : t('dialog.deleteConfirm')
+            ),
           danger: true,
         },
       ]
