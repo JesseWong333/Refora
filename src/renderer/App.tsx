@@ -122,14 +122,16 @@ export default function App({ listColumnState, sidebarCollapsed: initialSidebarC
         {showWizard && <FirstRunWizard onDone={() => setShowWizard(false)} />}
         <div className="flex h-full min-h-0">
           <div style={sidebarStyle} className="shrink-0">
-            <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
+            <div className="h-full py-floating-inset">
+              <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
+            </div>
           </div>
           {!sidebarCollapsed && (
-            <ResizeDivider onResize={handleSidebarResize} />
+            <ResizeDivider onResize={handleSidebarResize} variant="gap" />
           )}
           <DocumentList sidebarCollapsed={sidebarCollapsed} />
           {rightPanelOpen && (
-            <ResizeDivider onResize={handleDetailResize} />
+            <ResizeDivider onResize={handleDetailResize} variant="line" />
           )}
           <div
             className={clsx(

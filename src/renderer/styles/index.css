@@ -167,10 +167,13 @@
     box-shadow: var(--shadow-sm);
   }
 
-  /* Floating sidebar — only the left sidebar floats, the rest is flat */
+  /* Floating sidebar — floats on all four sides so the app background
+     shows through the gap between it and the document list, creating the
+     illusion that the sidebar is suspended above the page. */
   .sidebar-floating {
-    margin: var(--sidebar-inset);
-    margin-right: 0;
+    margin-left: var(--sidebar-inset);
+    margin-top: 0;
+    margin-bottom: 0;
     border-radius: var(--sidebar-radius);
     border: 1px solid var(--color-border);
     background-color: var(--color-panel);
