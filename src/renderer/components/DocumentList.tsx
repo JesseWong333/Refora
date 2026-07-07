@@ -289,8 +289,14 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
         },
         { type: 'divider' as const, key: 'divider-1' },
         {
-          key: 'openInFinder',
-          label: t('common.openInFinder'),
+          key: 'openFile',
+          label: t('common.openFile'),
+          icon: <FileText className="h-3.5 w-3.5" />,
+          onClick: () => openPdf(doc.id),
+        },
+        {
+          key: 'showInFolder',
+          label: t('common.showInFolder'),
           icon: <FolderOpen className="h-3.5 w-3.5" />,
           onClick: () => openInFinder(doc.id),
         },
@@ -322,7 +328,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       ]
       showContextMenu(items)
     },
-    [t, openInFinder, handleCopyPath, refreshMetadata, requestDeleteConfirm, selectedIds, categories, createCategory]
+    [t, openInFinder, handleCopyPath, refreshMetadata, requestDeleteConfirm, selectedIds, categories, createCategory, openPdf]
   )
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {

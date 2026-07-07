@@ -67,7 +67,7 @@ interface DocumentState {
   bulkRefreshMetadata: (ids: string[]) => Promise<void>
   bulkCategorize: (ids: string[], catId: string) => Promise<void>
   updateDocument: (id: string, patch: DocumentPatch) => Promise<Document>
-  refreshMetadata: (docId: string) => Promise<void>
+  refreshMetadata: (docId: string) => Promise<boolean>
   showToast: (message: string) => void
   clearToast: () => void
   requestDeleteConfirm: (ids: string[], message: string) => void
@@ -240,10 +240,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   refreshMetadata: async (docId: string) => {
     try {
-      await api.documents.refreshMetadata(docId)
+      const updated = await api.documents.refreshMetadata(docId)
+      get().patchDocument(docId, updated)
+      return true
     } catch (e) {
       const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to refresh metadata'
       get().showToast(msg)
+      return false
     }
   },
 
@@ -268,6 +271,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   bulkRefreshMetadata: async (ids: string[]) => {
+    set((s) => ({
+      documents: s.documents.map((d) =>
+        ids.includes(d.id) ? { ...d, metadataStatus: 'pending' } : d
+      )
+    }))
     try {
       await api.documents.bulkRefreshMetadata(ids)
     } catch (e) {

@@ -478,6 +478,13 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     return w
   }
 
+  function emitFailedUpdate(docId: string): void {
+    const w = getWin()
+    if (!w) return
+    const updated = repos.documents.get(docId)
+    if (updated) emitDocumentUpdated(w, updated)
+  }
+
   function scheduleIdleKill(): void {
     if (workerIdleTimer) clearTimeout(workerIdleTimer)
     workerIdleTimer = setTimeout(() => {
@@ -592,6 +599,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       logger.warn(`metadata:processJob parse-failed id=${docId}: ${e instanceof Error ? e.message : String(e)}`)
       repos.documents.incrementMetadataAttempts(docId)
       repos.documents.setMetadataStatus(docId, 'failed')
+      emitFailedUpdate(docId)
       return
     }
 
@@ -599,6 +607,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       logger.warn(`metadata:processJob worker-error id=${docId} type=${workerResponse.error.type} msg=${workerResponse.error.message}`)
       repos.documents.incrementMetadataAttempts(docId)
       repos.documents.setMetadataStatus(docId, 'failed')
+      emitFailedUpdate(docId)
       return
     }
 

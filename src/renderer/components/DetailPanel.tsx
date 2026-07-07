@@ -363,16 +363,52 @@ function SingleDetail({ doc }: { doc: Document }) {
   const refreshMetadata = useDocumentStore((s) => s.refreshMetadata)
   const requestDeleteConfirm = useDocumentStore((s) => s.requestDeleteConfirm)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState<'idle' | 'success' | 'failed'>('idle')
+  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const onSaved = useCallback(
     (d: Document) => { patchDocument(d.id, d) },
     [patchDocument]
   )
 
+  useEffect(() => {
+    if (!refreshing) return
+    if (doc.metadataStatus === 'done') {
+      setRefreshing(false)
+      setRefreshResult('success')
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current)
+      resultTimerRef.current = setTimeout(() => setRefreshResult('idle'), 3000)
+    } else if (doc.metadataStatus === 'failed') {
+      setRefreshing(false)
+      setRefreshResult('failed')
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current)
+      resultTimerRef.current = setTimeout(() => setRefreshResult('idle'), 4000)
+    }
+  }, [refreshing, doc.metadataStatus])
+
+  useEffect(() => {
+    return () => {
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current)
+    }
+  }, [])
+
   const handleRefresh = async () => {
     setRefreshing(true)
-    await refreshMetadata(doc.id)
-    setRefreshing(false)
+    setRefreshResult('idle')
+    const enqueued = await refreshMetadata(doc.id)
+    if (!enqueued) {
+      setRefreshing(false)
+    }
+  }
+
+  const handleOpenPdf = async () => {
+    try {
+      const updated = await api.documents.openPdf(doc.id)
+      patchDocument(doc.id, updated)
+    } catch (e) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to open PDF'
+      useDocumentStore.getState().showToast(msg)
+    }
   }
 
   const handleRelocate = async () => {
@@ -410,6 +446,21 @@ function SingleDetail({ doc }: { doc: Document }) {
         >
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           <span>{t('detail.refreshMetadata')}</span>
+          {refreshing && (
+            <span className="text-[10px] font-normal normal-case text-muted">
+              {t('detail.refreshing')}
+            </span>
+          )}
+          {refreshResult === 'success' && (
+            <span className="text-[10px] font-normal normal-case text-accent">
+              {t('detail.refreshSuccess')}
+            </span>
+          )}
+          {refreshResult === 'failed' && (
+            <span className="text-[10px] font-normal normal-case text-error">
+              {t('detail.refreshFailed')}
+            </span>
+          )}
         </button>
       </div>
 
@@ -433,22 +484,33 @@ function SingleDetail({ doc }: { doc: Document }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-          {t('detail.filePath')}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            {t('detail.filePath')}
+          </span>
+          {!doc.fileMissing && (
+            <div className="flex items-center gap-2">
+              <button
+                className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover"
+                onClick={handleOpenPdf}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>{t('common.openFile')}</span>
+              </button>
+              <button
+                className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover"
+                onClick={() => openInFinder(doc.id)}
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+                <span>{t('common.showInFolder')}</span>
+              </button>
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <span className="truncate text-sm text-muted">
             {formatFilePath(doc.filePath)}
           </span>
-          {!doc.fileMissing && (
-            <button
-              className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover flex-shrink-0"
-              onClick={() => openInFinder(doc.id)}
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
-              <span>{t('common.openInFinder')}</span>
-            </button>
-          )}
           {doc.fileMissing && (
             <button
               className="text-xs text-warning hover:underline flex-shrink-0"
