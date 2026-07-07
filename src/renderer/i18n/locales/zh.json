@@ -114,8 +114,8 @@
     "deleteConfirmBulk": "从库中移除 {{count}} 篇文献？其 PDF 文件将被移至废纸篓，可从中恢复。"
   },
   "wizard": {
-    "title": "欢迎使用 ScholarNote",
-    "description": "请选择一个库文件夹来存放您的 PDF。这是开始使用 ScholarNote 的必填步骤。添加到该文件夹的 PDF 将自动导入。",
+    "title": "欢迎使用 Refora",
+    "description": "请选择一个库文件夹来存放您的 PDF。这是开始使用 Refora 的必填步骤。添加到该文件夹的 PDF 将自动导入。",
     "chooseLibrary": "选择库文件夹"
   },
   "toast": {

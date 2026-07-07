@@ -43,7 +43,7 @@
 | # | Category | Severity | Line(s) | Finding | Suggested Fix |
 |---|----------|----------|---------|---------|---------------|
 | 1.1 | IPC Err | **HIGH** | 24-39 | `handleAddFile`, `handleAddFolder`, `handleExportBibtex`, `handleExportJson` call `api.*` methods with `void` and no try/catch. Any IPC failure is silently swallowed with zero user feedback. | Wrap each call in try/catch, call `showToast` on error. |
-| 1.2 | i18n | MEDIUM | 50 | Hardcoded English string `"ScholarNote"` in `<span>` — should be wrapped with `t('app.title')` or equivalent. | Add i18n key and use `t()`. |
+| 1.2 | i18n | MEDIUM | 50 | Hardcoded English string `"Refora"` in `<span>` — should be wrapped with `t('app.title')` or equivalent. | Add i18n key and use `t()`. |
 | 1.3 | i18n | LOW | 46 | `aria-label="Toggle sidebar"` is hardcoded English, not using `t()`. | `aria-label={t('topbar.toggleSidebar')}` |
 | 1.4 | Err Bound | MEDIUM | 24-39 | Related to 1.1: no error boundary pattern at all for async user-initiated actions. | Add error toast on failure. |
 

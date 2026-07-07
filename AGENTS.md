@@ -1,4 +1,4 @@
-# ScholarNote — Agent Guide
+# Refora — Agent Guide
 
 ## Platform
 macOS only.

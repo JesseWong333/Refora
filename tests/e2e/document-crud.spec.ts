@@ -10,7 +10,7 @@ test.describe('Document CRUD', () => {
   let libraryFolder: string
 
   test.beforeAll(async () => {
-    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'scholarnote-e2e-crud-'))
+    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'refora-e2e-crud-'))
     const launchEnv = { ...process.env }
     delete launchEnv.ELECTRON_RUN_AS_NODE
     electronApp = await electron.launch({

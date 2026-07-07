@@ -139,7 +139,7 @@ export interface DocumentEvents {
   off(channel: EventChannel, cb: unknown): void
 }
 
-export interface ScholarNoteApi {
+export interface ReforaApi {
   getBootstrap(): Promise<BootstrapData>
   documents: {
     list(filter: ListFilter): Promise<Document[]>

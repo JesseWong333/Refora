@@ -77,7 +77,7 @@ describe('streamHash', () => {
     const { join } = await import('node:path')
     const { tmpdir } = await import('node:os')
 
-    const tmpFile = join(tmpdir(), `scholarnote-test-${Date.now()}.tmp`)
+    const tmpFile = join(tmpdir(), `refora-test-${Date.now()}.tmp`)
     writeFileSync(tmpFile, 'hello world')
     try {
       const hash = await streamHash(tmpFile)
@@ -99,7 +99,7 @@ describe('streamHash', () => {
     const { join } = await import('node:path')
     const { tmpdir } = await import('node:os')
 
-    const tmpFile = join(tmpdir(), `scholarnote-test-large-${Date.now()}.tmp`)
+    const tmpFile = join(tmpdir(), `refora-test-large-${Date.now()}.tmp`)
     const largeContent = Buffer.alloc(10 * 1024 * 1024, 'a')
     writeFileSync(tmpFile, largeContent)
     try {

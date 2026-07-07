@@ -29,7 +29,7 @@ test.describe('Import E2E', () => {
   let libraryFolder: string
 
   test.beforeAll(async () => {
-    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'scholarnote-e2e-lib-'))
+    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'refora-e2e-lib-'))
     electronApp = await electron.launch({
       executablePath: electronExe,
       env: {

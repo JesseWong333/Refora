@@ -33,7 +33,7 @@ test.describe('IPC Smoke', () => {
   let libraryFolder: string
 
   test.beforeAll(async () => {
-    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'scholarnote-e2e-smoke-'))
+    libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'refora-e2e-smoke-'))
     electronApp = await electron.launch({
       executablePath: electronExe,
       env: {

@@ -30,7 +30,7 @@ import type { CategoryDialogState } from './CategoryDialog'
 import SettingsModal from './SettingsModal'
 import { api } from '../ipc'
 
-const DOC_MIME = 'application/x-scholarnote-docids'
+const DOC_MIME = 'application/x-refora-docids'
 
 interface SidebarProps {
   collapsed: boolean

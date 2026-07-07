@@ -1,8 +1,8 @@
-import type { ScholarNoteApi } from '../shared/ipc-types'
+import type { ReforaApi } from '../shared/ipc-types'
 
 declare global {
   interface Window {
-    api: ScholarNoteApi
+    api: ReforaApi
     __i18n?: { changeLanguage(lng: string): Promise<unknown> }
   }
 }

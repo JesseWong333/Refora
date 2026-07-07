@@ -30,10 +30,10 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
       <div className="dialog-panel flex w-80 flex-col items-center gap-4">
         <BookOpen className="h-12 w-12 text-accent" />
         <h1 className="text-base font-semibold text-foreground">
-          {t('wizard.title', 'Welcome to ScholarNote')}
+          {t('wizard.title', 'Welcome to Refora')}
         </h1>
         <p className="text-center text-xs text-muted leading-relaxed">
-          {t('wizard.description', 'Choose a Library Folder to store your PDFs. This is required to start using ScholarNote. Any PDF you add there is imported automatically.')}
+          {t('wizard.description', 'Choose a Library Folder to store your PDFs. This is required to start using Refora. Any PDF you add there is imported automatically.')}
         </p>
         <div className="flex w-full flex-col gap-2">
           <button

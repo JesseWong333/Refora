@@ -1,9 +1,9 @@
 {
-  "name": "scholarnote",
+  "name": "refora",
   "version": "0.1.0",
   "description": "Local-first PDF literature manager",
   "main": "out/main/index.js",
-  "author": "ScholarNote",
+  "author": "Refora",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",

@@ -1,3 +1,3 @@
-import type { ScholarNoteApi } from '../shared/ipc-types'
+import type { ReforaApi } from '../shared/ipc-types'
 
-export const api: ScholarNoteApi = window.api
+export const api: ReforaApi = window.api

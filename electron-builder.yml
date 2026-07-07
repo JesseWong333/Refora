@@ -1,5 +1,5 @@
-appId: com.scholarnote.app
-productName: ScholarNote
+appId: com.refora.app
+productName: Refora
 directories:
   output: dist
   buildResources: build

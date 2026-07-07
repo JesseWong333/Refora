@@ -9,7 +9,7 @@ import type {
   ImportProgress,
   ListFilter,
   Result,
-  ScholarNoteApi,
+  ReforaApi,
   SearchResult,
   WatchFolder
 } from '../shared/ipc-types'
@@ -43,7 +43,7 @@ function unsubscribe(channel: string, cb: unknown): void {
   }
 }
 
-const api: ScholarNoteApi = {
+const api: ReforaApi = {
   getBootstrap: () => invoke<BootstrapData>(IpcChannel.Bootstrap),
 
   documents: {

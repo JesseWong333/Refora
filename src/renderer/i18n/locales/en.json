@@ -114,8 +114,8 @@
     "deleteConfirmBulk": "Remove {{count}} documents from the library? Their PDF files will be moved to the Trash and can be restored from there."
   },
   "wizard": {
-    "title": "Welcome to ScholarNote",
-    "description": "Choose a Library Folder to store your PDFs. This is required to start using ScholarNote. Any PDF you add there is imported automatically.",
+    "title": "Welcome to Refora",
+    "description": "Choose a Library Folder to store your PDFs. This is required to start using Refora. Any PDF you add there is imported automatically.",
     "chooseLibrary": "Choose Library Folder"
   },
   "toast": {

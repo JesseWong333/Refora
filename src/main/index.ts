@@ -136,7 +136,7 @@ function buildMenu(): Menu {
             if (!w || !repos) return
             const result = await dialog.showSaveDialog(w, {
               title: 'Export JSON',
-              defaultPath: `scholarnote-export-${new Date().toISOString().slice(0, 10)}.json`,
+              defaultPath: `refora-export-${new Date().toISOString().slice(0, 10)}.json`,
               filters: [{ name: 'JSON files', extensions: ['json'] }]
             })
             if (result.canceled || !result.filePath) return
@@ -173,7 +173,7 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     minHeight: 500,
     backgroundColor: '#1e1e1e',
     show: false,
-    title: 'ScholarNote',
+    title: 'Refora',
     ...(IS_MAC && {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 22, y: 22 }
@@ -239,7 +239,7 @@ void app.whenReady().then(() => {
   logger.info(`app:ready (dev=${isDev})`)
   applyCsp()
 
-  const dbPath = join(app.getPath('userData'), 'scholarnote.db')
+  const dbPath = join(app.getPath('userData'), 'refora.db')
   db = openDatabase(dbPath)
   seedSettings(db, detectLanguage())
 

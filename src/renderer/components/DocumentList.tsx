@@ -10,7 +10,7 @@ import type { Document, ColumnId, SortField, ListColumn, Category } from '../../
 
 const ROW_HEIGHT = 36
 const MIN_COL_WIDTH = 40
-const DOC_MIME = 'application/x-scholarnote-docids'
+const DOC_MIME = 'application/x-refora-docids'
 
 function formatDate(ts: number): string {
   const d = new Date(ts)

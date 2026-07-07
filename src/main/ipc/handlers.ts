@@ -389,7 +389,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       asyncWrap(async () => {
         const result = await dialog.showSaveDialog(requireWin(), {
           title: 'Export JSON',
-          defaultPath: `scholarnote-export-${new Date().toISOString().slice(0, 10)}.json`,
+          defaultPath: `refora-export-${new Date().toISOString().slice(0, 10)}.json`,
           filters: [{ name: 'JSON files', extensions: ['json'] }]
         })
         if (result.canceled || !result.filePath) return ''
@@ -403,7 +403,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (docs.length === 0) return ''
         const result = await dialog.showSaveDialog(requireWin(), {
           title: 'Export BibTeX',
-          defaultPath: `scholarnote-export-${new Date().toISOString().slice(0, 10)}.bib`,
+          defaultPath: `refora-export-${new Date().toISOString().slice(0, 10)}.bib`,
           filters: [{ name: 'BibTeX files', extensions: ['bib'] }]
         })
         if (result.canceled || !result.filePath) return ''

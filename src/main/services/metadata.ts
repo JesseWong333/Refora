@@ -180,8 +180,8 @@ async function fetchCrossref(doi: string, mailto: string): Promise<{ data: Parti
 
   try {
     const userAgent = mailto
-      ? `ScholarNote/0.1 (mailto:${mailto})`
-      : 'ScholarNote/0.1 (mailto:support@scholarnote.app)'
+      ? `Refora/0.1 (mailto:${mailto})`
+      : 'Refora/0.1 (mailto:support@refora.app)'
     const response = await net.fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
       signal: controller.signal,
       headers: { 'User-Agent': userAgent }
@@ -340,7 +340,7 @@ async function fetchDblpByTitle(title: string): Promise<{ data: Partial<Document
     const url = `https://dblp.org/search/publ/api?q=${encodeURIComponent(title)}&format=json&h=1`
     const response = await net.fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'ScholarNote/0.1 (mailto:support@scholarnote.app)' }
+      headers: { 'User-Agent': 'Refora/0.1 (mailto:support@refora.app)' }
     })
     if (!response.ok) return null
     const body = await response.json() as {
