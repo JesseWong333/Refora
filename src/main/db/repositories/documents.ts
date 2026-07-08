@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { isAbsolute } from 'node:path'
 import type {
   Document,
   DocumentPatch,
@@ -13,8 +14,13 @@ import type {
 } from '../../../shared/ipc-types'
 import type { SqliteDb } from '../types'
 import { RepoError } from './errors'
+import { toLibraryRelative, resolveFromLibrary } from '../../services/paths'
 
 export type NewDocument = Omit<Document, 'categories'>
+
+export interface DocumentsRepoDeps {
+  getLibraryFolder: () => string
+}
 
 const EDITABLE_FIELDS: readonly EditableField[] = [
   'title',
@@ -106,11 +112,15 @@ function parseRemoteValues(raw: unknown): RemoteValues | null {
   }
 }
 
-function mapDocument(row: Record<string, unknown>): Document {
+function mapDocument(row: Record<string, unknown>, libraryFolder: string): Document {
+  const rawFilePath = row.filePath as string
+  const rawOriginalFolderPath = row.originalFolderPath as string
   return {
     id: row.id as string,
-    filePath: row.filePath as string,
-    originalFolderPath: row.originalFolderPath as string,
+    filePath: resolveFromLibrary(rawFilePath, libraryFolder),
+    originalFolderPath: rawOriginalFolderPath && isAbsolute(rawOriginalFolderPath)
+      ? rawOriginalFolderPath
+      : resolveFromLibrary(rawOriginalFolderPath, libraryFolder),
     fileName: row.fileName as string,
     fileSize: (row.fileSize as number | null) ?? null,
     fileHash: (row.fileHash as string | null) ?? null,
@@ -143,7 +153,9 @@ function orderByClause(mode: ListMode, sort?: { field: SortField; dir: 'asc' | '
   return 'ORDER BY addedAt DESC'
 }
 
-export function createDocumentsRepository(db: SqliteDb) {
+export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps) {
+  const lib = () => deps.getLibraryFolder()
+
   function list(filter: ListFilter): Document[] {
     let where = ''
     const params: unknown[] = []
@@ -160,7 +172,7 @@ export function createDocumentsRepository(db: SqliteDb) {
       string,
       unknown
     >[]
-    return rows.map(mapDocument)
+    return rows.map((r) => mapDocument(r, lib()))
   }
 
   function search(q: string): SearchResult {
@@ -172,7 +184,7 @@ export function createDocumentsRepository(db: SqliteDb) {
           'SELECT d.* FROM documents d JOIN docs_fts f ON d.rowid = f.rowid WHERE docs_fts MATCH ? ORDER BY rank'
         )
         .all(trimmed) as Record<string, unknown>[]
-      return rows.map(mapDocument)
+      return rows.map((r) => mapDocument(r, lib()))
     }
     const like = `%${trimmed}%`
     const clauses = FTS_LIKE_COLUMNS.map((c) => `${c} LIKE ?`).join(' OR ')
@@ -181,20 +193,21 @@ export function createDocumentsRepository(db: SqliteDb) {
       string,
       unknown
     >[]
-    return rows.map(mapDocument)
+    return rows.map((r) => mapDocument(r, lib()))
   }
 
   function get(id: string): Document | null {
     const row = db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as
       | Record<string, unknown>
       | undefined
-    return row ? mapDocument(row) : null
+    return row ? mapDocument(row, lib()) : null
   }
 
   function insert(doc: NewDocument): Document {
+    const lf = lib()
     const values: unknown[] = [
       doc.id,
-      doc.filePath,
+      toLibraryRelative(doc.filePath, lf),
       doc.originalFolderPath,
       doc.fileName,
       doc.fileSize,
@@ -265,22 +278,26 @@ export function createDocumentsRepository(db: SqliteDb) {
   }
 
   function findByPath(filePath: string): Document | null {
-    const row = db.prepare('SELECT * FROM documents WHERE filePath = ?').get(filePath) as
+    const lf = lib()
+    const rel = toLibraryRelative(filePath, lf)
+    const row = db.prepare('SELECT * FROM documents WHERE filePath = ?').get(rel) as
       | Record<string, unknown>
       | undefined
-    return row ? mapDocument(row) : null
+    return row ? mapDocument(row, lf) : null
   }
 
   function findByHash(fileHash: string): Document | null {
+    const lf = lib()
     const row = db.prepare('SELECT * FROM documents WHERE fileHash = ?').get(fileHash) as
       | Record<string, unknown>
       | undefined
-    return row ? mapDocument(row) : null
+    return row ? mapDocument(row, lf) : null
   }
 
   function updateFilePath(id: string, filePath: string, fileName: string): void {
+    const rel = toLibraryRelative(filePath, lib())
     db.prepare('UPDATE documents SET filePath = ?, fileName = ?, updatedAt = ? WHERE id = ?').run(
-      filePath,
+      rel,
       fileName,
       Date.now(),
       id
@@ -324,12 +341,13 @@ export function createDocumentsRepository(db: SqliteDb) {
   }
 
   function getResumableMetadataRows(): Document[] {
+    const lf = lib()
     const rows = db
       .prepare(
         "SELECT * FROM documents WHERE metadataStatus = 'pending' OR (metadataStatus = 'failed' AND metadataAttempts < 3)"
       )
       .all() as Record<string, unknown>[]
-    return rows.map(mapDocument)
+    return rows.map((r) => mapDocument(r, lf))
   }
 
   function countPendingMetadata(): number {

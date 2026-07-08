@@ -18,3 +18,4 @@ playwright-report/
 *.log.*
 .vite/
 .cache/
+.tmp/

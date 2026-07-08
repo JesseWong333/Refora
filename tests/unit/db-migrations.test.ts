@@ -82,8 +82,8 @@ describe('db migrations + schema', () => {
     expect(userVersion(db)).toBe(0)
     const result = runMigrations(adapt(db))
     expect(result.from).toBe(0)
-    expect(result.to).toBe(2)
-    expect(userVersion(db)).toBe(2)
+    expect(result.to).toBe(3)
+    expect(userVersion(db)).toBe(3)
 
     for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts']) {
       const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)
@@ -115,9 +115,9 @@ describe('db migrations + schema', () => {
   it('is idempotent: running migrations twice does not error or change version', () => {
     runMigrations(adapt(db))
     const second = runMigrations(adapt(db))
-    expect(second.from).toBe(2)
-    expect(second.to).toBe(2)
-    expect(userVersion(db)).toBe(2)
+    expect(second.from).toBe(3)
+    expect(second.to).toBe(3)
+    expect(userVersion(db)).toBe(3)
   })
 
   it('drops the legacy moveToLibrary column from categories', () => {
@@ -133,6 +133,34 @@ describe('db migrations + schema', () => {
   it('drops moveToLibrary from a pre-migration v1 schema', () => {
     db.exec('PRAGMA user_version = 0')
     db.exec(`
+      CREATE TABLE documents (
+        id TEXT PRIMARY KEY,
+        filePath TEXT NOT NULL,
+        originalFolderPath TEXT NOT NULL,
+        fileName TEXT NOT NULL,
+        fileSize INTEGER,
+        fileHash TEXT,
+        title TEXT,
+        authors TEXT,
+        year TEXT,
+        venue TEXT,
+        volume TEXT,
+        abstract TEXT,
+        keywords TEXT,
+        url TEXT,
+        doi TEXT,
+        note TEXT,
+        starred INTEGER NOT NULL DEFAULT 0,
+        addedAt INTEGER NOT NULL,
+        lastReadAt INTEGER,
+        updatedAt INTEGER NOT NULL,
+        metadataSource TEXT,
+        metadataStatus TEXT NOT NULL DEFAULT 'pending',
+        metadataAttempts INTEGER NOT NULL DEFAULT 0,
+        editedFields TEXT NOT NULL DEFAULT '[]',
+        remoteValues TEXT,
+        fileMissing INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE categories (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -141,10 +169,27 @@ describe('db migrations + schema', () => {
         createdAt INTEGER NOT NULL,
         UNIQUE(name)
       );
+      CREATE TABLE document_categories (
+        documentId TEXT NOT NULL,
+        categoryId TEXT NOT NULL,
+        PRIMARY KEY (documentId, categoryId),
+        FOREIGN KEY (documentId) REFERENCES documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (categoryId) REFERENCES categories(id) ON DELETE CASCADE
+      );
+      CREATE TABLE watch_folders (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        addedAt INTEGER NOT NULL
+      );
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `)
     db.exec(`PRAGMA user_version = 1`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(2)
+    expect(result.to).toBe(3)
     const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
     expect(cols.map((c) => c.name)).not.toContain('moveToLibrary')
   })
@@ -218,6 +263,49 @@ describe('db migrations + schema', () => {
       db.prepare(sql).run(...params)
       expect(matchCount(db, 'banana')).toBe(0)
     }
+  })
+
+  it('migration 0003 rewrites library-absolute filePaths to library-relative', () => {
+    runMigrations(adapt(db))
+    seedDefaultSettings(adapt(db), 'en')
+    db.prepare(`UPDATE settings SET value = ? WHERE key = 'libraryFolderPath'`).run(
+      JSON.stringify('/Users/x/Library')
+    )
+
+    db.prepare(
+      `INSERT INTO documents (id, filePath, originalFolderPath, fileName, addedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('in-lib', '/Users/x/Library/paper.pdf', '/Users/x/Downloads', 'paper.pdf', 1000, 1000)
+    db.prepare(
+      `INSERT INTO documents (id, filePath, originalFolderPath, fileName, addedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('nested', '/Users/x/Library/sub/nested.pdf', '/Users/x/Downloads', 'nested.pdf', 1000, 1000)
+    db.prepare(
+      `INSERT INTO documents (id, filePath, originalFolderPath, fileName, addedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('outside', '/Users/x/Downloads/other.pdf', '/Users/x/Downloads', 'other.pdf', 1000, 1000)
+
+    db.exec(`PRAGMA user_version = 2`)
+    const result = runMigrations(adapt(db))
+    expect(result.to).toBe(3)
+
+    const inLib = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('in-lib') as { filePath: string }
+    const nested = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('nested') as { filePath: string }
+    const outside = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('outside') as { filePath: string }
+    expect(inLib.filePath).toBe('paper.pdf')
+    expect(nested.filePath).toBe('sub/nested.pdf')
+    expect(outside.filePath).toBe('/Users/x/Downloads/other.pdf')
+  })
+
+  it('migration 0003 is a no-op when libraryFolderPath is empty', () => {
+    runMigrations(adapt(db))
+    seedDefaultSettings(adapt(db), 'en')
+    db.prepare(
+      `INSERT INTO documents (id, filePath, originalFolderPath, fileName, addedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('d1', '/abs/d1.pdf', '/abs', 'd1.pdf', 1000, 1000)
+
+    db.exec(`PRAGMA user_version = 2`)
+    runMigrations(adapt(db))
+
+    const row = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('d1') as { filePath: string }
+    expect(row.filePath).toBe('/abs/d1.pdf')
   })
 })
 

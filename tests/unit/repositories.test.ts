@@ -249,6 +249,42 @@ describe('documents repository', () => {
     repos.documents.bulkDelete(['b1', 'b3'])
     expect(ids(repos.documents.list({ mode: 'all' }))).toEqual(['b2'])
   })
+
+  it('stores filePath library-relative and resolves it to absolute on read', () => {
+    repos.settings.set('libraryFolderPath', '/Users/x/Library')
+    const doc = repos.documents.insert(
+      makeDoc('r1', { filePath: '/Users/x/Library/sub/paper.pdf', originalFolderPath: '/Users/x/Downloads' })
+    )
+    expect(doc.filePath).toBe('/Users/x/Library/sub/paper.pdf')
+
+    const raw = db.prepare('SELECT filePath FROM documents WHERE id = ?').get('r1') as { filePath: string }
+    expect(raw.filePath).toBe('sub/paper.pdf')
+
+    const fetched = repos.documents.get('r1')
+    expect(fetched?.filePath).toBe('/Users/x/Library/sub/paper.pdf')
+    expect(fetched?.originalFolderPath).toBe('/Users/x/Downloads')
+
+    expect(repos.documents.findByPath('/Users/x/Library/sub/paper.pdf')?.id).toBe('r1')
+  })
+
+  it('leaves outside-library filePaths absolute on insert and find', () => {
+    repos.settings.set('libraryFolderPath', '/Users/x/Library')
+    repos.documents.insert(makeDoc('o1', { filePath: '/Users/x/Downloads/other.pdf' }))
+    const raw = db.prepare('SELECT filePath FROM documents WHERE id = ?').get('o1') as { filePath: string }
+    expect(raw.filePath).toBe('/Users/x/Downloads/other.pdf')
+    expect(repos.documents.findByPath('/Users/x/Downloads/other.pdf')?.id).toBe('o1')
+  })
+
+  it('resolves relative filePaths after switching library folder to a new absolute root', () => {
+    repos.settings.set('libraryFolderPath', '/Users/x/Library')
+    repos.documents.insert(makeDoc('p1', { filePath: '/Users/x/Library/sub/paper.pdf' }))
+    const raw = db.prepare('SELECT filePath FROM documents WHERE id = ?').get('p1') as { filePath: string }
+    expect(raw.filePath).toBe('sub/paper.pdf')
+
+    repos.settings.set('libraryFolderPath', '/Users/y/Library')
+    const fetched = repos.documents.get('p1')
+    expect(fetched?.filePath).toBe('/Users/y/Library/sub/paper.pdf')
+  })
 })
 
 describe('categories repository', () => {

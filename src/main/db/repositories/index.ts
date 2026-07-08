@@ -5,11 +5,17 @@ import { createWatchFoldersRepository } from './watchFolders'
 import { createSettingsRepository } from './settings'
 
 export function createRepositories(db: SqliteDb) {
+  const settings = createSettingsRepository(db)
+  const documents = createDocumentsRepository(db, {
+    getLibraryFolder: () => settings.get<string>('libraryFolderPath', '')
+  })
+  const categories = createCategoriesRepository(db)
+  const watchFolders = createWatchFoldersRepository(db)
   return {
-    documents: createDocumentsRepository(db),
-    categories: createCategoriesRepository(db),
-    watchFolders: createWatchFoldersRepository(db),
-    settings: createSettingsRepository(db)
+    documents,
+    categories,
+    watchFolders,
+    settings
   }
 }
 
