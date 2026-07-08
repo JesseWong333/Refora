@@ -1,7 +1,17 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { Repositories } from '../db/repositories'
-import type { Document, Category } from '../../shared/ipc-types'
+import type { SqliteDb } from '../db/types'
+import type { NewDocument } from '../db/repositories/documents'
+import type {
+  Document,
+  Category,
+  EditableField,
+  MetadataSource,
+  MetadataStatus,
+  RemoteValues
+} from '../../shared/ipc-types'
 import { lookupVenue, venueType } from './venue-map'
+import { toLibraryRelative } from './paths'
 
 const BIBTEX_ESCAPE_MAP: Record<string, string> = {
   '\\': '\\textbackslash{}',
@@ -91,7 +101,10 @@ function buildCitekey(doc: Document, used: Set<string>): string {
         key = base + String.fromCharCode(96 + suffix)
         suffix++
         if (suffix > 26) {
-          key = base + suffix
+          while (used.has(key)) {
+            suffix++
+            key = base + suffix
+          }
           break
         }
       }
@@ -107,7 +120,10 @@ function buildCitekey(doc: Document, used: Set<string>): string {
     key = fallback + String.fromCharCode(96 + suffix)
     suffix++
     if (suffix > 26) {
-      key = fallback + suffix
+      while (used.has(key)) {
+        suffix++
+        key = fallback + suffix
+      }
       break
     }
   }
@@ -213,66 +229,212 @@ function parseExportJson(json: string): ExportData {
   return parsed as ExportData
 }
 
-function importReplace(repos: Repositories, data: ExportData): number {
-  const existingDocIds = repos.documents.list({ mode: 'all' }).map((d) => d.id)
-  if (existingDocIds.length > 0) {
-    repos.documents.bulkDelete(existingDocIds)
-  }
+const EDITABLE_FIELD_VALUES: readonly EditableField[] = [
+  'title',
+  'authors',
+  'year',
+  'venue',
+  'volume',
+  'issue',
+  'pages',
+  'abstract',
+  'keywords',
+  'url',
+  'doi',
+  'note'
+]
 
-  const existingCats = repos.categories.list()
-  for (const c of existingCats) {
-    repos.categories.delete(c.id)
-  }
+const METADATA_STATUS_VALUES: readonly MetadataStatus[] = ['pending', 'done', 'failed']
 
-  const catNameToId = new Map<string, string>()
-  for (const cat of data.categories) {
-    try {
-      const created = repos.categories.create(cat.name)
-      catNameToId.set(cat.name, created.id)
-    } catch {
-      continue
-    }
-  }
+const METADATA_SOURCE_VALUES: readonly MetadataSource[] = [
+  'pdf',
+  'crossref',
+  'arxiv',
+  'dblp',
+  'manual'
+]
 
-  let count = 0
-  for (const doc of data.documents) {
-    try {
-      repos.documents.insert(doc)
-      count++
-    } catch {
-      continue
-    }
-  }
-
-  for (const dc of data.documentCategories) {
-    try {
-      repos.categories.assign(dc.documentId, dc.categoryId)
-    } catch {
-      continue
-    }
-  }
-
-  return count
+function asStringOrNull(v: unknown): string | null {
+  return typeof v === 'string' ? v : null
 }
 
-function importMerge(repos: Repositories, data: ExportData): number {
+function asNumberOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+function asNumberDefault(v: unknown, def: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : def
+}
+
+function sanitizeImportedDoc(doc: unknown, libraryFolder: string): NewDocument | null {
+  if (!doc || typeof doc !== 'object') return null
+  const d = doc as Record<string, unknown>
+
+  if (typeof d.id !== 'string' || d.id.length === 0) return null
+  if (typeof d.filePath !== 'string') return null
+  if (typeof d.fileName !== 'string') return null
+
+  const filePath = libraryFolder ? toLibraryRelative(d.filePath, libraryFolder) : d.filePath
+
+  const editedFields: EditableField[] = Array.isArray(d.editedFields)
+    ? d.editedFields.filter(
+        (v): v is EditableField =>
+          typeof v === 'string' &&
+          (EDITABLE_FIELD_VALUES as readonly string[]).includes(v)
+      )
+    : []
+
+  const remoteValues: RemoteValues | null =
+    d.remoteValues !== null && typeof d.remoteValues === 'object'
+      ? (d.remoteValues as RemoteValues)
+      : null
+
+  const metadataStatus: MetadataStatus =
+    typeof d.metadataStatus === 'string' &&
+    (METADATA_STATUS_VALUES as readonly string[]).includes(d.metadataStatus)
+      ? (d.metadataStatus as MetadataStatus)
+      : 'pending'
+
+  const metadataSource: MetadataSource | null =
+    typeof d.metadataSource === 'string' &&
+    (METADATA_SOURCE_VALUES as readonly string[]).includes(d.metadataSource)
+      ? (d.metadataSource as MetadataSource)
+      : null
+
+  return {
+    id: d.id,
+    filePath,
+    originalFolderPath: typeof d.originalFolderPath === 'string' ? d.originalFolderPath : '',
+    fileName: d.fileName,
+    fileSize: asNumberOrNull(d.fileSize),
+    fileHash: asStringOrNull(d.fileHash),
+    title: asStringOrNull(d.title),
+    authors: asStringOrNull(d.authors),
+    year: asStringOrNull(d.year),
+    venue: asStringOrNull(d.venue),
+    volume: asStringOrNull(d.volume),
+    issue: asStringOrNull(d.issue),
+    pages: asStringOrNull(d.pages),
+    abstract: asStringOrNull(d.abstract),
+    keywords: asStringOrNull(d.keywords),
+    url: asStringOrNull(d.url),
+    doi: asStringOrNull(d.doi),
+    note: asStringOrNull(d.note),
+    starred: asNumberDefault(d.starred, 0),
+    addedAt: asNumberDefault(d.addedAt, 0),
+    lastReadAt: asNumberOrNull(d.lastReadAt),
+    updatedAt: asNumberDefault(d.updatedAt, 0),
+    metadataSource,
+    metadataStatus,
+    metadataAttempts: asNumberDefault(d.metadataAttempts, 0),
+    editedFields,
+    remoteValues,
+    fileMissing: asNumberDefault(d.fileMissing, 0)
+  }
+}
+
+function importReplace(
+  repos: Repositories,
+  data: ExportData,
+  libraryFolder: string,
+  db?: SqliteDb
+): number {
+  if (!db) {
+    throw new Error('Database connection required for replace import')
+  }
+
+  const sanitizedDocs = data.documents
+    .map((doc) => sanitizeImportedDoc(doc, libraryFolder))
+    .filter((d): d is NewDocument => d !== null)
+
+  const doReplace = (): number => {
+    const existingDocIds = repos.documents.list({ mode: 'all' }).map((d) => d.id)
+    if (existingDocIds.length > 0) {
+      repos.documents.bulkDelete(existingDocIds)
+    }
+
+    const existingCats = repos.categories.list()
+    for (const c of existingCats) {
+      repos.categories.delete(c.id)
+    }
+
+    const oldCatIdToNew = new Map<string, string>()
+    const seenNames = new Set<string>()
+    for (const cat of data.categories) {
+      if (typeof cat.id !== 'string' || typeof cat.name !== 'string') continue
+      if (oldCatIdToNew.has(cat.id) || seenNames.has(cat.name)) continue
+      const created = repos.categories.create(cat.name)
+      oldCatIdToNew.set(cat.id, created.id)
+      seenNames.add(cat.name)
+    }
+
+    const insertedDocIds = new Set<string>()
+    let count = 0
+    for (const doc of sanitizedDocs) {
+      repos.documents.insert(doc)
+      insertedDocIds.add(doc.id)
+      count++
+    }
+
+    for (const dc of data.documentCategories) {
+      if (typeof dc.documentId !== 'string' || typeof dc.categoryId !== 'string') continue
+      if (!insertedDocIds.has(dc.documentId)) continue
+      const newCatId = oldCatIdToNew.get(dc.categoryId)
+      if (newCatId) {
+        repos.categories.assign(dc.documentId, newCatId)
+      }
+    }
+
+    return count
+  }
+
+  db.exec('BEGIN')
+  try {
+    const count = doReplace()
+    db.exec('COMMIT')
+    return count
+  } catch (e) {
+    try {
+      db.exec('ROLLBACK')
+    } catch {
+      // transaction may have already auto-rolled back
+    }
+    throw e
+  }
+}
+
+function importMerge(repos: Repositories, data: ExportData, libraryFolder: string): number {
+  const oldCatIdToNew = new Map<string, string>()
+  const nameToDbId = new Map<string, string>()
+  for (const cat of repos.categories.list()) {
+    nameToDbId.set(cat.name, cat.id)
+  }
   for (const cat of data.categories) {
-    const existing = repos.categories.list().find((c) => c.name === cat.name)
-    if (!existing) {
+    if (typeof cat.id !== 'string' || typeof cat.name !== 'string') continue
+    if (oldCatIdToNew.has(cat.id)) continue
+    let dbId = nameToDbId.get(cat.name)
+    if (!dbId) {
       try {
-        repos.categories.create(cat.name)
+        const created = repos.categories.create(cat.name)
+        dbId = created.id
+        nameToDbId.set(cat.name, dbId)
       } catch {
         continue
       }
     }
+    oldCatIdToNew.set(cat.id, dbId)
   }
 
+  const insertedDocIds = new Set<string>()
   let count = 0
   for (const doc of data.documents) {
-    const existing = repos.documents.get(doc.id)
+    const sanitized = sanitizeImportedDoc(doc, libraryFolder)
+    if (!sanitized) continue
+    const existing = repos.documents.get(sanitized.id)
     if (existing) continue
     try {
-      repos.documents.insert(doc)
+      repos.documents.insert(sanitized)
+      insertedDocIds.add(sanitized.id)
       count++
     } catch {
       continue
@@ -280,10 +442,15 @@ function importMerge(repos: Repositories, data: ExportData): number {
   }
 
   for (const dc of data.documentCategories) {
-    try {
-      repos.categories.assign(dc.documentId, dc.categoryId)
-    } catch {
-      continue
+    if (typeof dc.documentId !== 'string' || typeof dc.categoryId !== 'string') continue
+    if (!insertedDocIds.has(dc.documentId)) continue
+    const newCatId = oldCatIdToNew.get(dc.categoryId)
+    if (newCatId) {
+      try {
+        repos.categories.assign(dc.documentId, newCatId)
+      } catch {
+        continue
+      }
     }
   }
 
@@ -298,14 +465,16 @@ export function writeExportFile(repos: Repositories, filePath: string): void {
 export function importFromJsonFile(
   repos: Repositories,
   filePath: string,
-  mode: 'replace' | 'merge'
+  mode: 'replace' | 'merge',
+  db?: SqliteDb
 ): number {
   const json = readFileSync(filePath, 'utf-8')
   const data = parseExportJson(json)
+  const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
   if (mode === 'replace') {
-    return importReplace(repos, data)
+    return importReplace(repos, data, libraryFolder, db)
   }
-  return importMerge(repos, data)
+  return importMerge(repos, data, libraryFolder)
 }
 
 export { serialize, parseExportJson, type ExportData }

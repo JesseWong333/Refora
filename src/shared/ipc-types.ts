@@ -1,3 +1,5 @@
+import { IpcChannel } from './ipc-channels'
+
 export interface IpcError {
   code: string
   message: string
@@ -133,7 +135,7 @@ export interface BootstrapData {
   listColumnState: ListColumnState | null
   sidebarCollapsed: boolean
   firstRun: boolean
-  libraryFolderPath: string
+  libraryFolderPath: string | null
 }
 
 export interface ImportProgress {
@@ -151,7 +153,8 @@ export interface LibrarySwitchResult {
   errors: Array<{ path: string; message: string }>
 }
 
-export type EventChannel = 'document:updated' | 'import:progress' | 'import:toast' | 'menu:export-bibtex' | 'library:scanning' | 'library:switched'
+export type EventChannelKey = keyof typeof IpcChannel & `Event${string}`
+export type EventChannel = (typeof IpcChannel)[EventChannelKey]
 
 export interface DocumentEvents {
   onDocumentUpdated(cb: (doc: Document) => void): void

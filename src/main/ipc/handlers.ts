@@ -14,6 +14,7 @@ import type {
   WatchFolder
 } from '../../shared/ipc-types'
 import type { Repositories } from '../db/repositories'
+import type { SqliteDb } from '../db/types'
 import { RepoError } from '../db/repositories/errors'
 import type { ImportResult } from '../services/importer'
 import { openPdf } from '../services/pdfOpen'
@@ -60,7 +61,7 @@ function bootstrapFromSettings(repos: Repositories): BootstrapData {
     listColumnState: bs.listColumnState,
     sidebarCollapsed: bs.sidebarCollapsed,
     firstRun: !bs.libraryFolderPath,
-    libraryFolderPath: bs.libraryFolderPath
+    libraryFolderPath: bs.libraryFolderPath || null
   }
 }
 
@@ -89,6 +90,7 @@ function findPdfsRecursively(dir: string): string[] {
 
 export interface RuntimeRef {
   repos: Repositories
+  db?: SqliteDb
   importer?: {
     importFiles: (paths: string[], isWatch: boolean) => Promise<ImportResult>
     destroy: () => void
@@ -287,7 +289,9 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (modeChoice.response === 2) return 0
 
         const mode = modeChoice.response === 1 ? 'replace' : 'merge'
-        return importFromJsonFile(repos(), filePath, mode)
+        const rt = deps.getRuntime()
+        if (!rt) throw new Error('Runtime not ready')
+        return importFromJsonFile(rt.repos, filePath, mode, rt.db)
       }),
 
     [IpcChannel.CategoriesList]: (): Result<Category[]> => wrap(() => {

@@ -128,7 +128,7 @@ function buildMenu(): Menu {
             })
             if (modeChoice.response === 2) return
             const mode = modeChoice.response === 1 ? 'replace' : 'merge'
-            const count = importFromJsonFile(runtime.repos, result.filePaths[0], mode)
+            const count = importFromJsonFile(runtime.repos, result.filePaths[0], mode, runtime.db)
             logger.info(`import:json ${count} documents`)
           }
         },
