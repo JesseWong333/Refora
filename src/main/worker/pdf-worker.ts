@@ -106,11 +106,7 @@ export function extractTitleCandidate(lines: LineInfo[]): string | null {
 
   titleSizeGroup = filterJournalHeaderCluster(candidates, titleSizeGroup)
 
-  const chosen: LineInfo[] = []
-  for (const line of titleSizeGroup) {
-    chosen.push(line)
-    break
-  }
+  const chosen = titleSizeGroup.length > 0 ? [titleSizeGroup[0]] : []
 
   if (chosen.length === 0) return null
 
