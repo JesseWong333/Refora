@@ -220,6 +220,8 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
         year: null,
         venue: null,
         volume: null,
+        issue: null,
+        pages: null,
         abstract: null,
         keywords: null,
         url: null,

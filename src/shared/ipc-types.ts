@@ -26,6 +26,8 @@ export type EditableField =
   | 'year'
   | 'venue'
   | 'volume'
+  | 'issue'
+  | 'pages'
   | 'abstract'
   | 'keywords'
   | 'url'
@@ -62,6 +64,8 @@ export interface Document {
   year: string | null
   venue: string | null
   volume: string | null
+  issue: string | null
+  pages: string | null
   abstract: string | null
   keywords: string | null
   url: string | null

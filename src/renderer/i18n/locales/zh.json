@@ -39,6 +39,8 @@
     "year": "发表年份",
     "venue": "期刊/会议",
     "volume": "卷号",
+    "issue": "期号",
+    "pages": "页码",
     "abstract": "摘要",
     "keywords": "关键词",
     "url": "URL",

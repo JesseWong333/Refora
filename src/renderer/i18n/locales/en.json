@@ -39,6 +39,8 @@
     "year": "Year",
     "venue": "Venue",
     "volume": "Volume",
+    "issue": "Issue",
+    "pages": "Pages",
     "abstract": "Abstract",
     "keywords": "Keywords",
     "url": "URL",

@@ -22,6 +22,8 @@ const EDITABLE_FIELDS: { field: EditableField; labelKey: string }[] = [
   { field: 'year', labelKey: 'detail.year' },
   { field: 'venue', labelKey: 'detail.venue' },
   { field: 'volume', labelKey: 'detail.volume' },
+  { field: 'issue', labelKey: 'detail.issue' },
+  { field: 'pages', labelKey: 'detail.pages' },
   { field: 'abstract', labelKey: 'detail.abstract' },
   { field: 'keywords', labelKey: 'detail.keywords' },
   { field: 'url', labelKey: 'detail.url' },

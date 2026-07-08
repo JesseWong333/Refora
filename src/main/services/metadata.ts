@@ -5,6 +5,7 @@ import type { Document, DocumentPatch, EditableField, MetadataSource, RemoteValu
 import { newId } from '../db/repositories/documents'
 import { emitDocumentUpdated } from '../ipc/events'
 import { logger } from './logger'
+import { normalizeVenue } from './venue-map'
 
 interface WorkerResponse {
   correlationId: string
@@ -71,6 +72,57 @@ export function extractDoiFromInfo(info: Record<string, unknown>): string | null
 export function extractArxivFromText(text: string): string | null {
   const match = text.match(ARXIV_ID_REGEX)
   return match ? match[1] : null
+}
+
+const CONFERENCE_VENUE_MAP: Record<string, string> = {
+  ICLR: 'ICLR',
+  ICML: 'ICML',
+  NeurIPS: 'NeurIPS',
+  NIPS: 'NeurIPS',
+  ICCV: 'ICCV',
+  CVPR: 'CVPR',
+  ECCV: 'ECCV',
+  AAAI: 'AAAI',
+  ICASSP: 'ICASSP',
+  SIGGRAPH: 'SIGGRAPH',
+  ACL: 'ACL',
+  EMNLP: 'EMNLP',
+  NAACL: 'NAACL',
+  COLING: 'COLING',
+  KDD: 'KDD',
+  WWW: 'WWW',
+  SIGMOD: 'SIGMOD',
+  VLDB: 'VLDB',
+  ICDE: 'ICDE',
+  SOSP: 'SOSP',
+  OSDI: 'OSDI',
+  NSDI: 'NSDI',
+  EuroSys: 'EuroSys',
+  ATC: 'USENIX ATC',
+  CCS: 'CCS',
+  SAndP: 'S&P',
+  NDSS: 'NDSS',
+  RSS: 'RSS',
+  ICRA: 'ICRA',
+  IROS: 'IROS',
+  WACV: 'WACV',
+  BMVC: 'BMVC',
+  ACML: 'ACML'
+}
+
+const CONFERENCE_BANNER = /published as (?:a |an )?conference paper at\s+([A-Za-z][A-Za-z.&\s]*?)\s+(\d{4})/i
+
+export function extractVenueFromText(text: string): { venue: string; year: string } | null {
+  const head = text.slice(0, 400)
+  const m = head.match(CONFERENCE_BANNER)
+  if (!m) return null
+  const rawVenue = m[1].trim()
+  const year = m[2]
+  const key = Object.keys(CONFERENCE_VENUE_MAP).find(
+    (k) => rawVenue.toLowerCase() === k.toLowerCase()
+  )
+  const venue = key ? CONFERENCE_VENUE_MAP[key] : rawVenue
+  return { venue, year }
 }
 
 const TITLE_NOISE_PATTERNS = /^(\s*(published as a|formatting instructions|instructions for authors)\b|\d{4}\s*(©|\(c\))\b|copyright\b|vol\.?\s*\d|article\b|contents lists available\b|journal homepage\b|science\s?direct\b|elsevier\b|springer\b|ieee\b|acm\b|arxiv:\s*\d)/i
@@ -203,7 +255,7 @@ export function mergeMetadata(
   fetched: Partial<Document>
 ): { patch: DocumentPatch; remoteValues: RemoteValues } {
   const editableFields: EditableField[] = [
-    'title', 'authors', 'year', 'venue', 'volume',
+    'title', 'authors', 'year', 'venue', 'volume', 'issue', 'pages',
     'abstract', 'keywords', 'url', 'doi', 'note'
   ]
   const patch: DocumentPatch = {}
@@ -229,6 +281,56 @@ export function mergeMetadata(
   return { patch, remoteValues }
 }
 
+function parseCrossrefMessage(msg: {
+  title?: string[]
+  author?: Array<{ family?: string; given?: string; name?: string }>
+  'published-print'?: { 'date-parts'?: number[][] }
+  'published-online'?: { 'date-parts'?: number[][] }
+  'container-title'?: string[]
+  volume?: string
+  issue?: string
+  page?: string
+  abstract?: string
+  subject?: string[]
+  URL?: string
+  DOI?: string
+}): Partial<Document> | null {
+  const title = msg.title?.[0] ?? null
+  const authors = msg.author
+    ? msg.author.map((a) => {
+      const family = a.family ?? ''
+      const given = a.given ?? ''
+      if (family && given) return `${family}, ${given}`
+      return a.name ?? ''
+    }).filter(Boolean).join('; ')
+    : null
+  const dateParts = msg['published-print']?.['date-parts']?.[0] ?? msg['published-online']?.['date-parts']?.[0]
+  const year = dateParts?.[0]?.toString() ?? null
+  const venue = msg['container-title']?.[0] ?? null
+  const normalizedVenue = venue ? normalizeVenue(venue) : null
+  const volume = msg.volume ?? null
+  const issue = msg.issue ?? null
+  const pages = msg.page ?? null
+  const abstractText = msg.abstract ?? null
+  const keywords = msg.subject?.join(', ') ?? null
+  const url = msg.URL ?? null
+  const doiVal = msg.DOI ?? null
+
+  const data: Partial<Document> = { metadataSource: 'crossref' as MetadataSource }
+  if (title) data.title = title
+  if (authors) data.authors = normalizeAuthors(authors)
+  if (year) data.year = year
+  if (normalizedVenue) data.venue = normalizedVenue
+  if (volume) data.volume = volume
+  if (issue) data.issue = issue
+  if (pages) data.pages = pages
+  if (abstractText) data.abstract = abstractText
+  if (keywords) data.keywords = keywords
+  if (url) data.url = url
+  if (doiVal) data.doi = doiVal
+  return Object.keys(data).length > 1 ? data : null
+}
+
 async function fetchCrossref(doi: string, mailto: string): Promise<{ data: Partial<Document> } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
@@ -242,55 +344,49 @@ async function fetchCrossref(doi: string, mailto: string): Promise<{ data: Parti
       headers: { 'User-Agent': userAgent }
     })
     if (!response.ok) return null
-    const body = await response.json() as {
-      message?: {
-        title?: string[]
-        author?: Array<{ family?: string; given?: string; name?: string }>
-        'published-print'?: { 'date-parts'?: number[][] }
-        'published-online'?: { 'date-parts'?: number[][] }
-        'container-title'?: string[]
-        volume?: string
-        abstract?: string
-        subject?: string[]
-        URL?: string
-        DOI?: string
-      }
-    }
+    const body = await response.json() as { message?: Parameters<typeof parseCrossrefMessage>[0] }
     const msg = body.message
     if (!msg) return null
+    const data = parseCrossrefMessage(msg)
+    return data ? { data } : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
-    const title = msg.title?.[0] ?? null
-    const authors = msg.author
-      ? msg.author.map((a) => {
-        const family = a.family ?? ''
-        const given = a.given ?? ''
-        if (family && given) return `${family}, ${given}`
-        return a.name ?? ''
-      }).filter(Boolean).join('; ')
-      : null
-    const dateParts = msg['published-print']?.['date-parts']?.[0] ?? msg['published-online']?.['date-parts']?.[0]
-    const year = dateParts?.[0]?.toString() ?? null
-    const venue = msg['container-title']?.[0] ?? null
-    const volume = msg.volume ?? null
-    const abstractText = msg.abstract ?? null
-    const keywords = msg.subject?.join(', ') ?? null
-    const url = msg.URL ?? null
-    const doiVal = msg.DOI ?? null
+async function fetchCrossrefByTitle(title: string, mailto: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
-    return {
-      data: {
-        title,
-        authors: normalizeAuthors(authors),
-        year,
-        venue,
-        volume,
-        abstract: abstractText,
-        keywords,
-        url,
-        doi: doiVal,
-        metadataSource: 'crossref' as MetadataSource
-      }
+  try {
+    const userAgent = mailto
+      ? `Refora/0.1 (mailto:${mailto})`
+      : 'Refora/0.1 (mailto:support@refora.app)'
+    const params = new URLSearchParams({
+      'query.title': title,
+      rows: '3',
+      select: 'title,author,container-title,volume,issue,page,published-print,published-online,subject,URL,DOI,abstract'
+    })
+    const response = await net.fetch(`https://api.crossref.org/works?${params.toString()}`, {
+      signal: controller.signal,
+      headers: { 'User-Agent': userAgent }
+    })
+    if (!response.ok) return null
+    const body = await response.json() as { message?: { items?: Array<Parameters<typeof parseCrossrefMessage>[0]> } }
+    const items = body.message?.items
+    if (!items || items.length === 0) return null
+
+    let best: { data: Partial<Document> | null; confidence: number } = { data: null, confidence: 0 }
+    for (const item of items) {
+      const data = parseCrossrefMessage(item)
+      if (!data?.title) continue
+      const confidence = titleSimilarity(title, data.title)
+      if (confidence > best.confidence) best = { data, confidence }
     }
+    if (!best.data) return null
+    return { data: best.data, confidence: best.confidence }
   } catch {
     return null
   } finally {
@@ -438,24 +534,24 @@ async function fetchDblpByTitle(title: string): Promise<{ data: Partial<Document
 
     const year = nonEmptyString(info.year) ?? null
     const venue = nonEmptyString(info.venue) ?? null
+    const normalizedVenue = venue ? normalizeVenue(venue) : null
     const volume = nonEmptyString(info.volume) ?? null
+    const pages = nonEmptyString(info.pages) ?? null
     const doi = nonEmptyString(info.doi) ?? null
     const ee = nonEmptyString(info.ee) ?? null
     const url2 = ee ?? doi ? (doi ? `https://doi.org/${doi}` : ee ?? null) : null
 
-    return {
-      data: {
-        title: info.title.replace(/\.\s*$/, ''),
-        authors: normalizeAuthors(authors),
-        year,
-        venue,
-        volume,
-        doi,
-        url: url2,
-        metadataSource: 'dblp' as MetadataSource
-      },
-      confidence
-    }
+    const data: Partial<Document> = { metadataSource: 'dblp' as MetadataSource }
+    data.title = info.title.replace(/\.\s*$/, '')
+    if (authors) data.authors = normalizeAuthors(authors)
+    if (year) data.year = year
+    if (normalizedVenue) data.venue = normalizedVenue
+    if (volume) data.volume = volume
+    if (pages) data.pages = pages
+    if (doi) data.doi = doi
+    if (url2) data.url = url2
+
+    return { data, confidence }
   } catch {
     return null
   } finally {
@@ -761,11 +857,17 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       source = 'pdf'
     }
 
+    await supplementVenueFields(docId, fetchedData, {
+      searchTitle,
+      text,
+      mailto: repos.settings.get<string>('crossrefMailto', '')
+    })
+
     const current = repos.documents.get(docId)
     if (!current) return
 
     const { patch, remoteValues } = mergeMetadata(current, fetchedData)
-    logger.info(`metadata:processJob merge id=${docId} patchKeys=${Object.keys(patch).join(',') || 'none'} remoteKeys=${Object.keys(remoteValues).join(',') || 'none'}`)
+    logger.info(`metadata:processJob merge id=${docId} patchKeys=${Object.keys(patch).join(',') || 'none'} remoteKeys=${Object.keys(remoteValues).join(',') || 'none'} source=${source}`)
     repos.documents.applyMetadataFields(docId, patch, remoteValues, 'done', source)
 
     const updated = repos.documents.get(docId)
@@ -773,6 +875,51 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     if (updated && w) {
       emitDocumentUpdated(w, updated)
     }
+  }
+
+  async function supplementVenueFields(
+    docId: string,
+    fetchedData: Partial<Document>,
+    ctx: { searchTitle: string | null; text: string; mailto: string }
+  ): Promise<void> {
+    const hasVenue = nonEmptyString(fetchedData.venue) !== null
+    const hasVolume = nonEmptyString(fetchedData.volume) !== null
+    const hasYear = nonEmptyString(fetchedData.year) !== null
+    const hasDoi = nonEmptyString(fetchedData.doi) !== null
+    const hasIssue = nonEmptyString(fetchedData.issue) !== null
+    const hasPages = nonEmptyString(fetchedData.pages) !== null
+
+    if (hasVenue && hasVolume && hasYear && hasDoi) return
+
+    if (!hasVenue) {
+      const banner = extractVenueFromText(ctx.text)
+      if (banner) {
+        logger.info(`metadata:processJob venue-banner id=${docId} venue=${banner.venue} year=${banner.year}`)
+        fetchedData.venue = banner.venue
+        if (!hasYear) fetchedData.year = banner.year
+        return
+      }
+    }
+
+    if (!ctx.searchTitle) return
+
+    await rateGate('crossref')
+    const result = await fetchCrossrefByTitle(ctx.searchTitle, ctx.mailto)
+    logger.info(`metadata:processJob crossref-title id=${docId} ok=${!!result}${result ? ` confidence=${result.confidence.toFixed(2)}` : ''}`)
+    if (!result || result.confidence < TITLE_USE_THRESHOLD) return
+
+    const cr = result.data
+    const fillingVenue = !hasVenue && cr.venue !== undefined
+    if (fillingVenue) {
+      fetchedData.venue = cr.venue
+      if (cr.year) fetchedData.year = cr.year
+    }
+    if (!hasVolume && cr.volume) fetchedData.volume = cr.volume
+    if (!hasIssue && cr.issue) fetchedData.issue = cr.issue
+    if (!hasPages && cr.pages) fetchedData.pages = cr.pages
+    if (!hasDoi && cr.doi) fetchedData.doi = cr.doi
+    if (!fetchedData.abstract && cr.abstract) fetchedData.abstract = cr.abstract
+    if (!fetchedData.keywords && cr.keywords) fetchedData.keywords = cr.keywords
   }
 
   async function processQueue(): Promise<void> {

@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { Repositories } from '../db/repositories'
 import type { Document, Category } from '../../shared/ipc-types'
+import { lookupVenue, venueType } from './venue-map'
 
 const BIBTEX_ESCAPE_MAP: Record<string, string> = {
   '\\': '\\textbackslash{}',
@@ -24,9 +25,17 @@ const SKIP_WORDS = new Set([
   'both', 'few', 'new', 'other', 'such', 'own', 'same', 'use', 'used', 'using'
 ])
 
-function entryType(doc: Document): string {
-  if (doc.venue || doc.volume) return 'article'
-  return 'misc'
+function resolveEntryType(doc: Document): 'inproceedings' | 'article' | 'misc' {
+  const venue = doc.venue?.trim()
+  if (!venue && !doc.volume && !doc.pages) return 'misc'
+  if (venue) {
+    const vType = venueType(venue)
+    if (vType === 'conference') return 'inproceedings'
+    if (vType === 'journal') return 'article'
+  }
+  if (doc.volume) return 'article'
+  if (doc.pages && !venue) return 'misc'
+  return 'article'
 }
 
 function escapeBibtexValue(value: string): string {
@@ -116,7 +125,7 @@ function formatAuthors(authors: string | null): string | null {
 }
 
 function formatBibtexEntry(doc: Document, used: Set<string>): string | null {
-  const type = entryType(doc)
+  const type = resolveEntryType(doc)
   const citekey = buildCitekey(doc, used)
 
   const fields: Record<string, string> = {}
@@ -125,10 +134,14 @@ function formatBibtexEntry(doc: Document, used: Set<string>): string | null {
   if (authorStr) fields.author = escapeBibtexValue(authorStr)
   if (doc.year) fields.year = escapeBibtexValue(doc.year)
   if (doc.venue) {
-    fields.journal = escapeBibtexValue(doc.venue)
+    const venueInfo = lookupVenue(doc.venue)
+    const venueName = venueInfo ? venueInfo.canonical : doc.venue
+    if (type === 'inproceedings') fields.booktitle = escapeBibtexValue(venueName)
+    else fields.journal = escapeBibtexValue(venueName)
   }
   if (doc.volume) fields.volume = escapeBibtexValue(doc.volume)
-  if (doc.abstract) fields.abstract = escapeBibtexValue(doc.abstract)
+  if (doc.issue) fields.number = escapeBibtexValue(doc.issue)
+  if (doc.pages) fields.pages = escapeBibtexValue(doc.pages)
   if (doc.keywords) fields.keywords = escapeBibtexValue(doc.keywords)
   if (doc.url) fields.url = escapeBibtexValue(doc.url)
   if (doc.doi) fields.doi = escapeBibtexValue(doc.doi)
