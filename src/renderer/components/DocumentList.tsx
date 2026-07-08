@@ -7,6 +7,7 @@ import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
 import type { Document, ColumnId, SortField, ListColumn, Category } from '../../shared/ipc-types'
+import { errorMessage } from '../../shared/ipc-types'
 
 const ROW_HEIGHT = 36
 const MIN_COL_WIDTH = 40
@@ -257,8 +258,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
           }
           void useDocumentStore.getState().fetchCategories()
         } catch (err) {
-          const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Failed to categorize'
-          useDocumentStore.getState().showToast(msg)
+          useDocumentStore.getState().showToast(errorMessage(err, 'Failed to categorize'))
         }
       }
       const createAndAssign = async () => {

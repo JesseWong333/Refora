@@ -29,10 +29,6 @@ export function useAppShortcuts(): void {
         focusSearch()
         return
       }
-      if (mod && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault()
-        return
-      }
       if (mod && e.key === 'Backspace') {
         e.preventDefault()
         const store = useDocumentStore.getState()

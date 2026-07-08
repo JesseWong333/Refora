@@ -15,6 +15,7 @@ import type {
   Category,
   DocumentPatch
 } from '../../shared/ipc-types'
+import { errorMessage } from '../../shared/ipc-types'
 
 const EDITABLE_FIELDS: { field: EditableField; labelKey: string }[] = [
   { field: 'title', labelKey: 'detail.title' },
@@ -408,8 +409,7 @@ function SingleDetail({ doc }: { doc: Document }) {
       const updated = await api.documents.openPdf(doc.id)
       patchDocument(doc.id, updated)
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to open PDF'
-      useDocumentStore.getState().showToast(msg)
+      useDocumentStore.getState().showToast(errorMessage(e, 'Failed to open PDF'))
     }
   }
 
@@ -418,8 +418,7 @@ function SingleDetail({ doc }: { doc: Document }) {
       await api.documents.relocateFile(doc.id, '')
       useDocumentStore.getState().showToast(t('detail.relocate') ?? '')
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : ''
-      useDocumentStore.getState().showToast(msg)
+      useDocumentStore.getState().showToast(errorMessage(e, ''))
     }
   }
 
@@ -428,8 +427,7 @@ function SingleDetail({ doc }: { doc: Document }) {
       const updated = await api.documents.restoreFile(doc.id)
       useDocumentStore.getState().patchDocument(doc.id, updated)
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : ''
-      useDocumentStore.getState().showToast(msg)
+      useDocumentStore.getState().showToast(errorMessage(e, ''))
     }
   }
 

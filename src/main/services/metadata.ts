@@ -621,7 +621,6 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
   let lastCrossrefMs = 0
   let lastArxivMs = 0
   let lastDblpMs = 0
-  let processing = false
 
   const getWin = (): BrowserWindow | null => {
     const w = typeof win === 'function' ? win() : win
@@ -922,9 +921,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     if (!fetchedData.keywords && cr.keywords) fetchedData.keywords = cr.keywords
   }
 
-  async function processQueue(): Promise<void> {
-    if (processing) return
-    processing = true
+  function processQueue(): void {
     while (activeJobs < MAX_CONCURRENT && jobQueue.length > 0) {
       const job = jobQueue.shift()
       if (!job) break
@@ -938,10 +935,9 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
           if (activeJobs === 0 && jobQueue.length === 0) {
             scheduleIdleKill()
           }
-          void processQueue()
+          processQueue()
         })
     }
-    processing = false
   }
 
   function enqueue(docId: string): void {
@@ -952,7 +948,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     jobQueue.push(async () => {
       await processJob(docId)
     })
-    void processQueue()
+    processQueue()
   }
 
   function refreshMetadata(docId: string): void {

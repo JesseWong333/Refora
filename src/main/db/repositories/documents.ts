@@ -187,15 +187,17 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     if (trimmed.length >= 3) {
       const rows = db
         .prepare(
-          'SELECT d.* FROM documents d JOIN docs_fts f ON d.rowid = f.rowid WHERE docs_fts MATCH ? ORDER BY rank'
+          'SELECT d.* FROM documents d JOIN docs_fts f ON d.rowid = f.rowid WHERE docs_fts MATCH ? ORDER BY rank LIMIT 500'
         )
         .all(trimmed) as Record<string, unknown>[]
       return rows.map((r) => mapDocument(r, lib()))
     }
-    const like = `%${trimmed}%`
-    const clauses = FTS_LIKE_COLUMNS.map((c) => `${c} LIKE ?`).join(' OR ')
+    const escaped = trimmed.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const like = `%${escaped}%`
+    const escapeClause = " ESCAPE '\\'"
+    const clauses = FTS_LIKE_COLUMNS.map((c) => `${c} LIKE ?${escapeClause}`).join(' OR ')
     const params = FTS_LIKE_COLUMNS.map(() => like)
-    const rows = db.prepare(`SELECT * FROM documents WHERE ${clauses}`).all(...params) as Record<
+    const rows = db.prepare(`SELECT * FROM documents WHERE ${clauses} LIMIT 500`).all(...params) as Record<
       string,
       unknown
     >[]

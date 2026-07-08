@@ -7,6 +7,7 @@ import { newId } from '../db/repositories/documents'
 import { emitImportProgress } from '../ipc/events'
 import { logger } from './logger'
 import { copyToLibrary } from './library'
+import { isInsideLibrary } from './paths'
 
 interface WorkerRequest {
   correlationId: string
@@ -240,8 +241,7 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
       })
 
       try {
-        const inLibrary = abs.startsWith(libraryFolder + '/') || abs === libraryFolder
-        if (!inLibrary) {
+        if (!isInsideLibrary(abs, libraryFolder)) {
           const newPath = copyToLibrary(abs, libraryFolder)
           repos.documents.updateFilePath(doc.id, newPath, parsePath(newPath).base)
         }

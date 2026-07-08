@@ -4,6 +4,7 @@ import { Modal, Button, Input, Select } from '@lobehub/ui'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
+import { errorMessage } from '../../shared/ipc-types'
 
 interface SettingsModalProps {
   open: boolean
@@ -62,8 +63,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       await api.library.switch(path)
       setLibraryFolderPath(path)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg || 'Failed to set library folder')
+      setError(errorMessage(e, 'Failed to set library folder'))
     } finally {
       setSwitching(false)
     }
@@ -74,8 +74,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     try {
       await api.settings.set('proxyUrl', proxyUrl)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg)
+      setError(errorMessage(e, 'Failed to save proxy'))
     }
   }
 
@@ -84,8 +83,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     try {
       await api.settings.set('crossrefMailto', crossrefMailto)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg)
+      setError(errorMessage(e, 'Failed to save mailto'))
     }
   }
 
@@ -96,8 +94,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       await api.settings.set('sidebarCollapsed', newVal ? '1' : '0')
     } catch (e) {
       setSidebarCollapsed(!newVal)
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg)
+      setError(errorMessage(e, 'Failed to update sidebar'))
     }
   }
 
@@ -112,8 +109,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       await api.settings.set('language', lang)
       await changeLanguage(lang)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg)
+      setError(errorMessage(e, 'Failed to change language'))
     }
   }
 

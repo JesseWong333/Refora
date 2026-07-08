@@ -5,6 +5,16 @@ export interface IpcError {
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: IpcError }
 
+export function errorMessage(e: unknown, fallback = 'Unknown error'): string {
+  if (e instanceof Error) return e.message || fallback
+  if (e && typeof e === 'object' && 'message' in e) {
+    const msg = (e as { message: unknown }).message
+    if (typeof msg === 'string' && msg.length > 0) return msg
+  }
+  if (typeof e === 'string' && e.length > 0) return e
+  return fallback
+}
+
 export type ListMode =
   | 'all'
   | 'recentlyRead'

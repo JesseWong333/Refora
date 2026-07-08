@@ -1,6 +1,7 @@
 import { watch, type FSWatcher } from 'chokidar'
 import { existsSync } from 'node:fs'
 import { logger } from './logger'
+import { isInsideLibrary } from './paths'
 import type { WatchFolder } from '../../shared/ipc-types'
 
 export interface WatcherDeps {
@@ -13,14 +14,32 @@ function createDebouncedImporter(deps: WatcherDeps) {
   let timer: ReturnType<typeof setTimeout> | null = null
   const DEBOUNCE_MS = 500
 
-  return (filePath: string) => {
-    pending.push(filePath)
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      const batch = pending
+  function flush(): void {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    if (pending.length === 0) return
+    const batch = pending
+    pending = []
+    deps.importFiles(batch, true).catch((e) => {
+      logger.error(`watch:import-failed: ${e instanceof Error ? e.message : String(e)}`)
+    })
+  }
+
+  return {
+    push(filePath: string): void {
+      pending.push(filePath)
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(flush, DEBOUNCE_MS)
+    },
+    cancel(): void {
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
       pending = []
-      void deps.importFiles(batch, true)
-    }, DEBOUNCE_MS)
+    }
   }
 }
 
@@ -38,13 +57,12 @@ export function createWatcher(deps: WatcherDeps) {
     }
 
     const libraryFolder = deps.getLibraryFolder()
-    const libraryPrefix = libraryFolder ? libraryFolder + '/' : ''
 
     const inst = watch(wf.path, {
       depth: 20,
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 },
       ignored: (testPath: string) => {
-        if (libraryFolder && testPath !== wf.path && testPath.startsWith(libraryPrefix)) return true
+        if (libraryFolder && testPath !== wf.path && isInsideLibrary(testPath, libraryFolder)) return true
         const base = testPath.split('/').pop() ?? testPath
         if (!base.includes('.')) return false
         return !base.toLowerCase().endsWith('.pdf')
@@ -53,7 +71,7 @@ export function createWatcher(deps: WatcherDeps) {
 
     inst.on('add', (filePath: string) => {
       logger.info(`watch:add ${wf.path}: ${filePath}`)
-      debouncedImport(filePath)
+      debouncedImport.push(filePath)
     })
 
     inst.on('error', (err: Error) => {
@@ -115,7 +133,7 @@ export function createWatcher(deps: WatcherDeps) {
 
     inst.on('add', (filePath: string) => {
       logger.info(`watch:library:add ${filePath}`)
-      debouncedImport(filePath)
+      debouncedImport.push(filePath)
     })
 
     inst.on('error', (err: Error) => {
@@ -130,6 +148,7 @@ export function createWatcher(deps: WatcherDeps) {
   function destroy(): void {
     stopAll()
     stopLibraryWatcher()
+    debouncedImport.cancel()
   }
 
   return { start, stop, startAll, stopAll, startLibraryWatcher, stopLibraryWatcher, destroy }

@@ -15,11 +15,20 @@ import type {
   WatchFolder
 } from '../shared/ipc-types'
 
+class IpcResponseError extends Error {
+  readonly code: string
+  constructor(code: string, message: string) {
+    super(message)
+    this.name = 'IpcResponseError'
+    this.code = code
+  }
+}
+
 type Envelope<T> = Result<T>
 
 function unwrap<T>(r: Envelope<T>): T {
   if (!r.ok) {
-    throw { code: r.error.code, message: r.error.message }
+    throw new IpcResponseError(r.error.code, r.error.message)
   }
   return r.data
 }

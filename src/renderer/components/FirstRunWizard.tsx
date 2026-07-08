@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { BookOpen } from 'lucide-react'
 import { api } from '../ipc'
+import { errorMessage } from '../../shared/ipc-types'
 
 interface FirstRunWizardProps {
   onDone: () => void
@@ -28,8 +29,7 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
       onDone()
     } catch (e) {
       setScanning(false)
-      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : 'Failed to set library folder'
-      setError(msg)
+      setError(errorMessage(e, 'Failed to set library folder'))
     }
     setPicking(false)
   }

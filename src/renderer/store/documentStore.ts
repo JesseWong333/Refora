@@ -9,6 +9,7 @@ import type {
   SortField,
   Category
 } from '../../shared/ipc-types'
+import { errorMessage } from '../../shared/ipc-types'
 import { api } from '../ipc'
 import i18n from '../i18n'
 
@@ -210,8 +211,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const updated = await api.documents.openPdf(docId)
       get().patchDocument(docId, updated)
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to open PDF'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to open PDF'))
     }
   },
 
@@ -219,8 +219,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       await api.documents.openInFinder(docId)
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to open in Finder'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to open in Finder'))
     }
   },
 
@@ -250,8 +249,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       get().patchDocument(docId, updated)
       return true
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to refresh metadata'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to refresh metadata'))
       return false
     }
   },
@@ -286,8 +284,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       await api.documents.bulkRefreshMetadata(ids)
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to refresh metadata'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to refresh metadata'))
     }
   },
 
@@ -296,8 +293,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       await api.documents.bulkCategorize(ids, catId)
       get().clearSelection()
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to categorize'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to categorize'))
     }
   },
 
@@ -455,8 +451,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       set((s) => ({ categories: [...s.categories, { ...cat, count: 0 }] }))
       return cat
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to create category'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to create category'))
       return null
     }
   },
@@ -468,8 +463,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         categories: s.categories.map((c) => (c.id === id ? { ...c, name } : c))
       }))
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to rename category'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to rename category'))
     }
   },
 
@@ -480,8 +474,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         categories: s.categories.filter((c) => c.id !== id)
       }))
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Failed to delete category'
-      get().showToast(msg)
+      get().showToast(errorMessage(e, 'Failed to delete category'))
     }
   },
 

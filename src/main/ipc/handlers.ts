@@ -21,6 +21,7 @@ import { moveToLibrary, restoreToOriginal } from '../services/library'
 import { relocate, deleteDocument, bulkDeleteDocuments } from '../services/files'
 import { emitDocumentUpdated } from '../ipc/events'
 import { writeExportFile, importFromJsonFile, toBibtex } from '../services/export'
+import { isInsideLibrary, containsLibrary } from '../services/paths'
 import type { createWatcher } from '../services/watcher'
 
 function wrap<T>(fn: () => T): Result<T> {
@@ -158,7 +159,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           if (libraryFolder) {
             const doc = r.documents.get(id)
             if (!doc) continue
-            if (!doc.filePath.startsWith(libraryFolder)) {
+            if (!isInsideLibrary(doc.filePath, libraryFolder)) {
               try {
                 const newPath = moveToLibrary(doc.filePath, libraryFolder)
                 r.documents.updateFilePath(id, newPath, parsePath(newPath).base)
@@ -309,7 +310,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const cat = cats.find((c) => c.id === catId)
         if (!cat) throw new RepoError('not_found', `Category ${catId} not found`)
         const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
-        const alreadyInLibrary = libraryFolder ? doc.filePath.startsWith(libraryFolder) : false
+        const alreadyInLibrary = libraryFolder ? isInsideLibrary(doc.filePath, libraryFolder) : false
         if (libraryFolder && !alreadyInLibrary) {
           try {
             const newPath = moveToLibrary(doc.filePath, libraryFolder)
@@ -342,12 +343,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (!statSync(absPath).isDirectory()) throw new RepoError('invalid_path', `Not a directory: ${absPath}`)
         const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
         if (libraryFolder) {
-          const normalizedLib = resolvePath(libraryFolder) + '/'
-          const normalizedWatch = absPath + '/'
-          if (normalizedWatch.startsWith(normalizedLib)) {
+          if (isInsideLibrary(absPath, libraryFolder)) {
             throw new RepoError('inside_library', 'Path cannot be inside the library folder.')
           }
-          if (normalizedLib.startsWith(normalizedWatch)) {
+          if (containsLibrary(absPath, libraryFolder)) {
             throw new RepoError('contains_library', 'Path cannot be inside a watch folder.')
           }
         }
@@ -405,10 +404,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         }
         if (key === 'libraryFolderPath' && typeof value === 'string' && value) {
           const watchFolders = r.watchFolders.list()
-          const normalizedLib = resolvePath(value) + '/'
           for (const wf of watchFolders) {
-            const normalizedWatch = resolvePath(wf.path) + '/'
-            if (normalizedLib.startsWith(normalizedWatch)) {
+            if (containsLibrary(wf.path, value)) {
               throw new RepoError('library_inside_watch', 'Library folder cannot be inside a watch folder.')
             }
           }
