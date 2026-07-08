@@ -8,6 +8,7 @@ function autoResize(el: HTMLTextAreaElement) {
 }
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
+import { formatDate, formatFilePath } from '../utils/format'
 import type {
   Document,
   EditableField,
@@ -31,23 +32,6 @@ const EDITABLE_FIELDS: { field: EditableField; labelKey: string }[] = [
   { field: 'doi', labelKey: 'DOI' },
   { field: 'note', labelKey: 'detail.note' }
 ]
-
-function formatDate(ts: number): string {
-  const d = new Date(ts)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function formatFilePath(path: string): string {
-  const home = '/Users/'
-  if (path.startsWith(home)) {
-    const idx = path.indexOf('/', home.length)
-    if (idx !== -1) return '~' + path.slice(idx)
-  }
-  return path
-}
 
 function InlineField({
   field,
