@@ -93,6 +93,7 @@
     "openFile": "Open File",
     "showInFolder": "Show in Folder",
     "copyPath": "Copy Path",
+    "copyBibtex": "Copy BibTeX",
     "multiSelected": "{{count}} selected",
     "noResults": "No documents found",
     "emptyLibrary": "Your library is empty",
@@ -104,6 +105,8 @@
     "exportBibtexTitle": "Export BibTeX",
     "selectToExport": "Select one or more documents to export",
     "bibtexExported": "Exported {{count}} entries to BibTeX",
+    "bibtexCopied": "Copied {{count}} BibTeX entries to clipboard",
+    "copyFailed": "Failed to copy",
     "movedToTrash": "Moved to Trash ({{count}})",
     "deleteFailed": "Failed to delete document"
   },

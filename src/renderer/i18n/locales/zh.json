@@ -93,6 +93,7 @@
     "openFile": "打开文件",
     "showInFolder": "在文件夹中显示",
     "copyPath": "复制路径",
+    "copyBibtex": "复制 BibTeX",
     "multiSelected": "已选择 {{count}} 篇",
     "noResults": "未找到文档",
     "emptyLibrary": "您的库是空的",
@@ -104,6 +105,8 @@
     "exportBibtexTitle": "导出 BibTeX",
     "selectToExport": "请选择一篇或多篇文献以导出",
     "bibtexExported": "已导出 {{count}} 条到 BibTeX",
+    "bibtexCopied": "已复制 {{count}} 条 BibTeX 到剪贴板",
+    "copyFailed": "复制失败",
     "movedToTrash": "已移至废纸篓（{{count}}）",
     "deleteFailed": "删除文献失败"
   },

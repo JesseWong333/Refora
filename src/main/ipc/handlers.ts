@@ -446,6 +446,14 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const { writeFileSync } = await import('node:fs')
         writeFileSync(result.filePath, bibtex, 'utf-8')
         return result.filePath
+      }),
+    [IpcChannel.ExportBibtexString]: async (ids: string[]): Promise<Result<string>> =>
+      asyncWrap(async () => {
+        if (ids.length === 0) return ''
+        const r = repos()
+        const docs = ids.map((id) => r.documents.get(id)).filter(Boolean) as Document[]
+        if (docs.length === 0) return ''
+        return toBibtex(docs)
       })
   }
 

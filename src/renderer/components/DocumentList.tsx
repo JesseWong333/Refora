@@ -232,6 +232,17 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
     navigator.clipboard.writeText(filePath).catch(() => {})
   }, [])
 
+  const handleCopyBibtex = useCallback(async (ids: string[]) => {
+    try {
+      const bibtex = await api.export.toBibtexString(ids)
+      if (!bibtex) return
+      await navigator.clipboard.writeText(bibtex)
+      useDocumentStore.getState().showToast(t('common.bibtexCopied', { count: ids.length }))
+    } catch {
+      useDocumentStore.getState().showToast(t('common.copyFailed'))
+    }
+  }, [t])
+
   const handleRowContextMenu = useCallback(
     (doc: Document, e: React.MouseEvent) => {
       e.preventDefault()
@@ -307,6 +318,12 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
           onClick: () => handleCopyPath(doc.filePath),
         },
         {
+          key: 'copyBibtex',
+          label: t('common.copyBibtex'),
+          icon: <Copy className="h-3.5 w-3.5" />,
+          onClick: () => { void handleCopyBibtex(effectiveIds) },
+        },
+        {
           key: 'refreshMetadata',
           label: t('detail.refreshMetadata'),
           icon: <RefreshCw className="h-3.5 w-3.5" />,
@@ -328,7 +345,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       ]
       showContextMenu(items)
     },
-    [t, openInFinder, handleCopyPath, refreshMetadata, requestDeleteConfirm, selectedIds, categories, createCategory, openPdf]
+    [t, openInFinder, handleCopyPath, handleCopyBibtex, refreshMetadata, requestDeleteConfirm, selectedIds, categories, createCategory, openPdf]
   )
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {

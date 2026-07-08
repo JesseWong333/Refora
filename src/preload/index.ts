@@ -113,7 +113,8 @@ const api: ReforaApi = {
 
   export: {
     toJson: () => invoke<string>(IpcChannel.ExportToJson),
-    toBibtex: (ids: string[]) => invoke<string>(IpcChannel.ExportToBibtex, ids)
+    toBibtex: (ids: string[]) => invoke<string>(IpcChannel.ExportToBibtex, ids),
+    toBibtexString: (ids: string[]) => invoke<string>(IpcChannel.ExportBibtexString, ids)
   },
 
   events: {

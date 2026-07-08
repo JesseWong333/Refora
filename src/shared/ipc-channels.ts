@@ -42,6 +42,7 @@ export const IpcChannel = {
 
   ExportToJson: 'export:toJson',
   ExportToBibtex: 'export:toBibtex',
+  ExportBibtexString: 'export:bibtexString',
 
   EventDocumentUpdated: 'document:updated',
   EventImportProgress: 'import:progress',

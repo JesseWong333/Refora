@@ -205,6 +205,7 @@ export interface ReforaApi {
   export: {
     toJson(): Promise<string>
     toBibtex(ids: string[]): Promise<string>
+    toBibtexString(ids: string[]): Promise<string>
   }
   events: DocumentEvents
 }
