@@ -12,6 +12,7 @@ interface WorkerResponse {
   fileHash?: string | null
   info?: Record<string, unknown>
   text?: string
+  titleCandidate?: string | null
 }
 
 interface PendingRequest {
@@ -32,6 +33,12 @@ const ARXIV_ID_REGEX = /(?:arxiv\s*:?\s*|arxiv\.org\/abs\/)(\d{4}\.\d{4,5}(?:v\d
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+const TEMPLATE_NOISE_TITLE = /\b(formatting instructions|instructions for authors|template|sample manuscript|sample paper|untitled|main\.tex)\b/i
+
+export function isTemplateNoiseTitle(title: string): boolean {
+  return TEMPLATE_NOISE_TITLE.test(title)
 }
 
 export function extractDoiFromText(text: string): string | null {
@@ -66,17 +73,65 @@ export function extractArxivFromText(text: string): string | null {
   return match ? match[1] : null
 }
 
+const TITLE_NOISE_PATTERNS = /^(\s*(published as a|formatting instructions|instructions for authors)\b|\d{4}\s*(©|\(c\))\b|copyright\b|vol\.?\s*\d|article\b|contents lists available\b|journal homepage\b|science\s?direct\b|elsevier\b|springer\b|ieee\b|acm\b|arxiv:\s*\d)/i
+const JOURNAL_RUNNING_HEADER = /\b\w+\s+\d+\s*\(\d{4}\)\s*\d+\s*$/i
+const TITLE_NOISE_ANYWHERE = /\b(formatting instructions|instructions for authors|published as a conference paper)\b/i
+
+function isTitleNoiseLine(line: string): boolean {
+  const lower = line.toLowerCase()
+  if (lower === 'arxiv' || lower.startsWith('arxiv:')) return true
+  if (lower === 'abstract' || lower.startsWith('abstract')) return true
+  if (lower.startsWith('http') || lower.startsWith('www.')) return true
+  if (lower.startsWith('doi') || DOI_REGEX.test(line)) return true
+  if (line.includes('@') && line.includes('.')) return true
+  if (TITLE_NOISE_PATTERNS.test(line)) return true
+  if (TITLE_NOISE_ANYWHERE.test(line)) return true
+  if (JOURNAL_RUNNING_HEADER.test(line)) return true
+  return false
+}
+
+function isLikelyTitleLine(line: string): boolean {
+  if (line.length < 8) return false
+  if (isTitleNoiseLine(line)) return false
+  return true
+}
+
+const TITLE_CONTINUATION_END = /\b(for|and|the|of|with|using|via|in|on|to|a|an|from|by|as|over|into|towards|toward|based|via|through|across|against|with)\s*$/i
+const ENDS_SENTENCE = /[.!?]$/
+
+function looksLikeContinuation(prev: string, next: string): boolean {
+  if (ENDS_SENTENCE.test(prev)) return false
+  if (TITLE_CONTINUATION_END.test(prev)) return true
+  if (/[:(\-—]$/.test(prev)) return true
+  if (/^[a-z]/.test(next) && next.length < 80 && !/^(this|we|our|the|in|abstract)\b/i.test(next)) return true
+  return false
+}
+
+const JOURNAL_HEADER_CONTEXT = /^(contents lists available|journal homepage|www\.)\b/i
+
+function inJournalHeaderCluster(head: string[], i: number): boolean {
+  for (let k = i + 1; k <= Math.min(head.length - 1, i + 3); k++) {
+    if (JOURNAL_HEADER_CONTEXT.test(head[k])) return true
+  }
+  return false
+}
+
 export function extractTitleFromText(text: string): string | null {
   const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
-  for (const line of lines.slice(0, 8)) {
-    const lower = line.toLowerCase()
-    if (lower === 'arxiv' || lower.startsWith('arxiv:')) continue
-    if (lower === 'abstract' || lower.startsWith('abstract')) continue
-    if (lower.startsWith('http') || lower.startsWith('www.')) continue
-    if (lower.startsWith('doi') || DOI_REGEX.test(line)) continue
-    if (line.includes('@') && line.includes('.')) continue
-    if (line.length < 8) continue
-    return line
+  const head = lines.slice(0, 12)
+  for (let i = 0; i < head.length; i++) {
+    const line = head[i]
+    if (!isLikelyTitleLine(line)) continue
+    if (inJournalHeaderCluster(head, i)) continue
+    const titleLines = [line]
+    for (let j = i + 1; j < head.length && titleLines.length < 4; j++) {
+      const next = head[j]
+      if (!isLikelyTitleLine(next)) break
+      const last = titleLines[titleLines.length - 1]
+      if (!looksLikeContinuation(last, next)) break
+      titleLines.push(next)
+    }
+    return titleLines.join(' ').replace(/\s+/g, ' ').trim()
   }
   return null
 }
@@ -613,20 +668,24 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
 
     const info = workerResponse.info ?? {}
     const text = workerResponse.text ?? ''
+    const titleCandidate = workerResponse.titleCandidate ?? null
 
     let doi = extractDoiFromInfo(info)
     if (!doi) {
       doi = extractDoiFromText(text)
     }
-    logger.info(`metadata:processJob parsed id=${docId} doi=${doi} textLen=${text.length}`)
+    logger.info(`metadata:processJob parsed id=${docId} doi=${doi} textLen=${text.length} candidate=${JSON.stringify(titleCandidate).slice(0, 60)}`)
 
     const infoTitle = nonEmptyString(info['Title']) ?? nonEmptyString(info['title'])
-    const textTitle = infoTitle ?? extractTitleFromText(text)
+    const candidateTitle = isReliableTitle(titleCandidate, text) ? titleCandidate : null
+    const infoTitleIsTemplate = infoTitle !== null && isTemplateNoiseTitle(infoTitle)
+    const effectiveInfoTitle = infoTitleIsTemplate ? null : infoTitle
+    const textTitle = effectiveInfoTitle ?? candidateTitle ?? extractTitleFromText(text)
     const fileNameTitle = titleFromFileName(doc.fileName)
     const reliable = isReliableTitle(textTitle, text)
     const searchTitle = reliable ? textTitle : null
     const fallbackTitle = reliable ? (textTitle ?? fileNameTitle) : (fileNameTitle ?? textTitle)
-    logger.info(`metadata:processJob title id=${docId} text=${JSON.stringify(textTitle).slice(0, 60)} file=${JSON.stringify(fileNameTitle).slice(0, 60)} reliable=${reliable}`)
+    logger.info(`metadata:processJob title id=${docId} text=${JSON.stringify(textTitle).slice(0, 60)} candidate=${JSON.stringify(candidateTitle).slice(0, 60)} file=${JSON.stringify(fileNameTitle).slice(0, 60)} reliable=${reliable}`)
 
     let fetchedData: Partial<Document> | null = null
     let source: MetadataSource = 'pdf'
