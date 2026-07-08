@@ -26,14 +26,20 @@ const migrationModules = import.meta.glob('./migrations/*.sql', {
   import: 'default'
 }) as Record<string, string>
 
+let cachedMigrations: MigrationFile[] | null = null
+
 export function loadMigrationFiles(): MigrationFile[] {
-  return Object.entries(migrationModules)
+  if (cachedMigrations) {
+    return cachedMigrations
+  }
+  cachedMigrations = Object.entries(migrationModules)
     .map(([filepath, sql]) => {
       const match = filepath.match(/(\d+)_/)
       return { version: match ? parseInt(match[1], 10) : 0, sql }
     })
     .filter((m): m is MigrationFile => m.version > 0)
     .sort((a, b) => a.version - b.version)
+  return cachedMigrations
 }
 
 export function trigramAvailable(db: SqliteLike): boolean {
