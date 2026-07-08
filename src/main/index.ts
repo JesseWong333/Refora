@@ -1,28 +1,27 @@
 import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { initLogger, logger } from './services/logger'
 import { openDatabase, seedSettings, closeDatabase, getSetting } from './db/connection'
 import { createRepositories } from './db/repositories'
-import { registerIpcHandlers } from './ipc/handlers'
+import { RepoError } from './db/repositories/errors'
+import { registerIpcHandlers, validateProxyUrl, type RuntimeRef } from './ipc/handlers'
 import { createImporter } from './services/importer'
 import { createMetadataService } from './services/metadata'
 import { createWatcher } from './services/watcher'
-import { checkMissing } from './services/files'
+import { checkMissing, findPdfsRecursively } from './services/files'
 import { writeExportFile, importFromJsonFile } from './services/export'
 import { emitImportProgress, emitLibraryScanning, emitLibrarySwitched } from './ipc/events'
 import { dbPathForLibraryFolder, dbExistsInLibraryFolder, DB_FILE_NAME } from './db/dbPath'
 import { readLibraryFolderPath, writeLibraryFolderPath } from './services/prefs'
-import type { Repositories } from './db/repositories'
 import type { LibrarySwitchResult } from '../shared/ipc-types'
 
 let isDev = false
 const IS_MAC = process.platform === 'darwin'
 
 type DbConnection = ReturnType<typeof openDatabase>
-interface Runtime {
+interface Runtime extends RuntimeRef {
   db: DbConnection
-  repos: Repositories
   importer: ReturnType<typeof createImporter>
   metadataService: ReturnType<typeof createMetadataService>
   watcher: ReturnType<typeof createWatcher>
@@ -31,6 +30,7 @@ interface Runtime {
 let runtime: Runtime | null = null
 let win: BrowserWindow | null = null
 let isQuitting = false
+let switchPromise: Promise<LibrarySwitchResult> | null = null
 
 function detectLanguage(): 'zh' | 'en' {
   try {
@@ -90,20 +90,7 @@ function buildMenu(): Menu {
             })
             if (result.canceled) return
             const dir = result.filePaths[0]
-            const findPdfs = (d: string): string[] => {
-              const results: string[] = []
-              try {
-                for (const entry of readdirSync(d)) {
-                  const full = join(d, entry)
-                  try {
-                    if (statSync(full).isDirectory()) results.push(...findPdfs(full))
-                    else if (full.toLowerCase().endsWith('.pdf')) results.push(full)
-                  } catch { continue }
-                }
-              } catch { return [] }
-              return results
-            }
-            void runtime.importer.importFiles(findPdfs(dir), false)
+            void runtime.importer.importFiles(findPdfsRecursively(dir), false)
           }
         },
         { type: 'separator' },
@@ -291,7 +278,13 @@ function buildRuntime(dbPath: string): Runtime {
 
   const proxyUrl = repos.settings.get<string>('proxyUrl', '')
   if (proxyUrl) {
-    session.defaultSession.setProxy({ proxyRules: proxyUrl })
+    if (validateProxyUrl(proxyUrl)) {
+      void session.defaultSession.setProxy({ proxyRules: proxyUrl }).catch((e) => {
+        logger.warn(`proxy:set failed: ${e instanceof Error ? e.message : String(e)}`)
+      })
+    } else {
+      logger.warn(`proxy:invalid-url skipping setProxy: ${proxyUrl}`)
+    }
   }
 
   setImmediate(() => {
@@ -300,33 +293,9 @@ function buildRuntime(dbPath: string): Runtime {
 
   r.missingCheckInterval = setInterval(() => {
     if (!isQuitting) checkMissing(repos, win)
-  }, 5 * 60 * 1000)
+  }, 10 * 60 * 1000)
 
   return r
-}
-
-function findPdfsRecursively(dir: string): string[] {
-  const results: string[] = []
-  try {
-    const entries = readdirSync(dir)
-    for (const entry of entries) {
-      const full = join(dir, entry)
-      try {
-        const st = statSync(full)
-        if (st.isDirectory()) {
-          if (entry === '.git' || entry.startsWith('.')) continue
-          results.push(...findPdfsRecursively(full))
-        } else if (st.isFile() && full.toLowerCase().endsWith('.pdf')) {
-          results.push(full)
-        }
-      } catch {
-        continue
-      }
-    }
-  } catch {
-    return []
-  }
-  return results
 }
 
 function resolveStartupDbPath(): string {
@@ -374,7 +343,19 @@ function resolveStartupDbPath(): string {
   return userDataDbPath
 }
 
-async function switchLibraryFolder(folder: string): Promise<LibrarySwitchResult> {
+function switchLibraryFolder(folder: string): Promise<LibrarySwitchResult> {
+  if (switchPromise) {
+    return Promise.reject(new RepoError('busy', 'Library switch already in progress'))
+  }
+  const promise = performLibrarySwitch(folder)
+  switchPromise = promise
+  void promise.finally(() => {
+    if (switchPromise === promise) switchPromise = null
+  })
+  return promise
+}
+
+async function performLibrarySwitch(folder: string): Promise<LibrarySwitchResult> {
   if (!folder || !existsSync(folder) || !statSync(folder).isDirectory()) {
     throw new Error(`Invalid library folder: ${folder}`)
   }
@@ -443,11 +424,9 @@ void app.whenReady().then(() => {
 
   Menu.setApplicationMenu(buildMenu())
   registerIpcHandlers({
-    win,
     getWin: () => win,
     getRuntime: () => runtime,
-    switchLibraryFolder,
-    onLibraryFolderSet: (folder) => writeLibraryFolderPath(app.getPath('userData'), folder)
+    switchLibraryFolder
   })
 
   app.on('activate', () => {

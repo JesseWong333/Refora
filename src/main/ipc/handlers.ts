@@ -1,6 +1,6 @@
 import { dialog, ipcMain, shell, session, type BrowserWindow } from 'electron'
-import { readdirSync, statSync, existsSync } from 'node:fs'
-import { join, resolve as resolvePath, parse as parsePath } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { resolve as resolvePath, parse as parsePath } from 'node:path'
 import { IpcChannel } from '../../shared/ipc-channels'
 import type {
   BootstrapData,
@@ -18,10 +18,22 @@ import { RepoError } from '../db/repositories/errors'
 import type { ImportResult } from '../services/importer'
 import { openPdf } from '../services/pdfOpen'
 import { moveToLibrary, restoreToOriginal } from '../services/library'
-import { relocate, deleteDocument, bulkDeleteDocuments } from '../services/files'
+import { relocate, deleteDocument, bulkDeleteDocuments, findPdfsRecursively } from '../services/files'
 import { emitDocumentUpdated } from '../ipc/events'
 import { writeExportFile, importFromJsonFile, toBibtex } from '../services/export'
+import { logger } from '../services/logger'
 import type { createWatcher } from '../services/watcher'
+
+type IpcChannelValue = (typeof IpcChannel)[keyof typeof IpcChannel]
+type HandlerChannel = Exclude<
+  IpcChannelValue,
+  | typeof IpcChannel.EventDocumentUpdated
+  | typeof IpcChannel.EventImportProgress
+  | typeof IpcChannel.EventImportToast
+  | typeof IpcChannel.EventMenuExportBibtex
+  | typeof IpcChannel.EventLibraryScanning
+  | typeof IpcChannel.EventLibrarySwitched
+>
 
 function wrap<T>(fn: () => T): Result<T> {
   try {
@@ -63,27 +75,27 @@ function bootstrapFromSettings(repos: Repositories): BootstrapData {
   }
 }
 
-function findPdfsRecursively(dir: string): string[] {
-  const results: string[] = []
+export function validateProxyUrl(url: string): boolean {
   try {
-    const entries = readdirSync(dir)
-    for (const entry of entries) {
-      const full = join(dir, entry)
-      try {
-        const st = statSync(full)
-        if (st.isDirectory()) {
-          results.push(...findPdfsRecursively(full))
-        } else if (st.isFile() && full.toLowerCase().endsWith('.pdf')) {
-          results.push(resolvePath(full))
-        }
-      } catch {
-        continue
-      }
-    }
+    const parsed = new URL(url)
+    return (
+      parsed.protocol === 'http:' ||
+      parsed.protocol === 'https:' ||
+      parsed.protocol === 'socks5:'
+    )
   } catch {
-    return []
+    return false
   }
-  return results
+}
+
+function applyProxyRules(rules: string): void {
+  if (rules && !validateProxyUrl(rules)) {
+    logger.warn(`proxy:invalid-url skipping setProxy: ${rules}`)
+    return
+  }
+  void session.defaultSession.setProxy({ proxyRules: rules }).catch((e) => {
+    logger.warn(`proxy:set failed: ${e instanceof Error ? e.message : String(e)}`)
+  })
 }
 
 export interface RuntimeRef {
@@ -103,16 +115,14 @@ export interface RuntimeRef {
 }
 
 export interface IpcHandlerDeps {
-  win: BrowserWindow
-  getWin?: () => BrowserWindow | null
+  getWin: () => BrowserWindow | null
   getRuntime: () => RuntimeRef | null
   switchLibraryFolder?: (folder: string) => Promise<LibrarySwitchResult>
-  onLibraryFolderSet?: (folder: string) => void
 }
 
 export function createIpcHandlers(deps: IpcHandlerDeps) {
   const getWin = (): BrowserWindow | null => {
-    const w = deps.getWin ? deps.getWin() : deps.win
+    const w = deps.getWin()
     if (!w || w.isDestroyed()) return null
     return w
   }
@@ -162,8 +172,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
               try {
                 const newPath = moveToLibrary(doc.filePath, libraryFolder)
                 r.documents.updateFilePath(id, newPath, parsePath(newPath).base)
-              } catch {
-                continue
+              } catch (e) {
+                logger.warn(
+                  `bulkCategorize:move-failed ${doc.filePath}: ${e instanceof Error ? e.message : String(e)}`
+                )
               }
             }
           }
@@ -314,9 +326,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           try {
             const newPath = moveToLibrary(doc.filePath, libraryFolder)
             r.documents.updateFilePath(docId, newPath, parsePath(newPath).base)
-          } catch {
-            r.categories.assign(docId, catId)
-            throw new RepoError('move_failed', 'Failed to move file to library folder')
+          } catch (e) {
+            logger.warn(
+              `categories:assign move-failed ${doc.filePath}: ${e instanceof Error ? e.message : String(e)}`
+            )
           }
         }
         r.categories.assign(docId, catId)
@@ -398,24 +411,13 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.SettingsSet]: (key: string, value: unknown): Result<void> =>
       wrap(() => {
         const r = repos()
+        if (key === 'libraryFolderPath' && typeof value === 'string' && value) {
+          throw new RepoError('use_library_switch', 'Use library.switch to change the library folder')
+        }
         r.settings.set(key, value)
         if (key === 'proxyUrl') {
           const rules = typeof value === 'string' && value.trim() ? value.trim() : ''
-          session.defaultSession.setProxy({ proxyRules: rules })
-        }
-        if (key === 'libraryFolderPath' && typeof value === 'string' && value) {
-          const watchFolders = r.watchFolders.list()
-          const normalizedLib = resolvePath(value) + '/'
-          for (const wf of watchFolders) {
-            const normalizedWatch = resolvePath(wf.path) + '/'
-            if (normalizedLib.startsWith(normalizedWatch)) {
-              throw new RepoError('library_inside_watch', 'Library folder cannot be inside a watch folder.')
-            }
-          }
-          deps.onLibraryFolderSet?.(resolvePath(value))
-          deps.getRuntime()?.watcher?.startLibraryWatcher(resolvePath(value))
-        } else if (key === 'libraryFolderPath') {
-          deps.getRuntime()?.watcher?.stopLibraryWatcher()
+          applyProxyRules(rules)
         }
       }),
 
@@ -447,7 +449,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         writeFileSync(result.filePath, bibtex, 'utf-8')
         return result.filePath
       })
-  }
+  } satisfies Record<HandlerChannel, (...args: never[]) => unknown>
 
   return handlers
 }

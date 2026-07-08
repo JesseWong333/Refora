@@ -1,4 +1,4 @@
-import { renameSync, existsSync, statSync, copyFileSync, mkdirSync } from 'node:fs'
+import { renameSync, existsSync, statSync, copyFileSync, unlinkSync, mkdirSync } from 'node:fs'
 import { parse, join } from 'node:path'
 import type { Repositories } from '../db/repositories'
 import { RepoError } from '../db/repositories/errors'
@@ -18,7 +18,16 @@ function collisionSafePath(destPath: string): string {
 export function moveToLibrary(filePath: string, libraryFolder: string): string {
   const fileName = parse(filePath).base
   const destPath = collisionSafePath(join(libraryFolder, fileName))
-  renameSync(filePath, destPath)
+  try {
+    renameSync(filePath, destPath)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EXDEV') {
+      copyFileSync(filePath, destPath)
+      unlinkSync(filePath)
+    } else {
+      throw e
+    }
+  }
   return destPath
 }
 
