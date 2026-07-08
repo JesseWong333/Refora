@@ -115,7 +115,10 @@ describe('IPC handlers (data layer)', () => {
     runMigrations(adapt(db))
     seedDefaultSettings(adapt(db), 'en')
     repos = createRepositories(db as unknown as SqliteDb)
-    handlers = createIpcHandlers({ repos, win: undefined as never, importer: undefined })
+    handlers = createIpcHandlers({
+      win: undefined as never,
+      getRuntime: () => ({ repos })
+    })
     mockTrashItem.mockReset()
     mockTrashItem.mockResolvedValue(undefined)
   })
@@ -261,5 +264,33 @@ describe('IPC handlers (data layer)', () => {
     expect(r.ok).toBe(true)
     expect(repos.categories.listForDocument('b1').length).toBe(1)
     expect(repos.categories.listForDocument('b2').length).toBe(1)
+  })
+
+  it('library:switch delegates to switchLibraryFolder and returns its result', async () => {
+    const switchFn = vi.fn<(folder: string) => Promise<unknown>>().mockResolvedValue({
+      libraryFolderPath: '/lib',
+      dbExisted: false,
+      scanned: 3,
+      imported: 2,
+      skipped: 1,
+      errors: []
+    })
+    const localHandlers = createIpcHandlers({
+      win: undefined as never,
+      getRuntime: () => ({ repos }),
+      switchLibraryFolder: switchFn as never
+    })
+
+    const r = await localHandlers[IpcChannel.LibrarySwitch]('/lib') as Result<unknown>
+    expect(r.ok).toBe(true)
+    expect(switchFn).toHaveBeenCalledWith('/lib')
+    const data = (r as { ok: true; data: { scanned: number } }).data
+    expect(data.scanned).toBe(3)
+  })
+
+  it('library:switch resolves { ok: false, not_implemented } when no switch fn', async () => {
+    const r = await handlers[IpcChannel.LibrarySwitch]('/lib') as Result<unknown>
+    expect(r.ok).toBe(false)
+    expect((r as { ok: false; error: { code: string } }).error.code).toBe('not_implemented')
   })
 })

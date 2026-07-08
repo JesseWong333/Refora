@@ -58,6 +58,7 @@
     "title": "Settings",
     "libraryFolder": "Library Folder",
     "libraryFolderAutoImportHint": "PDFs added to this folder are imported automatically.",
+    "switching": "Switching…",
     "crossrefMailto": "Crossref Mailto",
     "theme": "Theme",
     "language": "Language",
@@ -113,7 +114,8 @@
   "wizard": {
     "title": "Welcome to Refora",
     "description": "Choose a Library Folder to store your PDFs. This is required to start using Refora. Any PDF you add there is imported automatically.",
-    "chooseLibrary": "Choose Library Folder"
+    "chooseLibrary": "Choose Library Folder",
+    "scanning": "Scanning library…"
   },
   "toast": {
     "encryptedPdf": "Skipping encrypted PDF: {{name}} (password-protected)",

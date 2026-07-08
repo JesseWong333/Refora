@@ -6,7 +6,8 @@ import type {
   ListFilter,
   EditableField,
   DocumentPatch,
-  BootstrapData
+  BootstrapData,
+  LibrarySwitchResult
 } from '../../src/shared/ipc-types'
 
 describe('ipc-types shapes', () => {
@@ -102,5 +103,19 @@ describe('ipc-types shapes', () => {
     }
     expect(ok.ok).toBe(true)
     expect(er.ok).toBe(false)
+  })
+
+  it('LibrarySwitchResult carries scan outcome counts', () => {
+    const res: LibrarySwitchResult = {
+      libraryFolderPath: '/lib',
+      dbExisted: false,
+      scanned: 5,
+      imported: 4,
+      skipped: 1,
+      errors: [{ path: '/lib/bad.pdf', message: 'corrupted' }]
+    }
+    expect(res.dbExisted).toBe(false)
+    expect(res.imported).toBe(4)
+    expect(res.errors).toHaveLength(1)
   })
 })

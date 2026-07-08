@@ -93,6 +93,7 @@ const docUpdatedCb: Array<null | ((doc: Document) => void)> = [null]
 const importProgressCb: Array<null | ((payload: ImportProgress) => void)> = [null]
 const importToastCb: Array<null | ((message: string) => void)> = [null]
 const menuExportBibtexCb: Array<null | (() => void)> = [null]
+const librarySwitchedCb: Array<null | (() => void)> = [null]
 
 let toastTimeout: ReturnType<typeof setTimeout> | null = null
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
@@ -421,6 +422,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
     api.events.onMenuExportBibtex(menuExportBibtexCb[0])
 
+    librarySwitchedCb[0] = () => {
+      set({
+        selectedIds: [],
+        focusedDocId: null,
+        isSearching: false,
+        searchQuery: '',
+        searchResults: []
+      })
+      void get().fetchDocuments()
+      void get().fetchCategories()
+      get().refreshPendingMetadataCount()
+    }
+    api.events.onLibrarySwitched(librarySwitchedCb[0])
+
     void get().fetchDocuments()
     get().refreshPendingMetadataCount()
   },
@@ -510,6 +525,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (menuExportBibtexCb[0]) {
       api.events.off('menu:export-bibtex', menuExportBibtexCb[0])
       menuExportBibtexCb[0] = null
+    }
+    if (librarySwitchedCb[0]) {
+      api.events.off('library:switched', librarySwitchedCb[0])
+      librarySwitchedCb[0] = null
     }
     if (toastTimeout) clearTimeout(toastTimeout)
     if (pendingMetadataTimeout) clearTimeout(pendingMetadataTimeout)

@@ -35,6 +35,8 @@ export const IpcChannel = {
 
   DialogOpenDirectory: 'dialog:openDirectory',
 
+  LibrarySwitch: 'library:switch',
+
   SettingsGet: 'settings:get',
   SettingsSet: 'settings:set',
 
@@ -44,5 +46,7 @@ export const IpcChannel = {
   EventDocumentUpdated: 'document:updated',
   EventImportProgress: 'import:progress',
   EventImportToast: 'import:toast',
-  EventMenuExportBibtex: 'menu:export-bibtex'
+  EventMenuExportBibtex: 'menu:export-bibtex',
+  EventLibraryScanning: 'library:scanning',
+  EventLibrarySwitched: 'library:switched'
 } as const

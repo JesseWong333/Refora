@@ -42,6 +42,8 @@ const mockOnDocUpdated = vi.fn()
 const mockOnImportProgress = vi.fn()
 const mockOnImportToast = vi.fn()
 const mockOnMenuExportBibtex = vi.fn()
+const mockOnLibrarySwitched = vi.fn()
+const mockFetchCategories = vi.fn()
 const mockEventsOff = vi.fn()
 
 function resetStoreState(): void {
@@ -69,12 +71,15 @@ beforeEach(() => {
   mockOnImportProgress.mockReset()
   mockOnImportToast.mockReset()
   mockOnMenuExportBibtex.mockReset()
+  mockOnLibrarySwitched.mockReset()
+  mockFetchCategories.mockReset()
   mockEventsOff.mockReset()
 
   mockList.mockResolvedValue([])
   mockSearch.mockResolvedValue([])
   mockSetStarred.mockResolvedValue(undefined)
   mockCountPendingMetadata.mockResolvedValue(0)
+  mockFetchCategories.mockResolvedValue(undefined)
 
   const api = window.api as unknown as Record<string, unknown>
   const docs = api.documents as Record<string, unknown>
@@ -88,6 +93,7 @@ beforeEach(() => {
   events.onImportProgress = mockOnImportProgress
   events.onImportToast = mockOnImportToast
   events.onMenuExportBibtex = mockOnMenuExportBibtex
+  events.onLibrarySwitched = mockOnLibrarySwitched
   events.off = mockEventsOff
 
   resetStoreState()
@@ -273,8 +279,30 @@ describe('DocumentStore', () => {
       expect(mockEventsOff).toHaveBeenCalledWith('import:progress', expect.any(Function))
       expect(mockEventsOff).toHaveBeenCalledWith('import:toast', expect.any(Function))
       expect(mockEventsOff).toHaveBeenCalledWith('menu:export-bibtex', expect.any(Function))
-      expect(mockEventsOff).toHaveBeenCalledTimes(4)
+      expect(mockEventsOff).toHaveBeenCalledWith('library:switched', expect.any(Function))
+      expect(mockEventsOff).toHaveBeenCalledTimes(5)
       expect(useDocumentStore.getState().initialized).toBe(false)
+    })
+
+    it('library:switched event refetches documents and clears selection', async () => {
+      const fetchedDocs = [makeDoc({ id: 'a1' }), makeDoc({ id: 'a2' })]
+      mockList.mockResolvedValue(fetchedDocs)
+      useDocumentStore.setState({
+        selectedIds: ['old'],
+        focusedDocId: 'old',
+        documents: [makeDoc({ id: 'old' })]
+      })
+
+      useDocumentStore.getState().init()
+      const cb = mockOnLibrarySwitched.mock.calls[0]?.[0] as (() => void) | undefined
+      expect(cb).toBeDefined()
+      cb!()
+
+      expect(useDocumentStore.getState().selectedIds).toEqual([])
+      expect(useDocumentStore.getState().focusedDocId).toBeNull()
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(mockList).toHaveBeenCalled()
     })
   })
 

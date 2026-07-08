@@ -29,6 +29,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [crossrefMailto, setCrossrefMailto] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [switching, setSwitching] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -57,11 +58,14 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     try {
       const path = await api.dialog.openDirectory()
       if (!path) return
-      await api.settings.set('libraryFolderPath', path)
+      setSwitching(true)
+      await api.library.switch(path)
       setLibraryFolderPath(path)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg || 'Failed to set library folder')
+    } finally {
+      setSwitching(false)
     }
   }
 
@@ -134,8 +138,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             <span className="min-w-0 flex-1 truncate rounded-lg bg-panel-2 px-3 py-1.5 text-xs text-foreground">
               {libraryFolderPath || '\u2014'}
             </span>
-            <Button size="small" onClick={handleChooseFolder}>
-              {t('settings.chooseFolder')}
+            <Button size="small" onClick={handleChooseFolder} loading={switching}>
+              {switching ? t('settings.switching') : t('settings.chooseFolder')}
             </Button>
           </div>
           <span className="text-[11px] text-muted">{t('settings.libraryFolderAutoImportHint')}</span>

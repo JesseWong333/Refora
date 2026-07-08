@@ -69,6 +69,16 @@ const noopPromise = async () => ({ ok: true, data: undefined })
   dialog: {
     openDirectory: async () => null
   },
+  library: {
+    switch: async () => ({
+      libraryFolderPath: '/fake/library',
+      dbExisted: true,
+      scanned: 0,
+      imported: 0,
+      skipped: 0,
+      errors: []
+    })
+  },
   getPathForFile: (_file: unknown) => '',
   export: {
     toJson: noopPromise,
@@ -77,6 +87,8 @@ const noopPromise = async () => ({ ok: true, data: undefined })
   events: {
     onDocumentUpdated: (_cb: unknown) => { return () => {} },
     onImportProgress: (_cb: unknown) => { return () => {} },
+    onLibraryScanning: (_cb: unknown) => { return () => {} },
+    onLibrarySwitched: (_cb: unknown) => { return () => {} },
     off: (_channel: string, _cb: unknown) => {}
   }
 }

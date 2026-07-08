@@ -8,6 +8,7 @@ import type {
   Document,
   DocumentPatch,
   ListFilter,
+  LibrarySwitchResult,
   Result,
   SearchResult,
   WatchFolder
@@ -85,10 +86,8 @@ function findPdfsRecursively(dir: string): string[] {
   return results
 }
 
-export interface IpcHandlerDeps {
+export interface RuntimeRef {
   repos: Repositories
-  win: BrowserWindow
-  getWin?: () => BrowserWindow | null
   importer?: {
     importFiles: (paths: string[], isWatch: boolean) => Promise<ImportResult>
     destroy: () => void
@@ -103,9 +102,15 @@ export interface IpcHandlerDeps {
   watcher?: ReturnType<typeof createWatcher>
 }
 
-export function createIpcHandlers(deps: IpcHandlerDeps) {
-  const { repos, importer, metadataService, watcher } = deps
+export interface IpcHandlerDeps {
+  win: BrowserWindow
+  getWin?: () => BrowserWindow | null
+  getRuntime: () => RuntimeRef | null
+  switchLibraryFolder?: (folder: string) => Promise<LibrarySwitchResult>
+  onLibraryFolderSet?: (folder: string) => void
+}
 
+export function createIpcHandlers(deps: IpcHandlerDeps) {
   const getWin = (): BrowserWindow | null => {
     const w = deps.getWin ? deps.getWin() : deps.win
     if (!w || w.isDestroyed()) return null
@@ -118,38 +123,45 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     return w
   }
 
+  const repos = (): Repositories => {
+    const rt = deps.getRuntime()
+    if (!rt) throw new Error('Runtime not ready')
+    return rt.repos
+  }
+
   const handlers = {
-    [IpcChannel.Bootstrap]: (): Result<BootstrapData> => wrap(() => bootstrapFromSettings(repos)),
+    [IpcChannel.Bootstrap]: (): Result<BootstrapData> => wrap(() => bootstrapFromSettings(repos())),
 
     [IpcChannel.DocumentsList]: (filter: ListFilter): Result<Document[]> =>
-      wrap(() => repos.documents.list(filter)),
+      wrap(() => repos().documents.list(filter)),
     [IpcChannel.DocumentsSearch]: (q: string): Result<SearchResult> =>
-      wrap(() => repos.documents.search(q)),
+      wrap(() => repos().documents.search(q)),
     [IpcChannel.DocumentsGet]: (id: string): Result<Document | null> =>
-      wrap(() => repos.documents.get(id)),
+      wrap(() => repos().documents.get(id)),
     [IpcChannel.DocumentsUpdate]: (id: string, patch: DocumentPatch): Result<Document> =>
-      wrap(() => repos.documents.update(id, patch)),
+      wrap(() => repos().documents.update(id, patch)),
     [IpcChannel.DocumentsSetStarred]: (id: string, value: boolean): Result<void> =>
-      wrap(() => repos.documents.setStarred(id, value)),
+      wrap(() => repos().documents.setStarred(id, value)),
     [IpcChannel.DocumentsDelete]: (id: string): Promise<Result<void>> =>
-      asyncWrap(() => deleteDocument(repos, id)),
+      asyncWrap(() => deleteDocument(repos(), id)),
     [IpcChannel.DocumentsBulkDelete]: (ids: string[]): Promise<Result<void>> =>
-      asyncWrap(() => bulkDeleteDocuments(repos, ids)),
+      asyncWrap(() => bulkDeleteDocuments(repos(), ids)),
     [IpcChannel.DocumentsBulkCategorize]: (ids: string[], catId: string): Result<void> =>
       wrap(() => {
-        const cats = repos.categories.list()
+        const r = repos()
+        const cats = r.categories.list()
         const cat = cats.find((c) => c.id === catId)
         if (!cat) throw new RepoError('not_found', `Category ${catId} not found`)
-        const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
+        const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
         for (const id of ids) {
-          repos.categories.assign(id, catId)
+          r.categories.assign(id, catId)
           if (libraryFolder) {
-            const doc = repos.documents.get(id)
+            const doc = r.documents.get(id)
             if (!doc) continue
             if (!doc.filePath.startsWith(libraryFolder)) {
               try {
                 const newPath = moveToLibrary(doc.filePath, libraryFolder)
-                repos.documents.updateFilePath(id, newPath, parsePath(newPath).base)
+                r.documents.updateFilePath(id, newPath, parsePath(newPath).base)
               } catch {
                 continue
               }
@@ -158,25 +170,30 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         }
       }),
 
-    [IpcChannel.DocumentsBulkRefreshMetadata]: (ids: string[]): Result<void> =>
-      metadataService ? (metadataService.bulkRefreshMetadata(ids), { ok: true, data: undefined }) : notImplemented('documents.bulkRefreshMetadata'),
+    [IpcChannel.DocumentsBulkRefreshMetadata]: (ids: string[]): Result<void> => {
+      const ms = deps.getRuntime()?.metadataService
+      return ms ? (ms.bulkRefreshMetadata(ids), { ok: true, data: undefined }) : notImplemented('documents.bulkRefreshMetadata')
+    },
     [IpcChannel.DocumentsCountPendingMetadata]: (): Result<number> =>
-      wrap(() => repos.documents.countPendingMetadata()),
+      wrap(() => repos().documents.countPendingMetadata()),
     [IpcChannel.DocumentsOpenPdf]: async (id: string): Promise<Result<Document>> =>
-      asyncWrap(() => openPdf(repos, getWin(), id)),
+      asyncWrap(() => openPdf(repos(), getWin(), id)),
     [IpcChannel.DocumentsOpenInFinder]: (id: string): Result<void> =>
       wrap(() => {
-        const doc = repos.documents.get(id)
+        const doc = repos().documents.get(id)
         if (!doc) throw new RepoError('not_found', `Document ${id} not found`)
         shell.showItemInFolder(doc.filePath)
       }),
-    [IpcChannel.DocumentsRefreshMetadata]: (id: string): Result<Document> =>
-      metadataService
+    [IpcChannel.DocumentsRefreshMetadata]: (id: string): Result<Document> => {
+      const rt = deps.getRuntime()
+      const ms = rt?.metadataService
+      return ms
         ? wrap(() => {
-            metadataService!.refreshMetadata(id)
-            return repos.documents.get(id) as Document
+            ms!.refreshMetadata(id)
+            return rt!.repos.documents.get(id) as Document
           })
-        : notImplemented('documents.refreshMetadata'),
+        : notImplemented('documents.refreshMetadata')
+    },
     [IpcChannel.DocumentsRelocateFile]: async (id: string, newPath: string): Promise<Result<Document>> =>
       asyncWrap(async () => {
         let path = newPath
@@ -187,25 +204,27 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
             filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
           })
           if (result.canceled || result.filePaths.length === 0) {
-            const doc = repos.documents.get(id)
+            const doc = repos().documents.get(id)
             if (!doc) throw new RepoError('not_found', `Document ${id} not found`)
             return doc
           }
           path = result.filePaths[0]
         }
-        const doc = relocate(repos, id, path)
+        const doc = relocate(repos(), id, path)
         const w = getWin()
         if (w) emitDocumentUpdated(w, doc)
         return doc
       }),
     [IpcChannel.DocumentsRestoreFile]: (id: string): Result<Document> =>
       wrap(() => {
-        restoreToOriginal(repos, id)
-        const doc = repos.documents.get(id)
+        const r = repos()
+        restoreToOriginal(r, id)
+        const doc = r.documents.get(id)
         return doc as Document
       }),
 
     [IpcChannel.ImportAddFiles]: async (paths: string[]): Promise<Result<string[]>> => {
+      const importer = deps.getRuntime()?.importer
       if (!importer) return notImplemented('import.addFiles') as Result<string[]>
       let filePaths = paths
       if (filePaths.length === 0) {
@@ -226,6 +245,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     },
 
     [IpcChannel.ImportAddFolder]: async (_dir: string): Promise<Result<string[]>> => {
+      const importer = deps.getRuntime()?.importer
       if (!importer) return notImplemented('import.addFolder') as Result<string[]>
       const w = requireWin()
       w.focus()
@@ -266,45 +286,49 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (modeChoice.response === 2) return 0
 
         const mode = modeChoice.response === 1 ? 'replace' : 'merge'
-        return importFromJsonFile(repos, filePath, mode)
+        return importFromJsonFile(repos(), filePath, mode)
       }),
 
     [IpcChannel.CategoriesList]: (): Result<Category[]> => wrap(() => {
-      const cats = repos.categories.list()
-      const counts = repos.categories.countByCategory()
+      const r = repos()
+      const cats = r.categories.list()
+      const counts = r.categories.countByCategory()
       return cats.map((c) => ({ ...c, count: counts.get(c.id) ?? 0 }))
     }),
     [IpcChannel.CategoriesCreate]: (name: string): Result<Category> =>
-      wrap(() => repos.categories.create(name)),
+      wrap(() => repos().categories.create(name)),
     [IpcChannel.CategoriesRename]: (id: string, name: string): Result<void> =>
-      wrap(() => repos.categories.rename(id, name)),
-    [IpcChannel.CategoriesDelete]: (id: string): Result<void> => wrap(() => repos.categories.delete(id)),
+      wrap(() => repos().categories.rename(id, name)),
+    [IpcChannel.CategoriesDelete]: (id: string): Result<void> => wrap(() => repos().categories.delete(id)),
     [IpcChannel.CategoriesAssign]: (docId: string, catId: string): Result<void> =>
       wrap(() => {
-        const doc = repos.documents.get(docId)
+        const r = repos()
+        const doc = r.documents.get(docId)
         if (!doc) throw new RepoError('not_found', `Document ${docId} not found`)
-        const cats = repos.categories.list()
+        const cats = r.categories.list()
         const cat = cats.find((c) => c.id === catId)
         if (!cat) throw new RepoError('not_found', `Category ${catId} not found`)
-        const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
+        const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
         const alreadyInLibrary = libraryFolder ? doc.filePath.startsWith(libraryFolder) : false
         if (libraryFolder && !alreadyInLibrary) {
           try {
             const newPath = moveToLibrary(doc.filePath, libraryFolder)
-            repos.documents.updateFilePath(docId, newPath, parsePath(newPath).base)
+            r.documents.updateFilePath(docId, newPath, parsePath(newPath).base)
           } catch {
-            repos.categories.assign(docId, catId)
+            r.categories.assign(docId, catId)
             throw new RepoError('move_failed', 'Failed to move file to library folder')
           }
         }
-        repos.categories.assign(docId, catId)
+        r.categories.assign(docId, catId)
       }),
     [IpcChannel.CategoriesUnassign]: (docId: string, catId: string): Result<void> =>
-      wrap(() => repos.categories.unassign(docId, catId)),
+      wrap(() => repos().categories.unassign(docId, catId)),
 
-    [IpcChannel.WatchList]: (): Result<WatchFolder[]> => wrap(() => repos.watchFolders.list()),
+    [IpcChannel.WatchList]: (): Result<WatchFolder[]> => wrap(() => repos().watchFolders.list()),
     [IpcChannel.WatchAdd]: async (path: string): Promise<Result<WatchFolder>> =>
       asyncWrap(async () => {
+        const r = repos()
+        const watcher = deps.getRuntime()?.watcher
         let absPath = path ? resolvePath(path) : ''
         if (!absPath) {
           const result = await dialog.showOpenDialog(requireWin(), {
@@ -316,7 +340,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         }
         if (!existsSync(absPath)) throw new RepoError('invalid_path', `Path does not exist: ${absPath}`)
         if (!statSync(absPath).isDirectory()) throw new RepoError('invalid_path', `Not a directory: ${absPath}`)
-        const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
+        const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
         if (libraryFolder) {
           const normalizedLib = resolvePath(libraryFolder) + '/'
           const normalizedWatch = absPath + '/'
@@ -327,20 +351,24 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
             throw new RepoError('contains_library', 'Path cannot be inside a watch folder.')
           }
         }
-        const wf = repos.watchFolders.add(absPath)
+        const wf = r.watchFolders.add(absPath)
         if (wf.enabled === 1) watcher?.start(wf)
         return wf
       }),
     [IpcChannel.WatchRemove]: (id: string): Result<void> =>
       wrap(() => {
+        const r = repos()
+        const watcher = deps.getRuntime()?.watcher
         watcher?.stop(id)
-        repos.watchFolders.remove(id)
+        r.watchFolders.remove(id)
       }),
     [IpcChannel.WatchToggle]: (id: string, enabled: boolean): Result<void> =>
       wrap(() => {
-        repos.watchFolders.toggle(id, enabled)
+        const r = repos()
+        const watcher = deps.getRuntime()?.watcher
+        r.watchFolders.toggle(id, enabled)
         if (enabled) {
-          const wf = repos.watchFolders.list().find((w) => w.id === id)
+          const wf = r.watchFolders.list().find((w) => w.id === id)
           if (wf) watcher?.start(wf)
         } else {
           watcher?.stop(id)
@@ -357,17 +385,26 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         return resolvePath(result.filePaths[0])
       }),
 
+    [IpcChannel.LibrarySwitch]: async (folder: string): Promise<Result<LibrarySwitchResult>> =>
+      asyncWrap(async () => {
+        if (!deps.switchLibraryFolder) throw new RepoError('not_implemented', 'library switch not available')
+        const w = getWin()
+        if (w) w.focus()
+        return deps.switchLibraryFolder(folder)
+      }),
+
     [IpcChannel.SettingsGet]: (key: string, defaultValue: unknown): Result<unknown> =>
-      wrap(() => repos.settings.get(key, defaultValue)),
+      wrap(() => repos().settings.get(key, defaultValue)),
     [IpcChannel.SettingsSet]: (key: string, value: unknown): Result<void> =>
       wrap(() => {
-        repos.settings.set(key, value)
+        const r = repos()
+        r.settings.set(key, value)
         if (key === 'proxyUrl') {
           const rules = typeof value === 'string' && value.trim() ? value.trim() : ''
           session.defaultSession.setProxy({ proxyRules: rules })
         }
         if (key === 'libraryFolderPath' && typeof value === 'string' && value) {
-          const watchFolders = repos.watchFolders.list()
+          const watchFolders = r.watchFolders.list()
           const normalizedLib = resolvePath(value) + '/'
           for (const wf of watchFolders) {
             const normalizedWatch = resolvePath(wf.path) + '/'
@@ -375,9 +412,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
               throw new RepoError('library_inside_watch', 'Library folder cannot be inside a watch folder.')
             }
           }
-          watcher?.startLibraryWatcher(resolvePath(value))
+          deps.onLibraryFolderSet?.(resolvePath(value))
+          deps.getRuntime()?.watcher?.startLibraryWatcher(resolvePath(value))
         } else if (key === 'libraryFolderPath') {
-          watcher?.stopLibraryWatcher()
+          deps.getRuntime()?.watcher?.stopLibraryWatcher()
         }
       }),
 
@@ -389,13 +427,14 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           filters: [{ name: 'JSON files', extensions: ['json'] }]
         })
         if (result.canceled || !result.filePath) return ''
-        writeExportFile(repos, result.filePath)
+        writeExportFile(repos(), result.filePath)
         return result.filePath
       }),
     [IpcChannel.ExportToBibtex]: async (ids: string[]): Promise<Result<string>> =>
       asyncWrap(async () => {
         if (ids.length === 0) return ''
-        const docs = ids.map((id) => repos.documents.get(id)).filter(Boolean) as Document[]
+        const r = repos()
+        const docs = ids.map((id) => r.documents.get(id)).filter(Boolean) as Document[]
         if (docs.length === 0) return ''
         const result = await dialog.showSaveDialog(requireWin(), {
           title: 'Export BibTeX',

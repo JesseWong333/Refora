@@ -10,17 +10,26 @@ interface FirstRunWizardProps {
 export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleChooseLibrary = async () => {
     setPicking(true)
+    setError(null)
     try {
       const path = await api.dialog.openDirectory()
-      if (path) {
-        await api.settings.set('libraryFolderPath', path)
-        onDone()
+      if (!path) {
+        setPicking(false)
+        return
       }
-    } catch {
-      void 0
+      setScanning(true)
+      await api.library.switch(path)
+      setScanning(false)
+      onDone()
+    } catch (e) {
+      setScanning(false)
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : 'Failed to set library folder'
+      setError(msg)
     }
     setPicking(false)
   }
@@ -39,11 +48,18 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
           <button
             className="w-full rounded-lg bg-accent px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
             onClick={handleChooseLibrary}
-            disabled={picking}
+            disabled={picking || scanning}
           >
-            {t('wizard.chooseLibrary', 'Choose Library Folder')}
+            {scanning
+              ? t('wizard.scanning', 'Scanning library…')
+              : t('wizard.chooseLibrary', 'Choose Library Folder')}
           </button>
         </div>
+        {error && (
+          <div className="w-full rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+            {error}
+          </div>
+        )}
       </div>
     </div>
   )

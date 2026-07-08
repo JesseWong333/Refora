@@ -1,8 +1,8 @@
 import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { initLogger, logger } from './services/logger'
-import { openDatabase, seedSettings, closeDatabase } from './db/connection'
+import { openDatabase, seedSettings, closeDatabase, getSetting } from './db/connection'
 import { createRepositories } from './db/repositories'
 import { registerIpcHandlers } from './ipc/handlers'
 import { createImporter } from './services/importer'
@@ -10,20 +10,26 @@ import { createMetadataService } from './services/metadata'
 import { createWatcher } from './services/watcher'
 import { checkMissing } from './services/files'
 import { writeExportFile, importFromJsonFile } from './services/export'
-import { emitImportProgress } from './ipc/events'
+import { emitImportProgress, emitLibraryScanning, emitLibrarySwitched } from './ipc/events'
+import { dbPathForLibraryFolder, dbExistsInLibraryFolder, DB_FILE_NAME } from './db/dbPath'
+import { readLibraryFolderPath, writeLibraryFolderPath } from './services/prefs'
 import type { Repositories } from './db/repositories'
+import type { LibrarySwitchResult } from '../shared/ipc-types'
 
 let isDev = false
 const IS_MAC = process.platform === 'darwin'
 
 type DbConnection = ReturnType<typeof openDatabase>
-let db: DbConnection | null = null
+interface Runtime {
+  db: DbConnection
+  repos: Repositories
+  importer: ReturnType<typeof createImporter>
+  metadataService: ReturnType<typeof createMetadataService>
+  watcher: ReturnType<typeof createWatcher>
+  missingCheckInterval: ReturnType<typeof setInterval> | null
+}
+let runtime: Runtime | null = null
 let win: BrowserWindow | null = null
-let importer: ReturnType<typeof createImporter> | null = null
-let metadataService: ReturnType<typeof createMetadataService> | null = null
-let watcher: ReturnType<typeof createWatcher> | null = null
-let missingCheckInterval: ReturnType<typeof setInterval> | null = null
-let repos: Repositories | null = null
 let isQuitting = false
 
 function detectLanguage(): 'zh' | 'en' {
@@ -63,28 +69,26 @@ function buildMenu(): Menu {
           accelerator: 'Cmd+I',
           click: async () => {
             const w = getWin()
-            if (!w || !importer) return
+            if (!w || !runtime) return
             const result = await dialog.showOpenDialog(w, {
               title: 'Add PDF Files',
               properties: ['openFile', 'multiSelections'],
               filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
             })
             if (result.canceled) return
-            void importer.importFiles(result.filePaths, false)
+            void runtime.importer.importFiles(result.filePaths, false)
           }
         },
         {
           label: 'Add Folder',
           click: async () => {
             const w = getWin()
-            if (!w || !importer) return
+            if (!w || !runtime) return
             const result = await dialog.showOpenDialog(w, {
               title: 'Add Folder',
               properties: ['openDirectory']
             })
             if (result.canceled) return
-            const { readdirSync, statSync } = await import('node:fs')
-            const { join, resolve: resolvePath } = await import('node:path')
             const dir = result.filePaths[0]
             const findPdfs = (d: string): string[] => {
               const results: string[] = []
@@ -93,13 +97,13 @@ function buildMenu(): Menu {
                   const full = join(d, entry)
                   try {
                     if (statSync(full).isDirectory()) results.push(...findPdfs(full))
-                    else if (full.toLowerCase().endsWith('.pdf')) results.push(resolvePath(full))
+                    else if (full.toLowerCase().endsWith('.pdf')) results.push(full)
                   } catch { continue }
                 }
               } catch { return [] }
               return results
             }
-            void importer.importFiles(findPdfs(dir), false)
+            void runtime.importer.importFiles(findPdfs(dir), false)
           }
         },
         { type: 'separator' },
@@ -107,7 +111,7 @@ function buildMenu(): Menu {
           label: 'Import JSON\u2026',
           click: async () => {
             const w = getWin()
-            if (!w || !repos) return
+            if (!w || !runtime) return
             const result = await dialog.showOpenDialog(w, {
               title: 'Import JSON',
               properties: ['openFile'],
@@ -124,7 +128,7 @@ function buildMenu(): Menu {
             })
             if (modeChoice.response === 2) return
             const mode = modeChoice.response === 1 ? 'replace' : 'merge'
-            const count = importFromJsonFile(repos, result.filePaths[0], mode)
+            const count = importFromJsonFile(runtime.repos, result.filePaths[0], mode)
             logger.info(`import:json ${count} documents`)
           }
         },
@@ -134,14 +138,14 @@ function buildMenu(): Menu {
           accelerator: 'Cmd+E',
           click: async () => {
             const w = getWin()
-            if (!w || !repos) return
+            if (!w || !runtime) return
             const result = await dialog.showSaveDialog(w, {
               title: 'Export JSON',
               defaultPath: `refora-export-${new Date().toISOString().slice(0, 10)}.json`,
               filters: [{ name: 'JSON files', extensions: ['json'] }]
             })
             if (result.canceled || !result.filePath) return
-            writeExportFile(repos, result.filePath)
+            writeExportFile(runtime.repos, result.filePath)
           }
         },
         {
@@ -191,10 +195,10 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
 
   let saveBoundsTimeout: ReturnType<typeof setTimeout> | null = null
   const saveBounds = () => {
-    if (!repos || isQuitting || bw.isDestroyed()) return
+    if (!runtime || isQuitting || bw.isDestroyed()) return
     try {
       const bounds = bw.getBounds()
-      repos.settings.set('windowBounds', {
+      runtime.repos.settings.set('windowBounds', {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
@@ -234,6 +238,190 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
   return bw
 }
 
+function teardownRuntime(): void {
+  if (!runtime) return
+  if (runtime.missingCheckInterval) {
+    clearInterval(runtime.missingCheckInterval)
+    runtime.missingCheckInterval = null
+  }
+  runtime.metadataService.destroy()
+  runtime.watcher.destroy()
+  runtime.importer.destroy()
+  closeDatabase()
+  runtime = null
+}
+
+function buildRuntime(dbPath: string): Runtime {
+  const db = openDatabase(dbPath)
+  seedSettings(db, detectLanguage())
+  const repos = createRepositories(db)
+  const importer = createImporter(repos, () => win)
+  const metadataService = createMetadataService(repos, () => win)
+  const watcher = createWatcher({
+    importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
+    getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', '')
+  })
+
+  importer.onComplete((result) => {
+    if (result.errors.length > 0 && win && !win.isDestroyed()) {
+      for (const err of result.errors) {
+        logger.warn(`import:error ${err.path}: ${err.message}`)
+        win.webContents.send('import:toast', err.message)
+      }
+    }
+    for (const id of result.added) {
+      metadataService.enqueue(id)
+    }
+    if (result.added.length > 0 && win && !win.isDestroyed()) {
+      emitImportProgress(win, { current: result.added.length, total: result.added.length })
+    }
+  })
+
+  metadataService.resumeOnStartup()
+
+  const r: Runtime = { db, repos, importer, metadataService, watcher, missingCheckInterval: null }
+
+  setImmediate(() => {
+    const enabledFolders = repos.watchFolders.getEnabled()
+    watcher.startAll(enabledFolders)
+    logger.info(`watch:started ${enabledFolders.length} watchers`)
+    const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
+    if (libraryFolder) watcher.startLibraryWatcher(libraryFolder)
+  })
+
+  const proxyUrl = repos.settings.get<string>('proxyUrl', '')
+  if (proxyUrl) {
+    session.defaultSession.setProxy({ proxyRules: proxyUrl })
+  }
+
+  setImmediate(() => {
+    checkMissing(repos, win)
+  })
+
+  r.missingCheckInterval = setInterval(() => {
+    if (!isQuitting) checkMissing(repos, win)
+  }, 5 * 60 * 1000)
+
+  return r
+}
+
+function findPdfsRecursively(dir: string): string[] {
+  const results: string[] = []
+  try {
+    const entries = readdirSync(dir)
+    for (const entry of entries) {
+      const full = join(dir, entry)
+      try {
+        const st = statSync(full)
+        if (st.isDirectory()) {
+          if (entry === '.git' || entry.startsWith('.')) continue
+          results.push(...findPdfsRecursively(full))
+        } else if (st.isFile() && full.toLowerCase().endsWith('.pdf')) {
+          results.push(full)
+        }
+      } catch {
+        continue
+      }
+    }
+  } catch {
+    return []
+  }
+  return results
+}
+
+function resolveStartupDbPath(): string {
+  const userDataDir = app.getPath('userData')
+  const userDataDbPath = join(userDataDir, DB_FILE_NAME)
+
+  const prefsLibrary = readLibraryFolderPath(userDataDir)
+  if (prefsLibrary && dbExistsInLibraryFolder(prefsLibrary)) {
+    logger.info(`db:startup using library db (prefs) at ${prefsLibrary}`)
+    return dbPathForLibraryFolder(prefsLibrary)
+  }
+  if (prefsLibrary && existsSync(prefsLibrary)) {
+    logger.info(`db:startup creating library db (prefs) at ${prefsLibrary}`)
+    return dbPathForLibraryFolder(prefsLibrary)
+  }
+  if (prefsLibrary && !existsSync(prefsLibrary)) {
+    logger.warn(`db:startup prefs library folder missing, clearing prefs: ${prefsLibrary}`)
+    writeLibraryFolderPath(userDataDir, '')
+  }
+
+  try {
+    if (existsSync(userDataDbPath)) {
+      const db = openDatabase(userDataDbPath)
+      const libraryFolder = getSetting(db, 'libraryFolderPath')
+      const trimmed = libraryFolder ? JSON.parse(libraryFolder) as string : ''
+      closeDatabase()
+      if (trimmed && dbExistsInLibraryFolder(trimmed)) {
+        logger.info(`db:startup migrating to library db at ${trimmed}`)
+        writeLibraryFolderPath(userDataDir, trimmed)
+        return dbPathForLibraryFolder(trimmed)
+      }
+      if (trimmed && existsSync(trimmed)) {
+        logger.info(`db:startup migrating to new library db at ${trimmed}`)
+        writeLibraryFolderPath(userDataDir, trimmed)
+        return dbPathForLibraryFolder(trimmed)
+      }
+      if (trimmed && !existsSync(trimmed)) {
+        logger.warn(`db:startup legacy library folder missing, falling back to bootstrap: ${trimmed}`)
+      }
+    }
+  } catch (e) {
+    logger.warn(`db:startup bootstrap read failed: ${e instanceof Error ? e.message : String(e)}`)
+    closeDatabase()
+  }
+  return userDataDbPath
+}
+
+async function switchLibraryFolder(folder: string): Promise<LibrarySwitchResult> {
+  if (!folder || !existsSync(folder) || !statSync(folder).isDirectory()) {
+    throw new Error(`Invalid library folder: ${folder}`)
+  }
+  const targetDbPath = dbPathForLibraryFolder(folder)
+  const dbExisted = dbExistsInLibraryFolder(folder)
+  logger.info(`library:switch folder=${folder} dbExisted=${dbExisted}`)
+
+  teardownRuntime()
+  runtime = buildRuntime(targetDbPath)
+  runtime.repos.settings.set('libraryFolderPath', folder)
+  writeLibraryFolderPath(app.getPath('userData'), folder)
+  runtime.watcher.startLibraryWatcher(folder)
+
+  let scanned = 0
+  let imported = 0
+  let skipped = 0
+  const errors: Array<{ path: string; message: string }> = []
+
+  if (!dbExisted) {
+    const pdfs = findPdfsRecursively(folder)
+    scanned = pdfs.length
+    logger.info(`library:scan found ${scanned} pdfs in ${folder}`)
+    if (scanned > 0 && win && !win.isDestroyed()) {
+      emitLibraryScanning(win, { current: 0, total: scanned })
+    }
+    if (scanned > 0) {
+      const result = await runtime.importer.importFiles(pdfs, false)
+      imported = result.added.length
+      skipped = result.skipped.length
+      errors.push(...result.errors)
+    }
+  }
+
+  const result: LibrarySwitchResult = {
+    libraryFolderPath: folder,
+    dbExisted,
+    scanned,
+    imported,
+    skipped,
+    errors
+  }
+  if (win && !win.isDestroyed()) {
+    emitLibrarySwitched(win, result)
+  }
+  return result
+}
+
 void app.whenReady().then(() => {
   isDev = !app.isPackaged
   initLogger()
@@ -247,63 +435,20 @@ void app.whenReady().then(() => {
     }
   }
 
-  const dbPath = join(app.getPath('userData'), 'refora.db')
-  db = openDatabase(dbPath)
-  seedSettings(db, detectLanguage())
-
-  repos = createRepositories(db)
-  const r = repos
+  const dbPath = resolveStartupDbPath()
+  runtime = buildRuntime(dbPath)
+  const r = runtime.repos
   const savedBounds = r.settings.get<{ x?: number; y?: number; width?: number; height?: number } | null>('windowBounds', null)
   win = createWindow(savedBounds)
-  importer = createImporter(r, () => win)
-  metadataService = createMetadataService(r, () => win)
-  watcher = createWatcher({
-    importFiles: (paths, isWatch) => importer!.importFiles(paths, isWatch),
-    getLibraryFolder: () => r.settings.get<string>('libraryFolderPath', '')
-  })
 
   Menu.setApplicationMenu(buildMenu())
-  registerIpcHandlers({ repos: r, win, getWin: () => win, importer, metadataService, watcher })
-
-  importer.onComplete((result) => {
-    if (result.errors.length > 0 && win && !win.isDestroyed()) {
-      for (const err of result.errors) {
-        logger.warn(`import:error ${err.path}: ${err.message}`)
-        win.webContents.send('import:toast', err.message)
-      }
-    }
-    for (const id of result.added) {
-      metadataService?.enqueue(id)
-    }
-    if (result.added.length > 0 && win && !win.isDestroyed()) {
-      emitImportProgress(win, { current: result.added.length, total: result.added.length })
-    }
+  registerIpcHandlers({
+    win,
+    getWin: () => win,
+    getRuntime: () => runtime,
+    switchLibraryFolder,
+    onLibraryFolderSet: (folder) => writeLibraryFolderPath(app.getPath('userData'), folder)
   })
-
-  metadataService.resumeOnStartup()
-
-  setImmediate(() => {
-    if (watcher) {
-      const enabledFolders = r.watchFolders.getEnabled()
-      watcher.startAll(enabledFolders)
-      logger.info(`watch:started ${enabledFolders.length} watchers`)
-      const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
-      if (libraryFolder) watcher.startLibraryWatcher(libraryFolder)
-    }
-  })
-
-  const proxyUrl = r.settings.get<string>('proxyUrl', '')
-  if (proxyUrl) {
-    session.defaultSession.setProxy({ proxyRules: proxyUrl })
-  }
-
-  setImmediate(() => {
-    checkMissing(r, win)
-  })
-
-  missingCheckInterval = setInterval(() => {
-    if (!isQuitting) checkMissing(r, win)
-  }, 5 * 60 * 1000)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -317,26 +462,10 @@ void app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   isQuitting = true
-  if (missingCheckInterval) {
-    clearInterval(missingCheckInterval)
-    missingCheckInterval = null
-  }
-  if (metadataService) {
-    metadataService.destroy()
-    metadataService = null
-  }
-  if (watcher) {
-    watcher.destroy()
-    watcher = null
-  }
-  if (importer) {
-    importer.destroy()
-    importer = null
-  }
+  teardownRuntime()
   if (win) {
     win = null
   }
-  closeDatabase()
 })
 
 app.on('window-all-closed', () => {

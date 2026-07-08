@@ -128,13 +128,24 @@ export interface ImportProgress {
   message?: string
 }
 
-export type EventChannel = 'document:updated' | 'import:progress' | 'import:toast' | 'menu:export-bibtex'
+export interface LibrarySwitchResult {
+  libraryFolderPath: string
+  dbExisted: boolean
+  scanned: number
+  imported: number
+  skipped: number
+  errors: Array<{ path: string; message: string }>
+}
+
+export type EventChannel = 'document:updated' | 'import:progress' | 'import:toast' | 'menu:export-bibtex' | 'library:scanning' | 'library:switched'
 
 export interface DocumentEvents {
   onDocumentUpdated(cb: (doc: Document) => void): void
   onImportProgress(cb: (payload: ImportProgress) => void): void
   onImportToast(cb: (message: string) => void): void
   onMenuExportBibtex(cb: () => void): void
+  onLibraryScanning(cb: (payload: ImportProgress) => void): void
+  onLibrarySwitched(cb: (payload: LibrarySwitchResult) => void): void
   off(channel: EventChannel, cb: unknown): void
 }
 
@@ -182,6 +193,9 @@ export interface ReforaApi {
   }
   dialog: {
     openDirectory(): Promise<string | null>
+  }
+  library: {
+    switch(path: string): Promise<LibrarySwitchResult>
   }
   getPathForFile(file: unknown): string
   export: {

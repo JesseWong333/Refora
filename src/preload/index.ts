@@ -7,6 +7,7 @@ import type {
   DocumentPatch,
   EventChannel,
   ImportProgress,
+  LibrarySwitchResult,
   ListFilter,
   Result,
   ReforaApi,
@@ -104,6 +105,10 @@ const api: ReforaApi = {
     openDirectory: () => invoke<string | null>(IpcChannel.DialogOpenDirectory)
   },
 
+  library: {
+    switch: (path: string) => invoke<LibrarySwitchResult>(IpcChannel.LibrarySwitch, path)
+  },
+
   getPathForFile: (file: unknown) => webUtils.getPathForFile(file as File),
 
   export: {
@@ -120,6 +125,10 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventImportToast, cb),
     onMenuExportBibtex: (cb: () => void) =>
       subscribe(IpcChannel.EventMenuExportBibtex, cb),
+    onLibraryScanning: (cb: (payload: ImportProgress) => void) =>
+      subscribe(IpcChannel.EventLibraryScanning, cb),
+    onLibrarySwitched: (cb: (payload: LibrarySwitchResult) => void) =>
+      subscribe(IpcChannel.EventLibrarySwitched, cb),
     off: (channel: EventChannel, cb: unknown) => unsubscribe(channel, cb)
   }
 }

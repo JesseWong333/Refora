@@ -58,6 +58,7 @@
     "title": "设置",
     "libraryFolder": "库文件夹",
     "libraryFolderAutoImportHint": "添加到此文件夹的 PDF 将自动导入。",
+    "switching": "切换中…",
     "crossrefMailto": "Crossref Mailto",
     "theme": "主题",
     "language": "语言",
@@ -113,7 +114,8 @@
   "wizard": {
     "title": "欢迎使用 Refora",
     "description": "请选择一个库文件夹来存放您的 PDF。这是开始使用 Refora 的必填步骤。添加到该文件夹的 PDF 将自动导入。",
-    "chooseLibrary": "选择库文件夹"
+    "chooseLibrary": "选择库文件夹",
+    "scanning": "正在扫描库…"
   },
   "toast": {
     "encryptedPdf": "跳过加密的 PDF: {{name}}（密码保护）",
