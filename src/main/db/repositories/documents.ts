@@ -37,6 +37,21 @@ const EDITABLE_FIELDS: readonly EditableField[] = [
   'note'
 ]
 
+const COLUMN_FOR: Record<EditableField, string> = {
+  title: 'title',
+  authors: 'authors',
+  year: 'year',
+  venue: 'venue',
+  volume: 'volume',
+  issue: 'issue',
+  pages: 'pages',
+  abstract: 'abstract',
+  keywords: 'keywords',
+  url: 'url',
+  doi: 'doi',
+  note: 'note'
+}
+
 const FTS_LIKE_COLUMNS = [
   'title',
   'authors',
@@ -116,6 +131,12 @@ function parseRemoteValues(raw: unknown): RemoteValues | null {
   }
 }
 
+function safeInt(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isSafeInteger(v)) return v
+  if (typeof v === 'bigint') return Number(v)
+  return null
+}
+
 function mapDocument(row: Record<string, unknown>, libraryFolder: string): Document {
   const rawFilePath = row.filePath as string
   const rawOriginalFolderPath = row.originalFolderPath as string
@@ -126,7 +147,7 @@ function mapDocument(row: Record<string, unknown>, libraryFolder: string): Docum
       ? rawOriginalFolderPath
       : resolveFromLibrary(rawOriginalFolderPath, libraryFolder),
     fileName: row.fileName as string,
-    fileSize: (row.fileSize as number | null) ?? null,
+    fileSize: safeInt(row.fileSize),
     fileHash: (row.fileHash as string | null) ?? null,
     title: (row.title as string | null) ?? null,
     authors: (row.authors as string | null) ?? null,
@@ -192,10 +213,9 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
         .all(trimmed) as Record<string, unknown>[]
       return rows.map((r) => mapDocument(r, lib()))
     }
-    const escaped = trimmed.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const escaped = trimmed.replace(/[%_\\]/g, '\\$&')
     const like = `%${escaped}%`
-    const escapeClause = " ESCAPE '\\'"
-    const clauses = FTS_LIKE_COLUMNS.map((c) => `${c} LIKE ?${escapeClause}`).join(' OR ')
+    const clauses = FTS_LIKE_COLUMNS.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(' OR ')
     const params = FTS_LIKE_COLUMNS.map(() => like)
     const rows = db.prepare(`SELECT * FROM documents WHERE ${clauses} LIMIT 500`).all(...params) as Record<
       string,
@@ -266,7 +286,7 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
       }
     }
 
-    const sets = keys.map((k) => `${k} = ?`).join(', ')
+    const sets = keys.map((k) => `${COLUMN_FOR[k]} = ?`).join(', ')
     const params: unknown[] = keys.map((k) => patch[k])
     params.push(JSON.stringify(edited), id)
     db.prepare(`UPDATE documents SET ${sets}, editedFields = ? WHERE id = ?`).run(...params)
@@ -392,7 +412,7 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     const parts: string[] = []
 
     for (const key of keys) {
-      parts.push(`${key} = ?`)
+      parts.push(`${COLUMN_FOR[key]} = ?`)
       params.push(fields[key])
     }
 
