@@ -43,22 +43,24 @@ export function createAiSummariesRepository(db: SqliteDb) {
     ).run(docId, model, summaryJson, now, now)
   }
 
-  function getFullText(docId: string): string | null {
-    const row = db.prepare('SELECT fullText FROM ai_summaries WHERE docId = ?').get(docId) as
-      | { fullText: string | null }
-      | undefined
-    return row?.fullText ?? null
+  function getFullText(docId: string): { text: string; hash: string | null } | null {
+    const row = db
+      .prepare('SELECT fullText, fullTextHash FROM ai_summaries WHERE docId = ?')
+      .get(docId) as { fullText: string | null; fullTextHash: string | null } | undefined
+    if (!row || row.fullText === null) return null
+    return { text: row.fullText, hash: row.fullTextHash ?? null }
   }
 
-  function setFullText(docId: string, text: string): void {
+  function setFullText(docId: string, text: string, hash: string | null): void {
     const now = Date.now()
     db.prepare(
-      `INSERT INTO ai_summaries (docId, model, summaryJson, fullText, createdAt, updatedAt)
-       VALUES (?, NULL, NULL, ?, ?, ?)
+      `INSERT INTO ai_summaries (docId, model, summaryJson, fullText, fullTextHash, createdAt, updatedAt)
+       VALUES (?, NULL, NULL, ?, ?, ?, ?)
        ON CONFLICT(docId) DO UPDATE SET
          fullText = excluded.fullText,
+         fullTextHash = excluded.fullTextHash,
          updatedAt = excluded.updatedAt`
-    ).run(docId, text, now, now)
+    ).run(docId, text, hash, now, now)
   }
 
   function remove(docId: string): void {

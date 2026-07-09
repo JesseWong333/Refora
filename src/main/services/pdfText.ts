@@ -102,11 +102,17 @@ export function createPdfTextService(
 
   async function getOrExtract(docId: string): Promise<string> {
     if (destroyed) throw new Error('PDF text service destroyed')
-    const existing = repos.aiSummaries.getFullText(docId)
-    if (existing !== null) return existing
 
     const doc = repos.documents.get(docId)
     if (!doc) throw new RepoError('not_found', `Document ${docId} not found`)
+
+    const cached = repos.aiSummaries.getFullText(docId)
+    if (cached !== null) {
+      const docHash = doc.fileHash ?? null
+      if (docHash === null || cached.hash === null || cached.hash === docHash) {
+        return cached.text
+      }
+    }
 
     const filePath = resolvePath(doc.filePath)
     if (!filePath.toLowerCase().endsWith('.pdf')) {
@@ -120,7 +126,7 @@ export function createPdfTextService(
         throw new Error(response.error.message)
       }
       const text = response.text ?? ''
-      repos.aiSummaries.setFullText(docId, text)
+      repos.aiSummaries.setFullText(docId, text, doc.fileHash ?? null)
       return text
     } finally {
       activeJobs--
