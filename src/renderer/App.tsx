@@ -20,8 +20,8 @@ const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
 const DETAIL_MIN = 320
 const DETAIL_MAX = 640
-const WORKSPACE_MIN = 360
-const WORKSPACE_MAX = 900
+const WORKSPACE_MIN = 400
+const WORKSPACE_MAX = 1100
 
 interface AppProps {
   listColumnState: ListColumnState | null
@@ -43,7 +43,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(224)
   const [detailWidth, setDetailWidth] = useState(384)
-  const [workspaceWidth, setWorkspaceWidth] = useState(480)
+  const [workspaceWidth, setWorkspaceWidth] = useState(560)
   const { mode: themeMode, resolvedTheme } = useTheme()
   useAppShortcuts()
 
@@ -152,7 +152,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
         ) : (
           <div className="flex h-full min-h-0">
             <div style={sidebarStyle} className="shrink-0">
-              <div className="h-full py-floating-inset">
+              <div className="h-full py-0">
                 <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
               </div>
             </div>

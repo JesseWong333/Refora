@@ -298,23 +298,32 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const handleDragOverCategory = useCallback((e: React.DragEvent) => {
     if (
       e.dataTransfer.types.includes(DOC_MIME) ||
+      e.dataTransfer.types.includes('text/plain') ||
       e.dataTransfer.types.includes('Files')
     ) {
       e.preventDefault()
-      e.dataTransfer.dropEffect = 'move'
+      e.dataTransfer.dropEffect = 'copy'
     }
   }, [])
 
   const handleDropCategory = useCallback(
     async (catId: string, e: React.DragEvent) => {
-      const raw = e.dataTransfer.getData(DOC_MIME)
+      const raw = e.dataTransfer.getData(DOC_MIME) || e.dataTransfer.getData('text/plain')
       if (raw) {
         e.preventDefault()
         try {
-          const ids: string[] = JSON.parse(raw)
+          let ids: string[] = []
+          try {
+            const parsed: unknown = JSON.parse(raw)
+            if (Array.isArray(parsed)) {
+              ids = parsed.filter((v): v is string => typeof v === 'string')
+            }
+          } catch {
+            ids = raw.split(',').map((s) => s.trim()).filter(Boolean)
+          }
           if (ids.length === 1) {
             await api.categories.assign(ids[0], catId)
-          } else {
+          } else if (ids.length > 1) {
             await api.documents.bulkCategorize(ids, catId)
           }
           void fetchCategories()
@@ -542,7 +551,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   return (
     <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
       {/* Header: drag region with action buttons on the right */}
-      <div className={`drag-region flex h-10 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
+      <div className={`drag-region flex h-12 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
         <div className="ml-auto flex items-center no-drag">
           <button
             className="sidebar-header-btn"

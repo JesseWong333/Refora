@@ -366,7 +366,8 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
     (docId: string, e: React.DragEvent) => {
       const ids = selectedIds.length > 0 && selectedIds.includes(docId) ? selectedIds : [docId]
       e.dataTransfer.setData(DOC_MIME, JSON.stringify(ids))
-      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', ids.join(','))
+      e.dataTransfer.effectAllowed = 'copyMove'
     },
     [selectedIds]
   )
@@ -415,7 +416,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="flex h-14 items-center gap-2 border-b border-border drag-region">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border drag-region">
         {sidebarCollapsed && (
           <div
             className="no-drag self-stretch shrink-0"
@@ -423,7 +424,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             style={{ width: 'var(--toolbar-preserve, 168px)' }}
           />
         )}
-        <div className="mx-auto flex items-center gap-[10px]">
+        <div className="mx-auto flex items-center gap-[10px] no-drag">
           <Search className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
           <Input
             className="doc-search-input w-[280px] no-drag"

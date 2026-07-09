@@ -127,12 +127,25 @@ export default function Board() {
     })
   }
 
+  const hasDocPayload = (e: React.DragEvent) => {
+    const types = Array.from(e.dataTransfer.types)
+    return types.includes(DOC_MIME) || types.includes('text/plain')
+  }
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!hasDocPayload(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropActive(true)
+  }
+
   const handleDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(DOC_MIME)) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'copy'
-      setDropActive(true)
-    }
+    if (!hasDocPayload(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropActive(true)
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
@@ -141,17 +154,32 @@ export default function Board() {
     }
   }
 
-  const handleDrop = async (e: React.DragEvent) => {
-    const raw = e.dataTransfer.getData(DOC_MIME)
-    setDropActive(false)
-    if (!raw) return
-    e.preventDefault()
+  const parseDocIds = (e: React.DragEvent): string[] => {
+    const raw = e.dataTransfer.getData(DOC_MIME) || e.dataTransfer.getData('text/plain')
+    if (!raw) return []
     try {
-      const ids: string[] = JSON.parse(raw)
-      if (ids.length > 0) {
-        await addDocs(ids)
-        await fetchItems()
+      const parsed: unknown = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return parsed.filter((v): v is string => typeof v === 'string' && v.length > 0)
       }
+    } catch {
+      void 0
+    }
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropActive(false)
+    const ids = parseDocIds(e)
+    if (ids.length === 0) return
+    try {
+      await addDocs(ids)
+      await fetchItems()
     } catch {
       void 0
     }
@@ -165,6 +193,7 @@ export default function Board() {
     <div
       className="h-full w-full overflow-auto p-4"
       style={dropActive ? { outline: '2px dashed var(--color-accent)', outlineOffset: '-6px' } : undefined}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={(e) => void handleDrop(e)}

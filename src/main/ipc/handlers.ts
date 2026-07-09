@@ -550,7 +550,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
 
         let threadId = req.threadId
         if (!threadId) {
-          const thread = rt.repos.chat.createThread(req.workspaceId, req.providerId)
+          const thread = rt.repos.chat.createThread(req.workspaceId, pid)
           threadId = thread.id
         } else {
           const thread = rt.repos.chat.getThread(threadId)

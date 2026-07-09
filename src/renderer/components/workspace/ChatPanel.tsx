@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Select } from '@lobehub/ui'
-import { Plus } from 'lucide-react'
+import { Plus, Settings2, Send } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
 import type {
@@ -41,24 +41,36 @@ export default function ChatPanel() {
   const [error, setError] = useState<string | null>(null)
   const [providers, setProviders] = useState<AiProvider[]>([])
   const [activeProviderId, setActiveProviderId] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const threadIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [list, active] = await Promise.all([
-          api.aiProviders.list(),
-          api.settings.get<string>('activeProviderId', '')
-        ])
-        setProviders(list)
-        setActiveProviderId(active || (list.length > 0 ? list[0].id : ''))
-      } catch (e) {
-        setError(errorMessage(e, 'Failed to load providers'))
-      }
-    })()
+  const loadProviders = useCallback(async () => {
+    try {
+      const [list, active] = await Promise.all([
+        api.aiProviders.list(),
+        api.settings.get<string>('activeProviderId', '')
+      ])
+      setProviders(list)
+      setActiveProviderId((prev) => {
+        if (prev && list.some((p) => p.id === prev)) return prev
+        if (active && list.some((p) => p.id === active)) return active
+        return list.length > 0 ? list[0].id : ''
+      })
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to load providers'))
+    }
   }, [])
+
+  useEffect(() => {
+    void loadProviders()
+  }, [loadProviders])
+
+  useEffect(() => {
+    if (!settingsOpen) return
+    void loadProviders()
+  }, [settingsOpen, loadProviders])
 
   useEffect(() => {
     threadIdRef.current = activeThreadId
@@ -70,13 +82,16 @@ export default function ChatPanel() {
       return
     }
     let cancelled = false
-    void api.ai.chatHistory(activeThreadId).then((history) => {
-      if (cancelled || threadIdRef.current !== activeThreadId) return
-      setMessages(history)
-    }).catch(() => {
-      if (cancelled) return
-      setMessages([])
-    })
+    void api.ai
+      .chatHistory(activeThreadId)
+      .then((history) => {
+        if (cancelled || threadIdRef.current !== activeThreadId) return
+        setMessages(history)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setMessages([])
+      })
     return () => {
       cancelled = true
     }
@@ -117,19 +132,28 @@ export default function ChatPanel() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streamingText])
 
+  const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
+
   const handleProviderChange = (id: string) => {
     setActiveProviderId(id)
     void api.settings.set('activeProviderId', id)
+  }
+
+  const handleModelChange = async (model: string) => {
+    if (!activeProviderId || !model.trim()) return
+    try {
+      const updated = await api.aiProviders.update(activeProviderId, { model: model.trim() })
+      setProviders((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to update model'))
+    }
   }
 
   const handleSend = useCallback(async () => {
     if (!activeWorkspaceId || !activeProviderId || !input.trim() || streaming) return
     const text = input.trim()
     const existingThread = activeThreadId
-    setMessages((prev) => [
-      ...prev,
-      localMessage(existingThread ?? '', 'user', text)
-    ])
+    setMessages((prev) => [...prev, localMessage(existingThread ?? '', 'user', text)])
     setInput('')
     setStreaming(true)
     setStreamingText('')
@@ -162,21 +186,20 @@ export default function ChatPanel() {
   const showEmpty = messages.length === 0 && !streamingText
   const canSend = !!activeWorkspaceId && !!activeProviderId && !!input.trim() && !streaming
 
+  const providerOptions = providers.map((p) => ({
+    label: `${p.name} · ${p.model}`,
+    value: p.id
+  }))
+
   return (
     <div className="flex h-full w-full flex-col bg-background">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <Select
-          value={activeProviderId}
-          onChange={handleProviderChange}
-          size="small"
-          options={providers.map((p) => ({ label: p.name, value: p.id }))}
-          placeholder={t('workspace.chat.selectProvider', 'Select provider')}
-          style={{ width: '100%' }}
-          disabled={providers.length === 0}
-        />
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+        <span className="truncate text-xs font-medium text-muted">
+          {t('workspace.chat.title', 'Chat')}
+        </span>
         <button
           type="button"
-          className="sidebar-header-btn shrink-0"
+          className="sidebar-header-btn"
           onClick={startNewChat}
           title={t('workspace.chat.newChat', 'New chat')}
           aria-label={t('workspace.chat.newChat', 'New chat')}
@@ -244,7 +267,7 @@ export default function ChatPanel() {
       <div className="shrink-0 border-t border-border p-3">
         <textarea
           className="w-full resize-none rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-          rows={3}
+          rows={2}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
@@ -252,17 +275,87 @@ export default function ChatPanel() {
             'workspace.chat.inputPlaceholder',
             'Send a message… (Enter to send, Shift+Enter for newline)'
           )}
+          disabled={providers.length === 0}
         />
-        <div className="mt-2 flex justify-end">
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <Select
+              value={activeProviderId || undefined}
+              onChange={handleProviderChange}
+              size="small"
+              options={providerOptions}
+              placeholder={t('workspace.chat.selectProvider', 'Select model / provider')}
+              style={{ width: '100%' }}
+              disabled={providers.length === 0 || streaming}
+              aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
+            />
+          </div>
+          <button
+            type="button"
+            className="sidebar-header-btn shrink-0"
+            onClick={() => setSettingsOpen((v) => !v)}
+            title={t('workspace.chat.modelConfig', 'Model settings')}
+            aria-label={t('workspace.chat.modelConfig', 'Model settings')}
+            aria-expanded={settingsOpen}
+            disabled={providers.length === 0}
+          >
+            <Settings2 className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={() => void handleSend()}
             disabled={!canSend}
-            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-40"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-40"
           >
+            <Send className="h-3.5 w-3.5" />
             {t('workspace.chat.send', 'Send')}
           </button>
         </div>
+
+        {settingsOpen && activeProvider && (
+          <div className="mt-2 rounded-lg border border-border bg-panel-2 p-2">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="truncate text-[11px] text-muted">
+                {activeProvider.name} · {activeProvider.baseUrl}
+              </span>
+              {!activeProvider.hasKey && (
+                <span className="shrink-0 text-[10px] text-error">
+                  {t('workspace.chat.noKey', 'No API key — set in Settings')}
+                </span>
+              )}
+            </div>
+            <label className="mb-1 block text-[11px] text-muted">
+              {t('workspace.chat.model', 'Model')}
+            </label>
+            <input
+              className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              value={activeProvider.model}
+              onChange={(e) => {
+                const model = e.target.value
+                setProviders((prev) =>
+                  prev.map((p) => (p.id === activeProviderId ? { ...p, model } : p))
+                )
+              }}
+              onBlur={(e) => void handleModelChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void handleModelChange((e.target as HTMLInputElement).value)
+                }
+              }}
+              placeholder="gpt-4o-mini"
+              disabled={streaming}
+              aria-label={t('workspace.chat.model', 'Model')}
+            />
+            <p className="mt-1 text-[10px] text-muted">
+              {t(
+                'workspace.chat.modelHint',
+                'OpenAI-compatible model id for the selected provider. Change providers or API keys in Settings.'
+              )}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

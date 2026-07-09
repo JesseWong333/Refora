@@ -177,12 +177,17 @@
     "reportDeleteConfirm": "Delete this report? This cannot be undone.",
     "chatPlaceholder": "Ask anything about the papers in this workspace.",
     "chat": {
-      "selectProvider": "Select provider",
+      "title": "Chat",
+      "selectProvider": "Select model / provider",
       "send": "Send",
       "thinking": "Thinking…",
       "noProvider": "No AI provider configured. Add one in Settings.",
       "inputPlaceholder": "Send a message… (Enter to send, Shift+Enter for newline)",
-      "newChat": "New chat"
+      "newChat": "New chat",
+      "model": "Model",
+      "modelConfig": "Model settings",
+      "modelHint": "OpenAI-compatible model id for the selected provider. Change providers or API keys in Settings.",
+      "noKey": "No API key — set in Settings"
     }
   }
 }

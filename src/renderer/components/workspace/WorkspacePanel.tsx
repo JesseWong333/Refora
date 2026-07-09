@@ -6,8 +6,9 @@ import ResizeDivider from '../ResizeDivider'
 import Board from './Board'
 import ChatPanel from './ChatPanel'
 
-const CHAT_MIN = 280
-const CHAT_MAX = 520
+const CHAT_MIN = 180
+const CHAT_MAX = 480
+const CHAT_DEFAULT = 260
 
 export default function WorkspacePanel() {
   const { t } = useTranslation()
@@ -17,24 +18,30 @@ export default function WorkspacePanel() {
   const toggleFullscreen = useWorkspaceStore((s) => s.toggleFullscreen)
   const closePanel = useWorkspaceStore((s) => s.closePanel)
 
-  const [chatWidth, setChatWidth] = useState(360)
+  const [chatHeight, setChatHeight] = useState(CHAT_DEFAULT)
 
   const handleChatResize = useCallback((delta: number) => {
-    setChatWidth((w) => Math.max(CHAT_MIN, Math.min(CHAT_MAX, w - delta)))
+    setChatHeight((h) => Math.max(CHAT_MIN, Math.min(CHAT_MAX, h - delta)))
   }, [])
 
   const isMac = document.documentElement.dataset.platform === 'mac'
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
   const name = active?.name ?? t('workspace.untitled')
+  const padTrafficLights = isMac && fullscreen
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-col bg-background">
       <div
-        className={`drag-region flex h-10 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}
+        className={`drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 ${
+          padTrafficLights ? 'pl-[78px]' : ''
+        }`}
       >
-        <span className="truncate text-sm font-medium text-foreground">{name}</span>
-        <div className="ml-auto flex items-center gap-1 no-drag">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground no-drag">
+          {name}
+        </span>
+        <div className="flex shrink-0 items-center gap-1 no-drag">
           <button
+            type="button"
             className="sidebar-header-btn"
             onClick={toggleFullscreen}
             title={fullscreen ? t('workspace.exitFullscreen') : t('workspace.enterFullscreen')}
@@ -43,6 +50,7 @@ export default function WorkspacePanel() {
             {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </button>
           <button
+            type="button"
             className="sidebar-header-btn"
             onClick={closePanel}
             title={t('workspace.close')}
@@ -52,12 +60,12 @@ export default function WorkspacePanel() {
           </button>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-hidden">
           <Board />
         </div>
-        <ResizeDivider onResize={handleChatResize} variant="line" />
-        <div style={{ width: `${chatWidth}px` }} className="shrink-0 border-l border-border">
+        <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="line" />
+        <div style={{ height: `${chatHeight}px` }} className="shrink-0 border-t border-border">
           <ChatPanel />
         </div>
       </div>

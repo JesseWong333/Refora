@@ -177,12 +177,17 @@
     "reportDeleteConfirm": "删除此报告？此操作不可撤销。",
     "chatPlaceholder": "针对此工作空间中的文献提出任何问题。",
     "chat": {
-      "selectProvider": "选择服务商",
+      "title": "对话",
+      "selectProvider": "选择模型 / 服务商",
       "send": "发送",
       "thinking": "思考中…",
       "noProvider": "尚未配置 AI 服务商，请在设置中添加。",
       "inputPlaceholder": "发送消息…（回车发送，Shift+回车换行）",
-      "newChat": "新对话"
+      "newChat": "新对话",
+      "model": "模型",
+      "modelConfig": "模型设置",
+      "modelHint": "当前服务商使用的 OpenAI 兼容模型 ID。服务商与 API 密钥请在设置中配置。",
+      "noKey": "未设置 API 密钥 — 请在设置中配置"
     }
   }
 }

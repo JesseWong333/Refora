@@ -618,7 +618,7 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   if (selectedIds.length >= 2) {
     return (
     <div className="relative flex shrink-0 flex-col bg-panel">
-        <div className="drag-region flex h-9 shrink-0 items-center justify-end px-2">
+        <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
           <button
             className="toolbar-btn p-1 no-drag"
             onClick={onClose}
@@ -643,7 +643,7 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   if (!focusedDoc) {
     return (
       <div className="relative flex shrink-0 flex-col bg-panel">
-        <div className="drag-region flex h-9 shrink-0 items-center justify-end px-2">
+        <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
           <button
             className="toolbar-btn p-1 no-drag"
             onClick={onClose}
@@ -669,7 +669,7 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="relative flex shrink-0 flex-col bg-panel">
-      <div className="drag-region flex h-9 shrink-0 items-center justify-end px-2">
+      <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
         <button
           className="toolbar-btn p-1 no-drag"
           onClick={onClose}
