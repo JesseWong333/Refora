@@ -27,7 +27,7 @@ import {
 import { logger } from './logger'
 
 const MAX_FULLTEXT_CHARS = 8000
-const HISTORY_LIMIT = 12
+const HISTORY_LIMIT = 24
 const TRACE_TEXT_LIMIT = 4000
 const WORKSPACE_CONTEXT_DOC_LIMIT = 80
 const WORKSPACE_CONTEXT_CHAR_LIMIT = 6000
@@ -39,6 +39,7 @@ const SYSTEM_PROMPT =
   'Use tools to search, read full text, and retrieve summaries when you need more detail. ' +
   'Prefer get_paper_summary when hasSummary is true; use read_paper_fulltext only when summary is missing or insufficient. ' +
   'When the user asks for a report, survey, or comparison, call generate_report to pin a structured report to the board. ' +
+  'Use search_library for full-text search across the entire library, not just the workspace. ' +
   'Reference papers by their docId.'
 
 function buildWorkspaceContext(repos: Repositories, workspaceId: string): string {
@@ -256,7 +257,28 @@ export function createAiAgentService(
       }
     })
 
-    return [searchWorkspaceDocs, readPaperFulltext, getPaperSummary, generateReport]
+    const searchLibrary = new DynamicTool({
+      name: 'search_library',
+      description:
+        'Search the entire document library by full-text query. ' +
+        'Returns a JSON array of objects [{docId, title, authors, year}]. ' +
+        'Use this when the user asks about papers that may not be in the current workspace.',
+      func: async (query: string) => {
+        const q = query.trim()
+        if (!q) return '[]'
+        const results = repos.documents.search(q).slice(0, 20)
+        return JSON.stringify(
+          results.map((d) => ({
+            docId: d.id,
+            title: d.title ?? d.fileName,
+            authors: d.authors,
+            year: d.year
+          }))
+        )
+      }
+    })
+
+    return [searchWorkspaceDocs, searchLibrary, readPaperFulltext, getPaperSummary, generateReport]
   }
 
   function createTraceRecorder(threadId: string, runId: string) {
@@ -406,12 +428,17 @@ export function createAiAgentService(
       const agent = createReactAgent({ llm, tools })
 
       const history = repos.chat.listMessages(threadId).slice(-HISTORY_LIMIT)
-      const historyMsgs = history.map((m) =>
-        m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content)
-      )
+      const historyMsgs = history.map((m) => {
+        if (m.role === 'user') return new HumanMessage(m.content)
+        if (m.role === 'tool') {
+          return new AIMessage(`[Previous tool call result: ${m.content}]`)
+        }
+        return new AIMessage(m.content)
+      })
       const inputMsgs = [new SystemMessage(systemPrompt), ...historyMsgs]
 
       let finalText = ''
+      const collectedToolCalls: Array<{ name: string; input: string | null; output: string | null }> = []
       let activeLlmId: string | null = null
 
       try {
@@ -446,9 +473,32 @@ export function createAiAgentService(
           }
 
           if (eventName === 'on_chat_model_stream') {
-            const chunkData = data as { chunk?: { content?: unknown } }
-            const content = chunkData?.chunk?.content
-            const token = typeof content === 'string' ? content : ''
+            const chunkData = data as {
+              chunk?: { content?: unknown; additional_kwargs?: Record<string, unknown> }
+            }
+            const chunk = chunkData?.chunk
+            const content = chunk?.content
+            let token = ''
+            if (typeof content === 'string') {
+              token = content
+            } else if (Array.isArray(content)) {
+              token = content
+                .map((part) => {
+                  if (typeof part === 'string') return part
+                  if (part && typeof part === 'object') {
+                    const p = part as Record<string, unknown>
+                    if (p.type === 'text' && typeof p.text === 'string') return p.text
+                    if (p.type === 'reasoning' && typeof p.reasoning === 'string')
+                      return p.reasoning
+                  }
+                  return ''
+                })
+                .join('')
+            }
+            if (!token) {
+              const reasoning = chunk?.additional_kwargs?.reasoning_content
+              if (typeof reasoning === 'string' && reasoning.length > 0) token = reasoning
+            }
             if (!token) continue
             finalText += token
             const ww = getWin()
@@ -471,6 +521,11 @@ export function createAiAgentService(
           if (eventName === 'on_tool_end') {
             const toolName = extractToolName(event)
             const toolOutput = extractToolOutput(data)
+            collectedToolCalls.push({
+              name: toolName ?? 'unknown',
+              input: extractToolInput(data),
+              output: toolOutput
+            })
             const keys = [
               runKey,
               toolName ? `tool-name:${toolName}` : null
@@ -488,6 +543,11 @@ export function createAiAgentService(
               stringifyTraceValue(data.error) ??
               stringifyTraceValue(data.output) ??
               'Tool error'
+            collectedToolCalls.push({
+              name: toolName ?? 'unknown',
+              input: extractToolInput(data),
+              output: errMsg
+            })
             const keys = [
               runKey,
               toolName ? `tool-name:${toolName}` : null
@@ -538,6 +598,14 @@ export function createAiAgentService(
       }
 
       if (!finalText) finalText = 'No response generated.'
+
+      for (const tc of collectedToolCalls) {
+        repos.chat.addMessage(
+          threadId,
+          'tool',
+          JSON.stringify({ name: tc.name, input: tc.input, output: tc.output })
+        )
+      }
 
       repos.chat.addMessage(threadId, 'assistant', finalText)
       trace.finish(runStep.id, 'done', null)
