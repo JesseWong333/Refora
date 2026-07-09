@@ -1,0 +1,188 @@
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Modal } from 'antd'
+import { showContextMenu } from '@lobehub/ui'
+import type { ContextMenuItem } from '@lobehub/ui'
+import { Sparkles, FileText, Trash2, Loader2, BookOpen } from 'lucide-react'
+import { motion } from 'motion/react'
+import type { AiSummary, Document } from '../../../shared/ipc-types'
+
+interface PaperCardProps {
+  doc: Document | null
+  summary: AiSummary | null
+  summarizing: boolean
+  onSummarize: () => void
+  onOpenPdf: () => void
+  onRemove: () => void
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[10px] text-muted">{children}</span>
+  )
+}
+
+export default function PaperCard({
+  doc,
+  summary,
+  summarizing,
+  onSummarize,
+  onOpenPdf,
+  onRemove
+}: PaperCardProps) {
+  const { t } = useTranslation()
+  const [modalOpen, setModalOpen] = useState(false)
+
+  const title = doc?.title || doc?.fileName || '…'
+  const authors = doc?.authors
+  const content = summary?.content ?? null
+  const keyPoints = content?.keyPoints ?? []
+  const previewKeyPoints = keyPoints.slice(0, 3)
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const menuItems: ContextMenuItem[] = [
+      {
+        key: 'summarize',
+        label: 'AI 总结',
+        icon: <Sparkles className="h-3.5 w-3.5" />,
+        onClick: onSummarize
+      },
+      {
+        key: 'openPdf',
+        label: '打开原 PDF',
+        icon: <FileText className="h-3.5 w-3.5" />,
+        onClick: onOpenPdf
+      },
+      { type: 'divider', key: 'divider' },
+      {
+        key: 'remove',
+        label: '从工作空间移除',
+        icon: <Trash2 className="h-3.5 w-3.5" />,
+        onClick: onRemove,
+        danger: true
+      }
+    ]
+    showContextMenu(menuItems)
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18 }}
+        className="card flex cursor-pointer flex-col gap-2 p-3 transition-colors hover:border-accent"
+        onClick={() => setModalOpen(true)}
+        onContextMenu={handleContextMenu}
+      >
+        <div className="flex items-start gap-2">
+          <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <div className="min-w-0 flex-1">
+            <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{title}</h3>
+            {authors && <p className="mt-0.5 truncate text-xs text-muted">{authors}</p>}
+          </div>
+        </div>
+
+        {(doc?.year || doc?.venue) && (
+          <div className="flex flex-wrap gap-1">
+            {doc?.year && <Badge>{doc.year}</Badge>}
+            {doc?.venue && <Badge>{doc.venue}</Badge>}
+          </div>
+        )}
+
+        <div className="min-h-[2.5rem] text-xs">
+          {summarizing ? (
+            <div className="flex items-center gap-1.5 text-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>{t('workspace.summarizing')}</span>
+            </div>
+          ) : content ? (
+            <div className="space-y-1.5">
+              <p className="line-clamp-3 text-foreground">{content.core}</p>
+              {previewKeyPoints.length > 0 && (
+                <ul className="space-y-0.5">
+                  {previewKeyPoints.map((kp, i) => (
+                    <li key={i} className="flex gap-1">
+                      <span className="shrink-0 text-accent">•</span>
+                      <span className="line-clamp-1 text-muted">{kp}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <p className="italic text-muted">{t('workspace.summarizeHint')}</p>
+          )}
+        </div>
+      </motion.div>
+
+      <Modal
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        title={title}
+        footer={null}
+        width={640}
+      >
+        {content ? (
+          <div className="space-y-4">
+            <section>
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                {t('workspace.summaryCore')}
+              </h4>
+              <p className="text-sm text-foreground">{content.core}</p>
+            </section>
+            {keyPoints.length > 0 && (
+              <section>
+                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                  {t('workspace.summaryKeyPoints')}
+                </h4>
+                <ul className="space-y-1 text-sm text-foreground">
+                  {keyPoints.map((kp, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="shrink-0 text-accent">•</span>
+                      <span>{kp}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {content.methods && (
+              <section>
+                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                  {t('workspace.summaryMethods')}
+                </h4>
+                <p className="text-sm text-foreground">{content.methods}</p>
+              </section>
+            )}
+            {content.contribution && (
+              <section>
+                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                  {t('workspace.summaryContribution')}
+                </h4>
+                <p className="text-sm text-foreground">{content.contribution}</p>
+              </section>
+            )}
+            <div className="flex justify-end pt-2">
+              <button className="toolbar-btn" onClick={onOpenPdf}>
+                <FileText className="h-3.5 w-3.5" />
+                打开原 PDF
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted">{t('workspace.summarizeHint')}</p>
+            <div className="flex justify-end">
+              <button className="toolbar-btn" onClick={onSummarize}>
+                <Sparkles className="h-3.5 w-3.5" />
+                AI 总结
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
+  )
+}
