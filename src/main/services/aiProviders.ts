@@ -20,19 +20,24 @@ const TEST_TIMEOUT_MS = 8_000
 
 function encryptKey(apiKey: string | undefined): Buffer | null {
   if (!apiKey) return null
-  if (safeStorage.isEncryptionAvailable()) {
-    return safeStorage.encryptString(apiKey)
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new RepoError(
+      'encryption_unavailable',
+      'OS keychain (safeStorage) is not available. API keys cannot be securely stored.'
+    )
   }
-  logger.warn('safeStorage:encryption-unavailable storing API key as plain buffer')
-  return Buffer.from(apiKey)
+  return safeStorage.encryptString(apiKey)
 }
 
 function decryptKey(enc: Buffer | null): string {
   if (!enc) throw new RepoError('no_api_key', 'Provider has no API key')
-  if (safeStorage.isEncryptionAvailable()) {
-    return safeStorage.decryptString(enc)
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new RepoError(
+      'encryption_unavailable',
+      'OS keychain (safeStorage) is not available. Cannot decrypt API key.'
+    )
   }
-  return enc.toString()
+  return safeStorage.decryptString(enc)
 }
 
 function asFormat(v: unknown): ModelVariantFormat {

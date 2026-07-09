@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Plus,
   Send,
+  Square,
   ChevronDown,
   ChevronRight,
   Paperclip,
@@ -467,6 +468,11 @@ export default function ChatPanel() {
     deepThinking
   ])
 
+  const handleCancel = useCallback(() => {
+    if (!threadIdRef.current) return
+    void api.ai.chatCancel(threadIdRef.current)
+  }, [])
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -787,16 +793,28 @@ export default function ChatPanel() {
                   : t('workspace.chat.featureOff', 'Off')}
               </button>
 
-              <button
-                type="button"
-                onClick={() => void handleSend()}
-                disabled={!canSend}
-                className="inline-flex shrink-0 items-center justify-center rounded-lg bg-accent p-1.5 text-white disabled:opacity-40"
-                aria-label={t('workspace.chat.send', 'Send')}
-                title={t('workspace.chat.send', 'Send')}
-              >
-                <Send className="h-3.5 w-3.5" />
-              </button>
+              {streaming ? (
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-error p-1.5 text-white hover:bg-error/90"
+                  aria-label={t('workspace.chat.stop', 'Stop')}
+                  title={t('workspace.chat.stop', 'Stop')}
+                >
+                  <Square className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleSend()}
+                  disabled={!canSend}
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-accent p-1.5 text-white disabled:opacity-40"
+                  aria-label={t('workspace.chat.send', 'Send')}
+                  title={t('workspace.chat.send', 'Send')}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>

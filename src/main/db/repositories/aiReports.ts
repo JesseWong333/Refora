@@ -3,23 +3,24 @@ import type { AiReport } from '../../../shared/ipc-types'
 import type { SqliteDb } from '../types'
 import { RepoError } from './errors'
 
-function mapReport(row: Record<string, unknown>): AiReport {
-  let sourceDocIds: string[] = []
-  const raw = row.sourceDocIds
-  if (typeof raw === 'string' && raw.length > 0) {
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) sourceDocIds = parsed.filter((v) => typeof v === 'string')
-    } catch {
-      sourceDocIds = []
-    }
+function parseSourceDocIds(raw: unknown): string[] {
+  if (typeof raw !== 'string' || raw.length === 0) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed.filter((v) => typeof v === 'string')
+  } catch {
+    // fall through
   }
+  return []
+}
+
+function mapReport(row: Record<string, unknown>): AiReport {
   return {
     id: row.id as string,
     workspaceId: row.workspaceId as string,
     title: row.title as string,
     contentMd: row.contentMd as string,
-    sourceDocIds,
+    sourceDocIds: parseSourceDocIds(row.sourceDocIds),
     model: (row.model as string | null) ?? null,
     createdAt: row.createdAt as number
   }
@@ -60,5 +61,21 @@ export function createAiReportsRepository(db: SqliteDb) {
     if (result.changes === 0) throw new RepoError('not_found', `report not found: ${id}`)
   }
 
-  return { list, create, delete: remove }
+  function removeDocFromSources(docId: string): void {
+    const pattern = `%"${docId}"%`
+    const rows = db
+      .prepare('SELECT id, sourceDocIds FROM ai_reports WHERE sourceDocIds LIKE ?')
+      .all(pattern) as Array<{ id: string; sourceDocIds: string }>
+    for (const row of rows) {
+      const ids = parseSourceDocIds(row.sourceDocIds)
+      if (!ids.includes(docId)) continue
+      const updated = ids.filter((id) => id !== docId)
+      db.prepare('UPDATE ai_reports SET sourceDocIds = ? WHERE id = ?').run(
+        JSON.stringify(updated),
+        row.id
+      )
+    }
+  }
+
+  return { list, create, delete: remove, removeDocFromSources }
 }

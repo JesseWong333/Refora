@@ -227,7 +227,17 @@ function AiProvidersSection() {
       setForm(null)
       await load()
     } catch (e) {
-      setError(errorMessage(e, 'Failed to save provider'))
+      const code = (e as { code?: string }).code
+      if (code === 'encryption_unavailable') {
+        setError(
+          t(
+            'settings.aiProviders.encryptionUnavailable',
+            'OS keychain is unavailable. API keys cannot be securely stored on this system.'
+          )
+        )
+      } else {
+        setError(errorMessage(e, 'Failed to save provider'))
+      }
     } finally {
       setSaving(false)
     }

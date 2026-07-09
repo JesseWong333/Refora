@@ -122,6 +122,7 @@ export async function deleteDocument(repos: Repositories, id: string): Promise<v
   repos.documents.delete(id)
   repos.aiSummaries.delete(id)
   repos.workspaceItems.removeByDocId(id)
+  repos.aiReports.removeDocFromSources(id)
 }
 
 export async function bulkDeleteDocuments(
@@ -160,6 +161,7 @@ export async function bulkDeleteDocuments(
     for (const id of deletable) {
       repos.aiSummaries.delete(id)
       repos.workspaceItems.removeByDocId(id)
+      repos.aiReports.removeDocFromSources(id)
     }
   }
 }

@@ -581,6 +581,13 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (!threadId) return []
         return repos().agentTraces.listByThread(threadId)
       }),
+    [IpcChannel.AiChatCancel]: (threadId: string): Result<void> =>
+      wrap(() => {
+        const rt = deps.getRuntime()
+        if (!rt?.aiAgentService) throw new RepoError('not_ready', 'Agent service not ready')
+        rt.aiAgentService.cancel(threadId)
+        return undefined
+      }),
 
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),

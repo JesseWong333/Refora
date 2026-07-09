@@ -69,6 +69,7 @@ export const IpcChannel = {
   AiChatHistory: 'ai:chat:history',
   AiChatThreads: 'ai:chat:threads',
   AiChatTraces: 'ai:chat:traces',
+  AiChatCancel: 'ai:chat:cancel',
 
   AiReportsList: 'ai:reports:list',
   AiReportsDelete: 'ai:reports:delete',

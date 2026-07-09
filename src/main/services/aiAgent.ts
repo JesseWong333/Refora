@@ -171,6 +171,8 @@ export function createAiAgentService(
     return w
   }
 
+  const activeRuns = new Map<string, AbortController>()
+
   function buildTools(req: ChatSendRequest, providerModel: string) {
     const searchWorkspaceDocs = new DynamicTool({
       name: 'search_workspace_docs',
@@ -354,6 +356,8 @@ export function createAiAgentService(
     if (!w) return
 
     const runId = randomUUID()
+    const controller = new AbortController()
+    activeRuns.set(threadId, controller)
     const trace = createTraceRecorder(threadId, runId)
     const runStep = trace.start('run', 'agent_run', null)
 
@@ -413,7 +417,7 @@ export function createAiAgentService(
       try {
         for await (const event of agent.streamEvents(
           { messages: inputMsgs },
-          { version: 'v2' }
+          { version: 'v2', signal: controller.signal }
         )) {
           const eventName = event.event
           const data = (event.data ?? {}) as Record<string, unknown>
@@ -495,20 +499,36 @@ export function createAiAgentService(
           }
         }
       } catch (streamErr) {
-        const msg = streamErr instanceof Error ? streamErr.message : String(streamErr)
-        logger.warn(`aiAgent:stream-error: ${msg}`)
-        if (activeLlmId) {
-          trace.finish(activeLlmId, 'error', msg)
-          activeLlmId = null
-        }
-        trace.failOpen(msg)
-        if (finalText.length > 0) {
-          finalText += `\n\n[Response interrupted: ${msg}]`
+        const isAbort =
+          controller.signal.aborted ||
+          (streamErr instanceof Error &&
+            (streamErr.name === 'AbortError' || /abort/i.test(streamErr.message)))
+        if (isAbort) {
+          if (activeLlmId) {
+            trace.finish(activeLlmId, 'done', null)
+            activeLlmId = null
+          }
+          trace.failOpen('Cancelled by user')
+          finalText =
+            finalText.length > 0
+              ? `${finalText}\n\n[Response cancelled by user]`
+              : '[Response cancelled by user]'
         } else {
-          trace.finish(runStep.id, 'error', msg)
-          const ww = getWin()
-          if (ww) emitAiChatError(ww, { threadId, message: msg, runId })
-          return
+          const msg = streamErr instanceof Error ? streamErr.message : String(streamErr)
+          logger.warn(`aiAgent:stream-error: ${msg}`)
+          if (activeLlmId) {
+            trace.finish(activeLlmId, 'error', msg)
+            activeLlmId = null
+          }
+          trace.failOpen(msg)
+          if (finalText.length > 0) {
+            finalText += `\n\n[Response interrupted: ${msg}]`
+          } else {
+            trace.finish(runStep.id, 'error', msg)
+            const ww = getWin()
+            if (ww) emitAiChatError(ww, { threadId, message: msg, runId })
+            return
+          }
         }
       }
 
@@ -534,12 +554,24 @@ export function createAiAgentService(
       }
       const ww = getWin()
       if (ww) emitAiChatError(ww, { threadId, message, runId })
+    } finally {
+      activeRuns.delete(threadId)
     }
   }
 
-  function destroy(): void {}
+  function cancel(threadId: string): void {
+    const controller = activeRuns.get(threadId)
+    if (controller) controller.abort()
+  }
 
-  return { run, destroy }
+  function destroy(): void {
+    for (const controller of activeRuns.values()) {
+      controller.abort()
+    }
+    activeRuns.clear()
+  }
+
+  return { run, cancel, destroy }
 }
 
 export type AiAgentService = ReturnType<typeof createAiAgentService>

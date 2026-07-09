@@ -185,7 +185,8 @@ const api: ReforaApi = {
     chatThreads: (workspaceId: string) =>
       invoke<ChatThread[]>(IpcChannel.AiChatThreads, workspaceId),
     chatTraces: (threadId: string) =>
-      invoke<AgentTraceStep[]>(IpcChannel.AiChatTraces, threadId)
+      invoke<AgentTraceStep[]>(IpcChannel.AiChatTraces, threadId),
+    chatCancel: (threadId: string) => invoke<void>(IpcChannel.AiChatCancel, threadId)
   },
 
   reports: {

@@ -422,6 +422,7 @@ export interface ReforaApi {
     chatHistory(threadId: string): Promise<ChatMessage[]>
     chatThreads(workspaceId: string): Promise<ChatThread[]>
     chatTraces(threadId: string): Promise<AgentTraceStep[]>
+    chatCancel(threadId: string): Promise<void>
   }
   reports: {
     list(workspaceId: string): Promise<AiReport[]>
