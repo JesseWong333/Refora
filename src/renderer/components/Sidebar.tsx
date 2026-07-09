@@ -18,14 +18,16 @@ import {
   Moon,
   Sun,
   Monitor,
-  Loader2
+  Loader2,
+  LayoutDashboard
 } from 'lucide-react'
 import { Button, Input, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import type { InputRef } from 'antd/es/input'
 import { useDocumentStore } from '../store/documentStore'
+import { useWorkspaceStore } from '../store/workspaceStore'
 import { useTheme } from '../hooks/useTheme'
-import type { ListMode, Category } from '../../shared/ipc-types'
+import type { ListMode, Category, Workspace } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
 import { api } from '../ipc'
 
@@ -148,10 +150,27 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { mode: themeMode, setMode: setThemeMode } = useTheme()
   const selectedIds = useDocumentStore((s) => s.selectedIds)
 
+  const workspaces = useWorkspaceStore((s) => s.workspaces)
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
+  const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
+  const createWorkspace = useWorkspaceStore((s) => s.createWorkspace)
+  const renameWorkspace = useWorkspaceStore((s) => s.renameWorkspace)
+  const deleteWorkspace = useWorkspaceStore((s) => s.deleteWorkspace)
+
+  const [wsCreating, setWsCreating] = useState(false)
+  const [wsRenamingId, setWsRenamingId] = useState<string | null>(null)
+  const [wsDraftName, setWsDraftName] = useState('')
+  const [wsDeleteConfirm, setWsDeleteConfirm] = useState<Workspace | null>(null)
+  const wsNewInputRef = useRef<InputRef>(null)
+  const wsRenameInputRef = useRef<InputRef>(null)
+  const wsSubmittingRef = useRef(false)
+
   const isMac = document.documentElement.dataset.platform === 'mac'
 
   useEffect(() => {
     void fetchCategories()
+    void fetchWorkspaces()
   }, [])
 
   const handleCategoryClick = useCallback(
@@ -360,6 +379,120 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     setDeleteConfirm(null)
   }, [deleteConfirm, deleteCategory, listMode, focusedDocId, setListMode])
 
+  const startWsCreate = useCallback(() => {
+    setWsDraftName('')
+    setWsRenamingId(null)
+    setWsCreating(true)
+  }, [])
+
+  const commitWsCreate = useCallback(async () => {
+    if (wsSubmittingRef.current) return
+    const trimmed = wsDraftName.trim()
+    if (!trimmed) {
+      setWsCreating(false)
+      setWsDraftName('')
+      return
+    }
+    wsSubmittingRef.current = true
+    await createWorkspace(trimmed)
+    setWsCreating(false)
+    setWsDraftName('')
+    wsSubmittingRef.current = false
+  }, [wsDraftName, createWorkspace])
+
+  const cancelWsCreate = useCallback(() => {
+    setWsCreating(false)
+    setWsDraftName('')
+  }, [])
+
+  const startWsRename = useCallback((ws: Workspace) => {
+    setWsDraftName(ws.name)
+    setWsCreating(false)
+    setWsRenamingId(ws.id)
+  }, [])
+
+  const commitWsRename = useCallback(async (ws: Workspace) => {
+    if (wsSubmittingRef.current) return
+    const trimmed = wsDraftName.trim()
+    if (trimmed && trimmed !== ws.name) {
+      wsSubmittingRef.current = true
+      await renameWorkspace(ws.id, trimmed)
+      wsSubmittingRef.current = false
+    }
+    setWsRenamingId(null)
+    setWsDraftName('')
+  }, [wsDraftName, renameWorkspace])
+
+  const cancelWsRename = useCallback(() => {
+    setWsRenamingId(null)
+    setWsDraftName('')
+  }, [])
+
+  useEffect(() => {
+    if (wsCreating) {
+      wsNewInputRef.current?.focus()
+    }
+  }, [wsCreating])
+
+  useEffect(() => {
+    if (wsRenamingId) {
+      wsRenameInputRef.current?.focus()
+      wsRenameInputRef.current?.select()
+    }
+  }, [wsRenamingId])
+
+  const handleWsSectionContext = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const items: ContextMenuItem[] = [
+        {
+          key: 'create',
+          label: t('sidebar.createWorkspace'),
+          icon: <Plus className="h-3.5 w-3.5" />,
+          onClick: startWsCreate,
+        },
+      ]
+      showContextMenu(items)
+    },
+    [t, startWsCreate]
+  )
+
+  const handleWsItemContext = useCallback(
+    (e: React.MouseEvent, ws: Workspace) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const items: ContextMenuItem[] = [
+        {
+          key: 'create',
+          label: t('sidebar.createWorkspace'),
+          icon: <Plus className="h-3.5 w-3.5" />,
+          onClick: startWsCreate,
+        },
+        {
+          key: 'rename',
+          label: t('sidebar.renameWorkspace'),
+          icon: <Pencil className="h-3.5 w-3.5" />,
+          onClick: () => startWsRename(ws),
+        },
+        {
+          key: 'delete',
+          label: t('sidebar.deleteWorkspace'),
+          icon: <Trash2 className="h-3.5 w-3.5" />,
+          onClick: () => setWsDeleteConfirm(ws),
+          danger: true,
+        },
+      ]
+      showContextMenu(items)
+    },
+    [t, startWsCreate, startWsRename]
+  )
+
+  const confirmDeleteWorkspace = useCallback(async () => {
+    if (!wsDeleteConfirm) return
+    await deleteWorkspace(wsDeleteConfirm.id)
+    setWsDeleteConfirm(null)
+  }, [wsDeleteConfirm, deleteWorkspace])
+
   const cycleTheme = useCallback(() => {
     if (themeMode === 'system') setThemeMode('light')
     else if (themeMode === 'light') setThemeMode('dark')
@@ -480,6 +613,73 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           ))}
         </div>
         <SidebarSection
+          title={t('sidebar.workspaces')}
+          onContextMenu={handleWsSectionContext}
+          action={
+            <Button
+              type="text"
+              size="small"
+              className="no-drag -mr-1 p-0.5 text-muted hover:text-foreground"
+              onClick={startWsCreate}
+              title={t('sidebar.createWorkspace')}
+              aria-label={t('sidebar.createWorkspace')}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          }
+        >
+          {wsCreating && (
+            <Input
+              ref={wsNewInputRef}
+              className="no-drag mb-1"
+              size="small"
+              placeholder={t('sidebar.workspaceName')}
+              value={wsDraftName}
+              onChange={(e) => setWsDraftName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); void commitWsCreate() }
+                if (e.key === 'Escape') { e.preventDefault(); cancelWsCreate() }
+              }}
+              onBlur={() => void commitWsCreate()}
+            />
+          )}
+          {workspaces.length === 0 && !wsCreating ? (
+            <div className="px-2 py-1 text-[11px] italic text-muted">
+              {t('sidebar.emptyWorkspaces')}
+            </div>
+          ) : (
+            workspaces.map((w) => {
+              const isRenaming = wsRenamingId === w.id
+              return (
+                <div key={w.id} className="relative">
+                  {isRenaming ? (
+                    <Input
+                      ref={wsRenameInputRef}
+                      className="no-drag"
+                      size="small"
+                      value={wsDraftName}
+                      onChange={(e) => setWsDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); void commitWsRename(w) }
+                        if (e.key === 'Escape') { e.preventDefault(); cancelWsRename() }
+                      }}
+                      onBlur={() => void commitWsRename(w)}
+                    />
+                  ) : (
+                    <SidebarItem
+                      icon={<LayoutDashboard className="h-4 w-4" />}
+                      label={w.name}
+                      active={activeWorkspaceId === w.id}
+                      onClick={() => setActiveWorkspace(w.id)}
+                      onContextMenu={(e) => handleWsItemContext(e, w)}
+                    />
+                  )}
+                </div>
+              )
+            })
+          )}
+        </SidebarSection>
+        <SidebarSection
           title={t('sidebar.categories')}
           onContextMenu={handleSectionContext}
           action={
@@ -598,6 +798,28 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               <Button
                 danger
                 onClick={confirmDeleteCategory}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                {t('common.delete')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {wsDeleteConfirm && (
+        <div className="dialog-overlay" onClick={() => setWsDeleteConfirm(null)}>
+          <div className="dialog-panel w-96" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-foreground">
+              {t('sidebar.deleteWorkspaceConfirm', { name: wsDeleteConfirm.name })}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button onClick={() => setWsDeleteConfirm(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                danger
+                onClick={confirmDeleteWorkspace}
               >
                 <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                 {t('common.delete')}

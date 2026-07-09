@@ -5,12 +5,14 @@ import { theme as antdTheme } from 'antd'
 import Sidebar from './components/Sidebar'
 import DocumentList from './components/DocumentList'
 import DetailPanel from './components/DetailPanel'
+import WorkspacePanel from './components/workspace/WorkspacePanel'
 import ResizeDivider from './components/ResizeDivider'
 import ConfirmDialog from './components/ConfirmDialog'
 import FirstRunWizard from './components/FirstRunWizard'
 import { useAppShortcuts } from './hooks/useAppShortcuts'
 import { useTheme, AppThemeProvider } from './hooks/useTheme'
 import { useDocumentStore } from './store/documentStore'
+import { useWorkspaceStore } from './store/workspaceStore'
 import { api } from './ipc'
 import type { ListColumnState } from '../shared/ipc-types'
 
@@ -18,6 +20,8 @@ const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
 const DETAIL_MIN = 320
 const DETAIL_MAX = 640
+const WORKSPACE_MIN = 360
+const WORKSPACE_MAX = 900
 
 interface AppProps {
   listColumnState: ListColumnState | null
@@ -39,6 +43,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(224)
   const [detailWidth, setDetailWidth] = useState(384)
+  const [workspaceWidth, setWorkspaceWidth] = useState(480)
   const { mode: themeMode, resolvedTheme } = useTheme()
   useAppShortcuts()
 
@@ -73,6 +78,8 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
 
   const focusedDocId = useDocumentStore((s) => s.focusedDocId)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
+  const workspacePanelOpen = useWorkspaceStore((s) => s.panelOpen)
+  const workspaceFullscreen = useWorkspaceStore((s) => s.fullscreen)
 
   useEffect(() => {
     if (focusedDocId || selectedIds.length >= 2) {
@@ -94,6 +101,14 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
     }
   }, [])
 
+  useEffect(() => {
+    const store = useWorkspaceStore.getState()
+    store.init()
+    return () => {
+      store.destroy()
+    }
+  }, [])
+
   const handleToggleSidebar = () => {
     setSidebarCollapsed((v) => {
       const next = !v
@@ -108,6 +123,10 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
 
   const handleDetailResize = useCallback((delta: number) => {
     setDetailWidth((w) => Math.max(DETAIL_MIN, Math.min(DETAIL_MAX, w - delta)))
+  }, [])
+
+  const handleWorkspaceResize = useCallback((delta: number) => {
+    setWorkspaceWidth((w) => Math.max(WORKSPACE_MIN, Math.min(WORKSPACE_MAX, w - delta)))
   }, [])
 
   const sidebarStyle = sidebarCollapsed
@@ -128,31 +147,46 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
       <ContextMenuHost />
       <div className="h-screen w-screen overflow-hidden bg-background text-foreground">
         {showWizard && <FirstRunWizard onDone={() => setShowWizard(false)} />}
-        <div className="flex h-full min-h-0">
-          <div style={sidebarStyle} className="shrink-0">
-            <div className="h-full py-floating-inset">
-              <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
+        {workspaceFullscreen ? (
+          <WorkspacePanel />
+        ) : (
+          <div className="flex h-full min-h-0">
+            <div style={sidebarStyle} className="shrink-0">
+              <div className="h-full py-floating-inset">
+                <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
+              </div>
             </div>
-          </div>
-          {!sidebarCollapsed && (
-            <ResizeDivider onResize={handleSidebarResize} variant="gap" />
-          )}
-          <DocumentList sidebarCollapsed={sidebarCollapsed} />
-          {rightPanelOpen && (
-            <ResizeDivider onResize={handleDetailResize} variant="line" />
-          )}
-          <div
-            className={clsx(
-              'shrink-0 overflow-hidden transition-all duration-200',
-              rightPanelOpen ? 'border-l border-border' : 'w-0'
+            {!sidebarCollapsed && (
+              <ResizeDivider onResize={handleSidebarResize} variant="gap" />
             )}
-            style={rightPanelOpen ? { width: `${detailWidth}px` } : undefined}
-          >
-            <div className="h-full overflow-y-auto">
-              <DetailPanel onClose={() => setRightPanelOpen(false)} />
+            <DocumentList sidebarCollapsed={sidebarCollapsed} />
+            {rightPanelOpen && (
+              <ResizeDivider onResize={handleDetailResize} variant="line" />
+            )}
+            <div
+              className={clsx(
+                'shrink-0 overflow-hidden transition-all duration-200',
+                rightPanelOpen ? 'border-l border-border' : 'w-0'
+              )}
+              style={rightPanelOpen ? { width: `${detailWidth}px` } : undefined}
+            >
+              <div className="h-full overflow-y-auto">
+                <DetailPanel onClose={() => setRightPanelOpen(false)} />
+              </div>
             </div>
+            {workspacePanelOpen && (
+              <ResizeDivider onResize={handleWorkspaceResize} variant="line" />
+            )}
+            {workspacePanelOpen && (
+              <div
+                style={{ width: `${workspaceWidth}px` }}
+                className="shrink-0 border-l border-border"
+              >
+                <WorkspacePanel />
+              </div>
+            )}
           </div>
-        </div>
+        )}
         <ConfirmDialog />
       </div>
     </ThemeProvider>
