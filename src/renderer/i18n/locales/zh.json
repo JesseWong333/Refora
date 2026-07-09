@@ -218,7 +218,19 @@
       "featureOff": "关",
       "modelSwitchHint": "已切换模型 — 仅对后续新消息生效。",
       "attachSoon": "附件功能即将推出",
-      "workspaceScope": "工作空间"
+      "workspaceScope": "工作空间",
+      "trace": "Agent 步骤",
+      "traceEmpty": "尚无工具或模型步骤。",
+      "traceLlm": "模型",
+      "traceTool": "工具",
+      "traceRun": "运行",
+      "traceRunning": "进行中",
+      "traceDone": "完成",
+      "traceError": "错误",
+      "traceInput": "输入",
+      "traceOutput": "输出",
+      "traceExpand": "展开详情",
+      "traceCollapse": "收起详情"
     }
   }
 }

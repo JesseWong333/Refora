@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IpcChannel } from '../shared/ipc-channels'
 import type {
+  AgentTraceStep,
   AiProvider,
   AiProviderInput,
   AiProviderPatch,
@@ -14,6 +15,7 @@ import type {
   ChatSendRequest,
   ChatThread,
   ChatTokenEvent,
+  ChatTraceEvent,
   Document,
   DocumentPatch,
   EventChannel,
@@ -181,7 +183,9 @@ const api: ReforaApi = {
       invoke<{ threadId: string }>(IpcChannel.AiChatSend, req),
     chatHistory: (threadId: string) => invoke<ChatMessage[]>(IpcChannel.AiChatHistory, threadId),
     chatThreads: (workspaceId: string) =>
-      invoke<ChatThread[]>(IpcChannel.AiChatThreads, workspaceId)
+      invoke<ChatThread[]>(IpcChannel.AiChatThreads, workspaceId),
+    chatTraces: (threadId: string) =>
+      invoke<AgentTraceStep[]>(IpcChannel.AiChatTraces, threadId)
   },
 
   reports: {
@@ -212,6 +216,8 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventAiChatDone, cb),
     onAiChatError: (cb: (payload: ChatErrorEvent) => void) =>
       subscribe(IpcChannel.EventAiChatError, cb),
+    onAiChatTrace: (cb: (payload: ChatTraceEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatTrace, cb),
     onAiReportCreated: (cb: (report: AiReport) => void) =>
       subscribe(IpcChannel.EventAiReportCreated, cb),
     off: (channel: EventChannel, cb: unknown) => unsubscribe(channel, cb)

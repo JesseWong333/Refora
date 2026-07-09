@@ -275,6 +275,23 @@ export interface ChatSendRequest {
   }
 }
 
+export type AgentTraceStepKind = 'llm' | 'tool' | 'run'
+export type AgentTraceStepStatus = 'running' | 'done' | 'error'
+
+export interface AgentTraceStep {
+  id: string
+  threadId: string
+  runId: string
+  kind: AgentTraceStepKind
+  name: string | null
+  input: string | null
+  output: string | null
+  status: AgentTraceStepStatus
+  startedAt: number
+  endedAt: number | null
+  seq: number
+}
+
 export interface ChatTokenEvent {
   threadId: string
   token: string
@@ -283,11 +300,19 @@ export interface ChatTokenEvent {
 export interface ChatDoneEvent {
   threadId: string
   finalText: string
+  runId?: string
 }
 
 export interface ChatErrorEvent {
   threadId: string
   message: string
+  runId?: string
+}
+
+export interface ChatTraceEvent {
+  threadId: string
+  runId: string
+  step: AgentTraceStep
 }
 
 export interface SummaryErrorEvent {
@@ -310,6 +335,7 @@ export interface DocumentEvents {
   onAiChatToken(cb: (payload: ChatTokenEvent) => void): void
   onAiChatDone(cb: (payload: ChatDoneEvent) => void): void
   onAiChatError(cb: (payload: ChatErrorEvent) => void): void
+  onAiChatTrace(cb: (payload: ChatTraceEvent) => void): void
   onAiReportCreated(cb: (report: AiReport) => void): void
   off(channel: EventChannel, cb: unknown): void
 }
@@ -395,6 +421,7 @@ export interface ReforaApi {
     chatSend(req: ChatSendRequest): Promise<{ threadId: string }>
     chatHistory(threadId: string): Promise<ChatMessage[]>
     chatThreads(workspaceId: string): Promise<ChatThread[]>
+    chatTraces(threadId: string): Promise<AgentTraceStep[]>
   }
   reports: {
     list(workspaceId: string): Promise<AiReport[]>

@@ -3,6 +3,7 @@ import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { resolve as resolvePath, parse as parsePath } from 'node:path'
 import { IpcChannel } from '../../shared/ipc-channels'
 import type {
+  AgentTraceStep,
   AiProvider,
   AiProviderInput,
   AiProviderPatch,
@@ -58,6 +59,7 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventAiChatToken
   | typeof IpcChannel.EventAiChatDone
   | typeof IpcChannel.EventAiChatError
+  | typeof IpcChannel.EventAiChatTrace
   | typeof IpcChannel.EventAiReportCreated
 >
 
@@ -574,6 +576,11 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       }),
     [IpcChannel.AiChatThreads]: (workspaceId: string): Result<ChatThread[]> =>
       wrap(() => repos().chat.listThreads(workspaceId)),
+    [IpcChannel.AiChatTraces]: (threadId: string): Result<AgentTraceStep[]> =>
+      wrap(() => {
+        if (!threadId) return []
+        return repos().agentTraces.listByThread(threadId)
+      }),
 
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),

@@ -5,6 +5,7 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatTokenEvent,
+  ChatTraceEvent,
   Document,
   ImportProgress,
   LibrarySwitchResult,
@@ -62,6 +63,12 @@ export function emitAiChatDone(win: BrowserWindow, payload: ChatDoneEvent): void
 export function emitAiChatError(win: BrowserWindow, payload: ChatErrorEvent): void {
   if (!win.isDestroyed()) {
     win.webContents.send(IpcChannel.EventAiChatError, payload)
+  }
+}
+
+export function emitAiChatTrace(win: BrowserWindow, payload: ChatTraceEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiChatTrace, payload)
   }
 }
 

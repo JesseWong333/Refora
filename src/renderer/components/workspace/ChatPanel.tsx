@@ -1,14 +1,26 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Send, ChevronDown, Paperclip, Sparkles } from 'lucide-react'
+import {
+  Plus,
+  Send,
+  ChevronDown,
+  ChevronRight,
+  Paperclip,
+  Sparkles,
+  Wrench,
+  Bot,
+  Activity
+} from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
 import type {
+  AgentTraceStep,
   AiProvider,
   ChatDoneEvent,
   ChatErrorEvent,
   ChatMessage,
   ChatTokenEvent,
+  ChatTraceEvent,
   ProviderModelInfo
 } from '../../../shared/ipc-types'
 import {
@@ -55,6 +67,155 @@ async function pushRecentModel(model: string): Promise<void> {
   await api.settings.set(RECENT_MODELS_KEY, JSON.stringify(next))
 }
 
+function mergeTraceStep(prev: AgentTraceStep[], step: AgentTraceStep): AgentTraceStep[] {
+  const idx = prev.findIndex((s) => s.id === step.id)
+  if (idx === -1) {
+    return [...prev, step].sort((a, b) => a.startedAt - b.startedAt || a.seq - b.seq)
+  }
+  const next = prev.slice()
+  next[idx] = step
+  return next
+}
+
+function formatDuration(step: AgentTraceStep): string | null {
+  if (step.endedAt == null) return null
+  const ms = Math.max(0, step.endedAt - step.startedAt)
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function TraceStepRow({ step }: { step: AgentTraceStep }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const hasBody = !!(step.input || step.output)
+  const kindLabel =
+    step.kind === 'tool'
+      ? t('workspace.chat.traceTool', 'Tool')
+      : step.kind === 'llm'
+        ? t('workspace.chat.traceLlm', 'Model')
+        : t('workspace.chat.traceRun', 'Run')
+  const statusLabel =
+    step.status === 'running'
+      ? t('workspace.chat.traceRunning', 'Running')
+      : step.status === 'error'
+        ? t('workspace.chat.traceError', 'Error')
+        : t('workspace.chat.traceDone', 'Done')
+  const duration = formatDuration(step)
+  const Icon = step.kind === 'tool' ? Wrench : step.kind === 'llm' ? Bot : Activity
+  const statusClass =
+    step.status === 'running'
+      ? 'text-accent'
+      : step.status === 'error'
+        ? 'text-error'
+        : 'text-muted'
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/60">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
+        onClick={() => hasBody && setOpen((v) => !v)}
+        disabled={!hasBody}
+        aria-expanded={open}
+      >
+        {hasBody ? (
+          open ? (
+            <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+          ) : (
+            <ChevronRight className="h-3 w-3 shrink-0 text-muted" />
+          )
+        ) : (
+          <span className="w-3 shrink-0" />
+        )}
+        <Icon className="h-3 w-3 shrink-0 text-muted" />
+        <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
+          <span className="text-muted">{kindLabel}</span>
+          {step.name ? (
+            <>
+              <span className="text-muted"> · </span>
+              <span className="font-medium">{step.name}</span>
+            </>
+          ) : null}
+        </span>
+        {duration && <span className="shrink-0 text-[10px] text-muted">{duration}</span>}
+        <span className={`shrink-0 text-[10px] ${statusClass}`}>{statusLabel}</span>
+      </button>
+      {open && hasBody && (
+        <div className="space-y-1.5 border-t border-border/50 px-2 py-1.5">
+          {step.input && (
+            <div>
+              <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                {t('workspace.chat.traceInput', 'Input')}
+              </p>
+              <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[10px] text-foreground">
+                {step.input}
+              </pre>
+            </div>
+          )}
+          {step.output && (
+            <div>
+              <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                {t('workspace.chat.traceOutput', 'Output')}
+              </p>
+              <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[10px] text-foreground">
+                {step.output}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AgentTracePanel({
+  steps,
+  streaming
+}: {
+  steps: AgentTraceStep[]
+  streaming: boolean
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(true)
+  const visible = steps.filter((s) => s.kind !== 'run')
+  if (visible.length === 0 && !streaming) return null
+
+  return (
+    <div className="rounded-xl border border-border bg-panel-2/80">
+      <button
+        type="button"
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted" />
+        )}
+        <Activity className="h-3.5 w-3.5 shrink-0 text-muted" />
+        <span className="text-[11px] font-medium text-foreground">
+          {t('workspace.chat.trace', 'Agent steps')}
+        </span>
+        <span className="text-[10px] text-muted">
+          {visible.length > 0 ? visible.length : streaming ? '…' : 0}
+        </span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1 px-2 pb-2">
+          {visible.length === 0 ? (
+            <p className="px-1 py-1 text-[11px] text-muted">
+              {t('workspace.chat.traceEmpty', 'No tool or model steps yet.')}
+            </p>
+          ) : (
+            visible.map((step) => <TraceStepRow key={step.id} step={step} />)
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ChatPanel() {
   const { t } = useTranslation()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
@@ -63,6 +224,7 @@ export default function ChatPanel() {
   const startNewChat = useWorkspaceStore((s) => s.startNewChat)
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [traceSteps, setTraceSteps] = useState<AgentTraceStep[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
@@ -151,20 +313,25 @@ export default function ChatPanel() {
     setError(null)
     if (!activeThreadId) {
       setMessages([])
+      setTraceSteps([])
       hadMessagesRef.current = false
       return
     }
     let cancelled = false
-    void api.ai
-      .chatHistory(activeThreadId)
-      .then((history) => {
+    void Promise.all([
+      api.ai.chatHistory(activeThreadId),
+      api.ai.chatTraces(activeThreadId)
+    ])
+      .then(([history, traces]) => {
         if (cancelled || threadIdRef.current !== activeThreadId) return
         setMessages(history)
+        setTraceSteps(traces)
         hadMessagesRef.current = history.length > 0
       })
       .catch(() => {
         if (cancelled) return
         setMessages([])
+        setTraceSteps([])
       })
     return () => {
       cancelled = true
@@ -191,20 +358,26 @@ export default function ChatPanel() {
       setStreamingText('')
       setStreaming(false)
     }
+    const onTrace = (payload: ChatTraceEvent) => {
+      if (payload.threadId !== threadIdRef.current) return
+      setTraceSteps((prev) => mergeTraceStep(prev, payload.step))
+    }
     api.events.onAiChatToken(onToken)
     api.events.onAiChatDone(onDone)
     api.events.onAiChatError(onError)
+    api.events.onAiChatTrace(onTrace)
     return () => {
       api.events.off('ai:chat:token', onToken)
       api.events.off('ai:chat:done', onDone)
       api.events.off('ai:chat:error', onError)
+      api.events.off('ai:chat:trace', onTrace)
     }
   }, [])
 
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, streamingText])
+  }, [messages, streamingText, traceSteps])
 
   useEffect(() => {
     if (!modelMenuOpen) return
@@ -360,6 +533,9 @@ export default function ChatPanel() {
                 </div>
               </div>
             ))}
+            {(streaming || traceSteps.some((s) => s.kind !== 'run')) && (
+              <AgentTracePanel steps={traceSteps} streaming={streaming} />
+            )}
             {streamingText && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground">

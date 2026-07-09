@@ -218,7 +218,19 @@
       "featureOff": "Off",
       "modelSwitchHint": "Model switched — applies to new messages only.",
       "attachSoon": "Attachments coming soon",
-      "workspaceScope": "Workspace"
+      "workspaceScope": "Workspace",
+      "trace": "Agent steps",
+      "traceEmpty": "No tool or model steps yet.",
+      "traceLlm": "Model",
+      "traceTool": "Tool",
+      "traceRun": "Run",
+      "traceRunning": "Running",
+      "traceDone": "Done",
+      "traceError": "Error",
+      "traceInput": "Input",
+      "traceOutput": "Output",
+      "traceExpand": "Show details",
+      "traceCollapse": "Hide details"
     }
   }
 }

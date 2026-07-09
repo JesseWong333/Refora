@@ -8,6 +8,7 @@ import { createWorkspaceItemsRepository } from './workspaceItems'
 import { createAiSummariesRepository } from './aiSummaries'
 import { createAiReportsRepository } from './aiReports'
 import { createChatRepository } from './chat'
+import { createAgentTracesRepository } from './agentTraces'
 import { createAiProvidersRepository } from './aiProviders'
 import { RepoError } from './errors'
 
@@ -23,6 +24,7 @@ export function createRepositories(db: SqliteDb) {
   const aiSummaries = createAiSummariesRepository(db)
   const aiReports = createAiReportsRepository(db)
   const chat = createChatRepository(db)
+  const agentTraces = createAgentTracesRepository(db)
   const aiProviders = createAiProvidersRepository(db)
 
   let depth = 0
@@ -73,6 +75,7 @@ export function createRepositories(db: SqliteDb) {
     aiSummaries,
     aiReports,
     chat,
+    agentTraces,
     aiProviders,
     transaction
   }
