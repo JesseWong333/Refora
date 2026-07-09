@@ -12,7 +12,14 @@
     "deleteCategory": "Delete Category",
     "categoryName": "Name",
     "addToCategory": "Add to Category",
-    "deleteCategoryConfirm": "Delete category \"{{name}}\"? Documents will not be deleted."
+    "deleteCategoryConfirm": "Delete category \"{{name}}\"? Documents will not be deleted.",
+    "workspaces": "Workspaces",
+    "createWorkspace": "New Workspace",
+    "renameWorkspace": "Rename",
+    "deleteWorkspace": "Delete",
+    "deleteWorkspaceConfirm": "Delete workspace \"{{name}}\"?",
+    "emptyWorkspaces": "No workspaces",
+    "workspaceName": "Workspace name"
   },
   "topbar": {
     "addFile": "Add File",
@@ -74,7 +81,28 @@
     "zh": "中文",
     "en": "English",
     "chooseFolder": "Choose Folder",
-    "sidebarCollapsed": "Collapse Sidebar"
+    "sidebarCollapsed": "Collapse Sidebar",
+    "aiProviders": {
+      "title": "AI Providers",
+      "add": "Add",
+      "name": "Name",
+      "baseUrl": "Base URL",
+      "model": "Model",
+      "apiKey": "API Key",
+      "apiKeyHint": "leave blank to keep current",
+      "cancel": "Cancel",
+      "save": "Save",
+      "noProviders": "No providers configured.",
+      "active": "Active",
+      "hasKey": "Key set",
+      "noKey": "No key",
+      "test": "Test",
+      "edit": "Edit",
+      "setActive": "Set Active",
+      "delete": "Delete",
+      "testOk": "OK · {{count}} models",
+      "testFail": "Failed"
+    }
   },
   "common": {
     "delete": "Delete",
@@ -108,7 +136,8 @@
     "bibtexCopied": "Copied {{count}} BibTeX entries to clipboard",
     "copyFailed": "Failed to copy",
     "movedToTrash": "Moved to Trash ({{count}})",
-    "deleteFailed": "Failed to delete document"
+    "deleteFailed": "Failed to delete document",
+    "close": "Close"
   },
   "dialog": {
     "duplicateWarning": "A file with identical content already exists: {{name}}. Skip this file?",
@@ -125,6 +154,30 @@
   "toast": {
     "encryptedPdf": "Skipping encrypted PDF: {{name}} (password-protected)",
     "corruptedPdf": "Could not read: {{name}} (file may be corrupted)",
-    "networkUnreachable": "Crossref unreachable — using offline metadata"
+    "networkUnreachable": "Crossref unreachable - using offline metadata"
+  },
+  "workspace": {
+    "untitled": "Untitled",
+    "close": "Close",
+    "dragPapersHint": "Drag papers here to add them to the workspace",
+    "enterFullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "summarizeHint": "Click to generate an AI summary",
+    "summarizing": "Summarizing…",
+    "summaryCore": "Summary",
+    "summaryKeyPoints": "Key Points",
+    "summaryMethods": "Methods",
+    "summaryContribution": "Contribution",
+    "aiSummary": "AI Summary",
+    "openPdf": "Open PDF",
+    "removeFromWorkspace": "Remove from workspace",
+    "chatPlaceholder": "Ask anything about the papers in this workspace.",
+    "chat": {
+      "selectProvider": "Select provider",
+      "send": "Send",
+      "thinking": "Thinking…",
+      "noProvider": "No AI provider configured. Add one in Settings.",
+      "inputPlaceholder": "Send a message… (Enter to send, Shift+Enter for newline)"
+    }
   }
 }

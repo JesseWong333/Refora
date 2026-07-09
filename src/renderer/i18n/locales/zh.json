@@ -12,7 +12,14 @@
     "deleteCategory": "删除分类",
     "categoryName": "名称",
     "addToCategory": "添加到分类",
-    "deleteCategoryConfirm": "删除分类 \"{{name}}\"？文档不会被删除。"
+    "deleteCategoryConfirm": "删除分类 \"{{name}}\"？文档不会被删除。",
+    "workspaces": "工作空间",
+    "createWorkspace": "新建工作空间",
+    "renameWorkspace": "重命名",
+    "deleteWorkspace": "删除",
+    "deleteWorkspaceConfirm": "删除工作空间\"{{name}}\"？",
+    "emptyWorkspaces": "暂无工作空间",
+    "workspaceName": "工作空间名称"
   },
   "topbar": {
     "addFile": "添加文件",
@@ -74,7 +81,28 @@
     "zh": "中文",
     "en": "English",
     "chooseFolder": "选择文件夹",
-    "sidebarCollapsed": "收起侧边栏"
+    "sidebarCollapsed": "收起侧边栏",
+    "aiProviders": {
+      "title": "AI 服务商",
+      "add": "添加",
+      "name": "名称",
+      "baseUrl": "Base URL",
+      "model": "模型",
+      "apiKey": "API 密钥",
+      "apiKeyHint": "留空则保持当前密钥",
+      "cancel": "取消",
+      "save": "保存",
+      "noProviders": "尚未配置服务商。",
+      "active": "使用中",
+      "hasKey": "已设置密钥",
+      "noKey": "未设置密钥",
+      "test": "测试",
+      "edit": "编辑",
+      "setActive": "设为使用中",
+      "delete": "删除",
+      "testOk": "成功 · {{count}} 个模型",
+      "testFail": "失败"
+    }
   },
   "common": {
     "delete": "删除",
@@ -108,7 +136,8 @@
     "bibtexCopied": "已复制 {{count}} 条 BibTeX 到剪贴板",
     "copyFailed": "复制失败",
     "movedToTrash": "已移至废纸篓（{{count}}）",
-    "deleteFailed": "删除文献失败"
+    "deleteFailed": "删除文献失败",
+    "close": "关闭"
   },
   "dialog": {
     "duplicateWarning": "已存在相同内容的文件: {{name}}。跳过此文件？",
@@ -125,6 +154,30 @@
   "toast": {
     "encryptedPdf": "跳过加密的 PDF: {{name}}（密码保护）",
     "corruptedPdf": "无法读取: {{name}}（文件可能已损坏）",
-    "networkUnreachable": "Crossref 无法访问 — 使用离线元数据"
+    "networkUnreachable": "Crossref 无法访问 - 使用离线元数据"
+  },
+  "workspace": {
+    "untitled": "未命名",
+    "close": "关闭",
+    "dragPapersHint": "将文献拖到此处添加到工作空间",
+    "enterFullscreen": "进入全屏",
+    "exitFullscreen": "退出全屏",
+    "summarizeHint": "点击生成 AI 总结",
+    "summarizing": "正在总结…",
+    "summaryCore": "摘要",
+    "summaryKeyPoints": "要点",
+    "summaryMethods": "方法",
+    "summaryContribution": "贡献",
+    "aiSummary": "AI 总结",
+    "openPdf": "打开原 PDF",
+    "removeFromWorkspace": "从工作空间移除",
+    "chatPlaceholder": "针对此工作空间中的文献提出任何问题。",
+    "chat": {
+      "selectProvider": "选择服务商",
+      "send": "发送",
+      "thinking": "思考中…",
+      "noProvider": "尚未配置 AI 服务商，请在设置中添加。",
+      "inputPlaceholder": "发送消息…（回车发送，Shift+回车换行）"
+    }
   }
 }

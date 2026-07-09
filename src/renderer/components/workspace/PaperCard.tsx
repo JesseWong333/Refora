@@ -45,20 +45,20 @@ export default function PaperCard({
     const menuItems: ContextMenuItem[] = [
       {
         key: 'summarize',
-        label: 'AI 总结',
+        label: t('workspace.aiSummary'),
         icon: <Sparkles className="h-3.5 w-3.5" />,
         onClick: onSummarize
       },
       {
         key: 'openPdf',
-        label: '打开原 PDF',
+        label: t('workspace.openPdf'),
         icon: <FileText className="h-3.5 w-3.5" />,
         onClick: onOpenPdf
       },
       { type: 'divider', key: 'divider' },
       {
         key: 'remove',
-        label: '从工作空间移除',
+        label: t('workspace.removeFromWorkspace'),
         icon: <Trash2 className="h-3.5 w-3.5" />,
         onClick: onRemove,
         danger: true
@@ -167,7 +167,7 @@ export default function PaperCard({
             <div className="flex justify-end pt-2">
               <button className="toolbar-btn" onClick={onOpenPdf}>
                 <FileText className="h-3.5 w-3.5" />
-                打开原 PDF
+                {t('workspace.openPdf')}
               </button>
             </div>
           </div>
@@ -177,7 +177,7 @@ export default function PaperCard({
             <div className="flex justify-end">
               <button className="toolbar-btn" onClick={onSummarize}>
                 <Sparkles className="h-3.5 w-3.5" />
-                AI 总结
+                {t('workspace.aiSummary')}
               </button>
             </div>
           </div>
