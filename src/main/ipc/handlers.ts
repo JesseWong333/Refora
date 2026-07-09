@@ -11,6 +11,7 @@ import type {
   BootstrapData,
   Category,
   ChatMessage,
+  ChatSendRequest,
   Document,
   DocumentPatch,
   ListFilter,
@@ -38,6 +39,7 @@ import type { createWatcher } from '../services/watcher'
 import type { AiProvidersService } from '../services/aiProviders'
 import type { PdfTextService } from '../services/pdfText'
 import type { AiSummaryService } from '../services/aiSummary'
+import type { AiAgentService } from '../services/aiAgent'
 
 type IpcChannelValue = (typeof IpcChannel)[keyof typeof IpcChannel]
 type HandlerChannel = Exclude<
@@ -136,7 +138,7 @@ export interface RuntimeRef {
   aiProvidersService?: AiProvidersService
   pdfTextService?: PdfTextService
   aiSummaryService?: AiSummaryService
-  aiAgentService?: unknown
+  aiAgentService?: AiAgentService
 }
 
 export interface IpcHandlerDeps {
@@ -534,8 +536,29 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.AiSummaryGet]: (docId: string): Result<AiSummary | null> =>
       wrap(() => repos().aiSummaries.getSummary(docId)),
 
-    [IpcChannel.AiChatSend]: (_req: unknown): Result<{ threadId: string }> =>
-      notImplemented('ai:chat:send') as Result<{ threadId: string }>,
+    [IpcChannel.AiChatSend]: (req: ChatSendRequest): Promise<Result<{ threadId: string }>> =>
+      asyncWrap(async () => {
+        const rt = deps.getRuntime()
+        if (!rt?.aiAgentService) throw new RepoError('not_ready', 'Agent service not ready')
+
+        const pid = req.providerId || repos().settings.get<string>('activeProviderId', '')
+        if (!pid) throw new RepoError('no_provider', 'No AI provider configured')
+        const raw = repos().aiProviders.getRaw(pid)
+        if (!raw || !raw.apiKeyEnc) throw new RepoError('no_api_key', 'Provider has no API key')
+
+        let threadId = req.threadId
+        if (!threadId) {
+          const thread = rt.repos.chat.createThread(req.workspaceId, req.providerId)
+          threadId = thread.id
+        } else {
+          const thread = rt.repos.chat.getThread(threadId)
+          if (!thread || thread.workspaceId !== req.workspaceId) {
+            throw new RepoError('not_found', 'Chat thread not found in this workspace')
+          }
+        }
+        void rt.aiAgentService.run({ ...req, threadId }, threadId)
+        return { threadId }
+      }),
     [IpcChannel.AiChatHistory]: (threadId: string): Result<ChatMessage[]> =>
       wrap(() => {
         if (!threadId) return []

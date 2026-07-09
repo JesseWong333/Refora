@@ -15,6 +15,8 @@ import { createAiSummaryService } from './services/aiSummary'
 import type { AiProvidersService } from './services/aiProviders'
 import type { PdfTextService } from './services/pdfText'
 import type { AiSummaryService } from './services/aiSummary'
+import { createAiAgentService } from './services/aiAgent'
+import type { AiAgentService } from './services/aiAgent'
 import { checkMissing, findPdfsRecursively } from './services/files'
 import { writeExportFile, importFromJsonFile } from './services/export'
 import { emitImportProgress, emitLibraryScanning, emitLibrarySwitched } from './ipc/events'
@@ -35,6 +37,7 @@ interface Runtime extends RuntimeRef {
   aiProvidersService: AiProvidersService
   pdfTextService: PdfTextService
   aiSummaryService: AiSummaryService
+  aiAgentService: AiAgentService
 }
 let runtime: Runtime | null = null
 let win: BrowserWindow | null = null
@@ -256,6 +259,7 @@ function teardownRuntime(): void {
   runtime.watcher.destroy()
   runtime.importer.destroy()
   runtime.aiSummaryService.destroy()
+  runtime.aiAgentService.destroy()
   runtime.pdfTextService.destroy()
   closeDatabase(runtime.db)
   runtime = null
@@ -275,6 +279,7 @@ function buildRuntime(dbPath: string): Runtime {
     aiProvidersService,
     pdfTextService
   )
+  const aiAgentService = createAiAgentService(repos, () => win, aiProvidersService, pdfTextService)
   const watcher = createWatcher({
     importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
     getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', '')
@@ -306,7 +311,8 @@ function buildRuntime(dbPath: string): Runtime {
     missingCheckInterval: null,
     aiProvidersService,
     pdfTextService,
-    aiSummaryService
+    aiSummaryService,
+    aiAgentService
   }
 
   setImmediate(() => {

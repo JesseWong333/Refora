@@ -42,6 +42,13 @@ export function createChatRepository(db: SqliteDb) {
     return rows.map(mapThread)
   }
 
+  function getThread(id: string): ChatThread | null {
+    const row = db.prepare('SELECT * FROM chat_threads WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined
+    return row ? mapThread(row) : null
+  }
+
   function addMessage(threadId: string, role: ChatMessage['role'], content: string): ChatMessage {
     const id = randomUUID()
     const now = Date.now()
@@ -62,5 +69,5 @@ export function createChatRepository(db: SqliteDb) {
     return rows.map(mapMessage)
   }
 
-  return { createThread, listThreads, addMessage, listMessages }
+  return { createThread, listThreads, getThread, addMessage, listMessages }
 }
