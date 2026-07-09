@@ -44,10 +44,41 @@ export const IpcChannel = {
   ExportToBibtex: 'export:toBibtex',
   ExportBibtexString: 'export:bibtexString',
 
+  WorkspacesList: 'workspaces:list',
+  WorkspacesCreate: 'workspaces:create',
+  WorkspacesRename: 'workspaces:rename',
+  WorkspacesDelete: 'workspaces:delete',
+
+  WorkspaceItemsList: 'workspaceItems:list',
+  WorkspaceItemsAdd: 'workspaceItems:add',
+  WorkspaceItemsRemove: 'workspaceItems:remove',
+  WorkspaceItemsReorder: 'workspaceItems:reorder',
+
+  AiProvidersList: 'ai:providers:list',
+  AiProvidersCreate: 'ai:providers:create',
+  AiProvidersUpdate: 'ai:providers:update',
+  AiProvidersDelete: 'ai:providers:delete',
+  AiProvidersTest: 'ai:providers:test',
+
+  AiDocTextGet: 'ai:docText:get',
+  AiSummarize: 'ai:summarize',
+  AiSummaryGet: 'ai:summary:get',
+
+  AiChatSend: 'ai:chat:send',
+  AiChatHistory: 'ai:chat:history',
+
+  AiReportsList: 'ai:reports:list',
+  AiReportsDelete: 'ai:reports:delete',
+
   EventDocumentUpdated: 'document:updated',
   EventImportProgress: 'import:progress',
   EventImportToast: 'import:toast',
   EventMenuExportBibtex: 'menu:export-bibtex',
   EventLibraryScanning: 'library:scanning',
-  EventLibrarySwitched: 'library:switched'
+  EventLibrarySwitched: 'library:switched',
+  EventAiSummaryUpdated: 'ai:summary:updated',
+  EventAiChatToken: 'ai:chat:token',
+  EventAiChatDone: 'ai:chat:done',
+  EventAiChatError: 'ai:chat:error',
+  EventAiReportCreated: 'ai:report:created'
 } as const

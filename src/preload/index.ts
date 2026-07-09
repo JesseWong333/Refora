@@ -1,8 +1,18 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IpcChannel } from '../shared/ipc-channels'
 import type {
+  AiProvider,
+  AiProviderInput,
+  AiProviderPatch,
+  AiReport,
+  AiSummary,
   BootstrapData,
   Category,
+  ChatDoneEvent,
+  ChatErrorEvent,
+  ChatMessage,
+  ChatSendRequest,
+  ChatTokenEvent,
   Document,
   DocumentPatch,
   EventChannel,
@@ -12,7 +22,10 @@ import type {
   Result,
   ReforaApi,
   SearchResult,
-  WatchFolder
+  WatchFolder,
+  Workspace,
+  WorkspaceItem,
+  WorkspaceItemKind
 } from '../shared/ipc-types'
 
 class IpcResponseError extends Error {
@@ -126,6 +139,48 @@ const api: ReforaApi = {
     toBibtexString: (ids: string[]) => invoke<string>(IpcChannel.ExportBibtexString, ids)
   },
 
+  workspaces: {
+    list: () => invoke<Workspace[]>(IpcChannel.WorkspacesList),
+    create: (name: string) => invoke<Workspace>(IpcChannel.WorkspacesCreate, name),
+    rename: (id: string, name: string) => invoke<void>(IpcChannel.WorkspacesRename, id, name),
+    delete: (id: string) => invoke<void>(IpcChannel.WorkspacesDelete, id)
+  },
+
+  workspaceItems: {
+    list: (workspaceId: string) =>
+      invoke<WorkspaceItem[]>(IpcChannel.WorkspaceItemsList, workspaceId),
+    add: (workspaceId: string, kind: WorkspaceItemKind, ids: string[]) =>
+      invoke<WorkspaceItem[]>(IpcChannel.WorkspaceItemsAdd, workspaceId, kind, ids),
+    remove: (itemId: string) => invoke<void>(IpcChannel.WorkspaceItemsRemove, itemId),
+    reorder: (workspaceId: string, orderedIds: string[]) =>
+      invoke<void>(IpcChannel.WorkspaceItemsReorder, workspaceId, orderedIds)
+  },
+
+  aiProviders: {
+    list: () => invoke<AiProvider[]>(IpcChannel.AiProvidersList),
+    create: (input: AiProviderInput) =>
+      invoke<AiProvider>(IpcChannel.AiProvidersCreate, input),
+    update: (id: string, patch: AiProviderPatch) =>
+      invoke<AiProvider>(IpcChannel.AiProvidersUpdate, id, patch),
+    delete: (id: string) => invoke<void>(IpcChannel.AiProvidersDelete, id),
+    test: (id: string) =>
+      invoke<{ ok: boolean; models?: string[] }>(IpcChannel.AiProvidersTest, id)
+  },
+
+  ai: {
+    docTextGet: (docId: string) => invoke<string>(IpcChannel.AiDocTextGet, docId),
+    summarize: (docId: string) => invoke<void>(IpcChannel.AiSummarize, docId),
+    summaryGet: (docId: string) => invoke<AiSummary | null>(IpcChannel.AiSummaryGet, docId),
+    chatSend: (req: ChatSendRequest) =>
+      invoke<{ threadId: string }>(IpcChannel.AiChatSend, req),
+    chatHistory: (threadId: string) => invoke<ChatMessage[]>(IpcChannel.AiChatHistory, threadId)
+  },
+
+  reports: {
+    list: (workspaceId: string) => invoke<AiReport[]>(IpcChannel.AiReportsList, workspaceId),
+    delete: (id: string) => invoke<void>(IpcChannel.AiReportsDelete, id)
+  },
+
   events: {
     onDocumentUpdated: (cb: (doc: Document) => void) =>
       subscribe(IpcChannel.EventDocumentUpdated, cb),
@@ -139,6 +194,16 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventLibraryScanning, cb),
     onLibrarySwitched: (cb: (payload: LibrarySwitchResult) => void) =>
       subscribe(IpcChannel.EventLibrarySwitched, cb),
+    onAiSummaryUpdated: (cb: (docId: string) => void) =>
+      subscribe(IpcChannel.EventAiSummaryUpdated, cb),
+    onAiChatToken: (cb: (payload: ChatTokenEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatToken, cb),
+    onAiChatDone: (cb: (payload: ChatDoneEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatDone, cb),
+    onAiChatError: (cb: (payload: ChatErrorEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatError, cb),
+    onAiReportCreated: (cb: (report: AiReport) => void) =>
+      subscribe(IpcChannel.EventAiReportCreated, cb),
     off: (channel: EventChannel, cb: unknown) => unsubscribe(channel, cb)
   }
 }

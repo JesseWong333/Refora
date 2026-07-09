@@ -3,15 +3,22 @@ import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { resolve as resolvePath, parse as parsePath } from 'node:path'
 import { IpcChannel } from '../../shared/ipc-channels'
 import type {
+  AiProvider,
+  AiReport,
+  AiSummary,
   BootstrapData,
   Category,
+  ChatMessage,
   Document,
   DocumentPatch,
   ListFilter,
   LibrarySwitchResult,
   Result,
   SearchResult,
-  WatchFolder
+  WatchFolder,
+  Workspace,
+  WorkspaceItem,
+  WorkspaceItemKind
 } from '../../shared/ipc-types'
 import type { Repositories } from '../db/repositories'
 import type { SqliteDb } from '../db/types'
@@ -36,6 +43,11 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventMenuExportBibtex
   | typeof IpcChannel.EventLibraryScanning
   | typeof IpcChannel.EventLibrarySwitched
+  | typeof IpcChannel.EventAiSummaryUpdated
+  | typeof IpcChannel.EventAiChatToken
+  | typeof IpcChannel.EventAiChatDone
+  | typeof IpcChannel.EventAiChatError
+  | typeof IpcChannel.EventAiReportCreated
 >
 
 function wrap<T>(fn: () => T): Result<T> {
@@ -116,6 +128,10 @@ export interface RuntimeRef {
     destroy: () => void
   }
   watcher?: ReturnType<typeof createWatcher>
+  aiProvidersService?: unknown
+  pdfTextService?: unknown
+  aiSummaryService?: unknown
+  aiAgentService?: unknown
 }
 
 export interface IpcHandlerDeps {
@@ -452,7 +468,59 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const docs = ids.map((id) => r.documents.get(id)).filter(Boolean) as Document[]
         if (docs.length === 0) return ''
         return toBibtex(docs)
-      })
+      }),
+
+    [IpcChannel.WorkspacesList]: (): Result<Workspace[]> =>
+      wrap(() => repos().workspaces.list()),
+    [IpcChannel.WorkspacesCreate]: (name: string): Result<Workspace> =>
+      wrap(() => repos().workspaces.create(name)),
+    [IpcChannel.WorkspacesRename]: (id: string, name: string): Result<void> =>
+      wrap(() => repos().workspaces.rename(id, name)),
+    [IpcChannel.WorkspacesDelete]: (id: string): Result<void> =>
+      wrap(() => repos().workspaces.delete(id)),
+
+    [IpcChannel.WorkspaceItemsList]: (workspaceId: string): Result<WorkspaceItem[]> =>
+      wrap(() => repos().workspaceItems.list(workspaceId)),
+    [IpcChannel.WorkspaceItemsAdd]: (
+      workspaceId: string,
+      kind: WorkspaceItemKind,
+      ids: string[]
+    ): Result<WorkspaceItem[]> => wrap(() => repos().workspaceItems.add(workspaceId, kind, ids)),
+    [IpcChannel.WorkspaceItemsRemove]: (itemId: string): Result<void> =>
+      wrap(() => repos().workspaceItems.remove(itemId)),
+    [IpcChannel.WorkspaceItemsReorder]: (workspaceId: string, orderedIds: string[]): Result<void> =>
+      wrap(() => repos().workspaceItems.reorder(workspaceId, orderedIds)),
+
+    [IpcChannel.AiProvidersList]: (): Result<AiProvider[]> =>
+      notImplemented('ai:providers:list') as Result<AiProvider[]>,
+    [IpcChannel.AiProvidersCreate]: (_input: unknown): Result<AiProvider> =>
+      notImplemented('ai:providers:create') as Result<AiProvider>,
+    [IpcChannel.AiProvidersUpdate]: (_id: string, _patch: unknown): Result<AiProvider> =>
+      notImplemented('ai:providers:update') as Result<AiProvider>,
+    [IpcChannel.AiProvidersDelete]: (_id: string): Result<void> =>
+      notImplemented('ai:providers:delete') as Result<void>,
+    [IpcChannel.AiProvidersTest]: (_id: string): Result<{ ok: boolean; models?: string[] }> =>
+      notImplemented('ai:providers:test') as Result<{ ok: boolean; models?: string[] }>,
+
+    [IpcChannel.AiDocTextGet]: (_docId: string): Result<string> =>
+      notImplemented('ai:docText:get') as Result<string>,
+    [IpcChannel.AiSummarize]: (_docId: string): Result<void> =>
+      notImplemented('ai:summarize') as Result<void>,
+    [IpcChannel.AiSummaryGet]: (docId: string): Result<AiSummary | null> =>
+      wrap(() => repos().aiSummaries.getSummary(docId)),
+
+    [IpcChannel.AiChatSend]: (_req: unknown): Result<{ threadId: string }> =>
+      notImplemented('ai:chat:send') as Result<{ threadId: string }>,
+    [IpcChannel.AiChatHistory]: (threadId: string): Result<ChatMessage[]> =>
+      wrap(() => {
+        if (!threadId) return []
+        return repos().chat.listMessages(threadId)
+      }),
+
+    [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
+      wrap(() => repos().aiReports.list(workspaceId)),
+    [IpcChannel.AiReportsDelete]: (id: string): Result<void> =>
+      wrap(() => repos().aiReports.delete(id))
   } satisfies Record<HandlerChannel, (...args: never[]) => unknown>
 
   return handlers

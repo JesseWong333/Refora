@@ -120,6 +120,8 @@ export async function deleteDocument(repos: Repositories, id: string): Promise<v
     }
   }
   repos.documents.delete(id)
+  repos.aiSummaries.delete(id)
+  repos.workspaceItems.removeByDocId(id)
 }
 
 export async function bulkDeleteDocuments(
@@ -153,5 +155,11 @@ export async function bulkDeleteDocuments(
     }
   })
   const deletable = ids.filter((id) => fileMissingIds.has(id) || trashed.has(id))
-  if (deletable.length > 0) repos.documents.bulkDelete(deletable)
+  if (deletable.length > 0) {
+    repos.documents.bulkDelete(deletable)
+    for (const id of deletable) {
+      repos.aiSummaries.delete(id)
+      repos.workspaceItems.removeByDocId(id)
+    }
+  }
 }

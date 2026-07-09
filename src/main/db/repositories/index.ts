@@ -3,6 +3,12 @@ import { createDocumentsRepository } from './documents'
 import { createCategoriesRepository } from './categories'
 import { createWatchFoldersRepository } from './watchFolders'
 import { createSettingsRepository } from './settings'
+import { createWorkspacesRepository } from './workspaces'
+import { createWorkspaceItemsRepository } from './workspaceItems'
+import { createAiSummariesRepository } from './aiSummaries'
+import { createAiReportsRepository } from './aiReports'
+import { createChatRepository } from './chat'
+import { createAiProvidersRepository } from './aiProviders'
 import { RepoError } from './errors'
 
 export function createRepositories(db: SqliteDb) {
@@ -12,6 +18,12 @@ export function createRepositories(db: SqliteDb) {
   })
   const categories = createCategoriesRepository(db)
   const watchFolders = createWatchFoldersRepository(db)
+  const workspaces = createWorkspacesRepository(db)
+  const workspaceItems = createWorkspaceItemsRepository(db)
+  const aiSummaries = createAiSummariesRepository(db)
+  const aiReports = createAiReportsRepository(db)
+  const chat = createChatRepository(db)
+  const aiProviders = createAiProvidersRepository(db)
 
   let depth = 0
 
@@ -56,6 +68,12 @@ export function createRepositories(db: SqliteDb) {
     categories,
     watchFolders,
     settings,
+    workspaces,
+    workspaceItems,
+    aiSummaries,
+    aiReports,
+    chat,
+    aiProviders,
     transaction
   }
 }

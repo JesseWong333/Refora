@@ -1,6 +1,14 @@
 import type { BrowserWindow } from 'electron'
 import { IpcChannel } from '../../shared/ipc-channels'
-import type { Document, ImportProgress, LibrarySwitchResult } from '../../shared/ipc-types'
+import type {
+  AiReport,
+  ChatDoneEvent,
+  ChatErrorEvent,
+  ChatTokenEvent,
+  Document,
+  ImportProgress,
+  LibrarySwitchResult
+} from '../../shared/ipc-types'
 
 export function emitDocumentUpdated(win: BrowserWindow, doc: Document): void {
   if (!win.isDestroyed()) {
@@ -23,5 +31,35 @@ export function emitLibraryScanning(win: BrowserWindow, payload: ImportProgress)
 export function emitLibrarySwitched(win: BrowserWindow, payload: LibrarySwitchResult): void {
   if (!win.isDestroyed()) {
     win.webContents.send(IpcChannel.EventLibrarySwitched, payload)
+  }
+}
+
+export function emitAiSummaryUpdated(win: BrowserWindow, docId: string): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiSummaryUpdated, docId)
+  }
+}
+
+export function emitAiChatToken(win: BrowserWindow, payload: ChatTokenEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiChatToken, payload)
+  }
+}
+
+export function emitAiChatDone(win: BrowserWindow, payload: ChatDoneEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiChatDone, payload)
+  }
+}
+
+export function emitAiChatError(win: BrowserWindow, payload: ChatErrorEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiChatError, payload)
+  }
+}
+
+export function emitAiReportCreated(win: BrowserWindow, report: AiReport): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiReportCreated, report)
   }
 }

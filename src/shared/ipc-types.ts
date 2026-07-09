@@ -153,6 +153,110 @@ export interface LibrarySwitchResult {
   errors: Array<{ path: string; message: string }>
 }
 
+export type WorkspaceItemKind = 'document' | 'report'
+
+export interface Workspace {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface WorkspaceItem {
+  id: string
+  workspaceId: string
+  kind: WorkspaceItemKind
+  docId: string | null
+  reportId: string | null
+  sortOrder: number
+  addedAt: number
+}
+
+export interface AiProvider {
+  id: string
+  name: string
+  baseUrl: string
+  model: string
+  hasKey: boolean
+  createdAt: number
+}
+
+export interface AiProviderInput {
+  name: string
+  baseUrl: string
+  model: string
+  apiKey?: string
+}
+
+export interface AiProviderPatch {
+  name?: string
+  baseUrl?: string
+  model?: string
+  apiKey?: string
+}
+
+export interface AiSummaryContent {
+  core: string
+  keyPoints: string[]
+  methods?: string
+  contribution?: string
+}
+
+export interface AiSummary {
+  docId: string
+  model: string | null
+  content: AiSummaryContent | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface AiReport {
+  id: string
+  workspaceId: string
+  title: string
+  contentMd: string
+  sourceDocIds: string[]
+  model: string | null
+  createdAt: number
+}
+
+export interface ChatThread {
+  id: string
+  workspaceId: string
+  providerId: string
+  createdAt: number
+}
+
+export interface ChatMessage {
+  id: string
+  threadId: string
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  createdAt: number
+}
+
+export interface ChatSendRequest {
+  workspaceId: string
+  threadId?: string
+  text: string
+  providerId: string
+}
+
+export interface ChatTokenEvent {
+  threadId: string
+  token: string
+}
+
+export interface ChatDoneEvent {
+  threadId: string
+  finalText: string
+}
+
+export interface ChatErrorEvent {
+  threadId: string
+  message: string
+}
+
 export type EventChannelKey = keyof typeof IpcChannel & `Event${string}`
 export type EventChannel = (typeof IpcChannel)[EventChannelKey]
 
@@ -163,6 +267,11 @@ export interface DocumentEvents {
   onMenuExportBibtex(cb: () => void): void
   onLibraryScanning(cb: (payload: ImportProgress) => void): void
   onLibrarySwitched(cb: (payload: LibrarySwitchResult) => void): void
+  onAiSummaryUpdated(cb: (docId: string) => void): void
+  onAiChatToken(cb: (payload: ChatTokenEvent) => void): void
+  onAiChatDone(cb: (payload: ChatDoneEvent) => void): void
+  onAiChatError(cb: (payload: ChatErrorEvent) => void): void
+  onAiReportCreated(cb: (report: AiReport) => void): void
   off(channel: EventChannel, cb: unknown): void
 }
 
@@ -219,6 +328,36 @@ export interface ReforaApi {
     toJson(): Promise<string>
     toBibtex(ids: string[]): Promise<string>
     toBibtexString(ids: string[]): Promise<string>
+  }
+  workspaces: {
+    list(): Promise<Workspace[]>
+    create(name: string): Promise<Workspace>
+    rename(id: string, name: string): Promise<void>
+    delete(id: string): Promise<void>
+  }
+  workspaceItems: {
+    list(workspaceId: string): Promise<WorkspaceItem[]>
+    add(workspaceId: string, kind: WorkspaceItemKind, ids: string[]): Promise<WorkspaceItem[]>
+    remove(itemId: string): Promise<void>
+    reorder(workspaceId: string, orderedIds: string[]): Promise<void>
+  }
+  aiProviders: {
+    list(): Promise<AiProvider[]>
+    create(input: AiProviderInput): Promise<AiProvider>
+    update(id: string, patch: AiProviderPatch): Promise<AiProvider>
+    delete(id: string): Promise<void>
+    test(id: string): Promise<{ ok: boolean; models?: string[] }>
+  }
+  ai: {
+    docTextGet(docId: string): Promise<string>
+    summarize(docId: string): Promise<void>
+    summaryGet(docId: string): Promise<AiSummary | null>
+    chatSend(req: ChatSendRequest): Promise<{ threadId: string }>
+    chatHistory(threadId: string): Promise<ChatMessage[]>
+  }
+  reports: {
+    list(workspaceId: string): Promise<AiReport[]>
+    delete(id: string): Promise<void>
   }
   events: DocumentEvents
 }

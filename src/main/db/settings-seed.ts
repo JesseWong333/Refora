@@ -12,6 +12,7 @@ export type SettingKey =
   | 'proxyUrl'
   | 'windowBounds'
   | 'listColumnState'
+  | 'activeProviderId'
 
 export const SETTING_KEYS: readonly SettingKey[] = [
   'libraryFolderPath',
@@ -22,7 +23,8 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'language',
   'proxyUrl',
   'windowBounds',
-  'listColumnState'
+  'listColumnState',
+  'activeProviderId'
 ]
 
 function sqlLiteral(value: unknown): string {
@@ -40,7 +42,8 @@ export function defaultSettings(language: 'zh' | 'en'): Array<[SettingKey, unkno
     ['language', language],
     ['proxyUrl', ''],
     ['windowBounds', null],
-    ['listColumnState', null]
+    ['listColumnState', null],
+    ['activeProviderId', '']
   ]
 }
 
