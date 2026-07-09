@@ -1,5 +1,5 @@
 import { dialog, ipcMain, shell, session, type BrowserWindow } from 'electron'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { resolve as resolvePath, parse as parsePath } from 'node:path'
 import { IpcChannel } from '../../shared/ipc-channels'
 import type {
@@ -16,6 +16,7 @@ import type {
 import type { Repositories } from '../db/repositories'
 import type { SqliteDb } from '../db/types'
 import { RepoError } from '../db/repositories/errors'
+import { SETTING_KEYS } from '../db/settings-seed'
 import type { ImportResult } from '../services/importer'
 import { openPdf } from '../services/pdfOpen'
 import { moveToLibrary, restoreToOriginal } from '../services/library'
@@ -142,6 +143,25 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     return rt.repos
   }
 
+  function categorizeAndMoveToLibrary(docId: string, catId: string): void {
+    const r = repos()
+    const doc = r.documents.get(docId)
+    if (!doc) throw new RepoError('not_found', `Document ${docId} not found`)
+    const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
+    const alreadyInLibrary = libraryFolder ? isInsideLibrary(doc.filePath, libraryFolder) : false
+    if (libraryFolder && !alreadyInLibrary) {
+      try {
+        const newPath = moveToLibrary(doc.filePath, libraryFolder)
+        r.documents.updateFilePath(docId, newPath, parsePath(newPath).base)
+      } catch (e) {
+        logger.warn(
+          `categorize:move-failed ${doc.filePath}: ${e instanceof Error ? e.message : String(e)}`
+        )
+      }
+    }
+    r.categories.assign(docId, catId)
+  }
+
   const handlers = {
     [IpcChannel.Bootstrap]: (): Result<BootstrapData> => wrap(() => bootstrapFromSettings(repos())),
 
@@ -165,23 +185,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const cats = r.categories.list()
         const cat = cats.find((c) => c.id === catId)
         if (!cat) throw new RepoError('not_found', `Category ${catId} not found`)
-        const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
         for (const id of ids) {
-          r.categories.assign(id, catId)
-          if (libraryFolder) {
-            const doc = r.documents.get(id)
-            if (!doc) continue
-            if (!isInsideLibrary(doc.filePath, libraryFolder)) {
-              try {
-                const newPath = moveToLibrary(doc.filePath, libraryFolder)
-                r.documents.updateFilePath(id, newPath, parsePath(newPath).base)
-              } catch (e) {
-                logger.warn(
-                  `bulkCategorize:move-failed ${doc.filePath}: ${e instanceof Error ? e.message : String(e)}`
-                )
-              }
-            }
-          }
+          categorizeAndMoveToLibrary(id, catId)
         }
       }),
 
@@ -320,24 +325,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.CategoriesAssign]: (docId: string, catId: string): Result<void> =>
       wrap(() => {
         const r = repos()
-        const doc = r.documents.get(docId)
-        if (!doc) throw new RepoError('not_found', `Document ${docId} not found`)
         const cats = r.categories.list()
         const cat = cats.find((c) => c.id === catId)
         if (!cat) throw new RepoError('not_found', `Category ${catId} not found`)
-        const libraryFolder = r.settings.get<string>('libraryFolderPath', '')
-        const alreadyInLibrary = libraryFolder ? isInsideLibrary(doc.filePath, libraryFolder) : false
-        if (libraryFolder && !alreadyInLibrary) {
-          try {
-            const newPath = moveToLibrary(doc.filePath, libraryFolder)
-            r.documents.updateFilePath(docId, newPath, parsePath(newPath).base)
-          } catch (e) {
-            logger.warn(
-              `categories:assign move-failed ${doc.filePath}: ${e instanceof Error ? e.message : String(e)}`
-            )
-          }
-        }
-        r.categories.assign(docId, catId)
+        categorizeAndMoveToLibrary(docId, catId)
       }),
     [IpcChannel.CategoriesUnassign]: (docId: string, catId: string): Result<void> =>
       wrap(() => repos().categories.unassign(docId, catId)),
@@ -414,6 +405,9 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.SettingsSet]: (key: string, value: unknown): Result<void> =>
       wrap(() => {
         const r = repos()
+        if (!SETTING_KEYS.includes(key as never)) {
+          throw new RepoError('forbidden_field', `Unknown setting key: ${key}`)
+        }
         if (key === 'libraryFolderPath' && typeof value === 'string' && value) {
           throw new RepoError('use_library_switch', 'Use library.switch to change the library folder')
         }
@@ -448,7 +442,6 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         })
         if (result.canceled || !result.filePath) return ''
         const bibtex = toBibtex(docs)
-        const { writeFileSync } = await import('node:fs')
         writeFileSync(result.filePath, bibtex, 'utf-8')
         return result.filePath
       }),

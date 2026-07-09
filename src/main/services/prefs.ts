@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { logger } from './logger'
 
@@ -26,7 +26,7 @@ export function readLibraryFolderPath(userDataDir: string): string {
 export function writeLibraryFolderPath(userDataDir: string, folder: string): void {
   try {
     const p = prefsPath(userDataDir)
-    const dir = join(p, '..')
+    const dir = dirname(p)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     const prefs: UserPrefs = { libraryFolderPath: folder }
     writeFileSync(p, JSON.stringify(prefs, null, 2), 'utf-8')

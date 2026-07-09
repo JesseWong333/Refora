@@ -105,6 +105,9 @@ export function validatePatch(patch: DocumentPatch): EditableField[] {
     if (!isEditableField(key)) {
       throw new RepoError('forbidden_field', `field "${key}" is not editable`, key)
     }
+    if (typeof patch[key as EditableField] !== 'string') {
+      throw new RepoError('invalid_value', `field "${key}" must be a string`, key)
+    }
   }
   return rawKeys as EditableField[]
 }
@@ -161,21 +164,26 @@ function mapDocument(row: Record<string, unknown>, libraryFolder: string): Docum
     url: (row.url as string | null) ?? null,
     doi: (row.doi as string | null) ?? null,
     note: (row.note as string | null) ?? null,
-    starred: row.starred as number,
-    addedAt: row.addedAt as number,
-    lastReadAt: (row.lastReadAt as number | null) ?? null,
-    updatedAt: row.updatedAt as number,
+    starred: safeInt(row.starred) ?? 0,
+    addedAt: safeInt(row.addedAt) ?? 0,
+    lastReadAt: safeInt(row.lastReadAt),
+    updatedAt: safeInt(row.updatedAt) ?? 0,
     metadataSource: (row.metadataSource as MetadataSource | null) ?? null,
     metadataStatus: row.metadataStatus as MetadataStatus,
-    metadataAttempts: row.metadataAttempts as number,
+    metadataAttempts: safeInt(row.metadataAttempts) ?? 0,
     editedFields: parseEditedFields(row.editedFields),
     remoteValues: parseRemoteValues(row.remoteValues),
     fileMissing: row.fileMissing as number
   }
 }
 
+const SORT_FIELDS: readonly string[] = ['title', 'authors', 'year', 'venue', 'addedAt', 'filePath']
+const SORT_DIRS: readonly string[] = ['asc', 'desc']
+
 function orderByClause(mode: ListMode, sort?: { field: SortField; dir: 'asc' | 'desc' }): string {
-  if (sort) return `ORDER BY ${sort.field} ${sort.dir}`
+  if (sort && SORT_FIELDS.includes(sort.field) && SORT_DIRS.includes(sort.dir)) {
+    return `ORDER BY ${sort.field} ${sort.dir}`
+  }
   if (mode === 'recentlyRead') return 'ORDER BY lastReadAt DESC'
   return 'ORDER BY addedAt DESC'
 }
@@ -301,6 +309,10 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     if (ids.length === 0) return
     const placeholders = ids.map(() => '?').join(', ')
     db.prepare(`DELETE FROM documents WHERE id IN (${placeholders})`).run(...ids)
+  }
+
+  function deleteAll(): void {
+    db.exec('DELETE FROM documents')
   }
 
   function setStarred(id: string, value: boolean): void {
@@ -443,6 +455,7 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     update,
     delete: remove,
     bulkDelete,
+    deleteAll,
     setStarred,
     findByPath,
     findByHash,

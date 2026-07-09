@@ -39,6 +39,7 @@ export interface ImportResult {
 export function createImporter(repos: Repositories, win: BrowserWindow | (() => BrowserWindow | null)) {
   let worker: ReturnType<typeof utilityProcess.fork> | null = null
   let workerKilled = false
+  let destroyed = false
   const pending = new Map<string, PendingRequest>()
   const emitter = new EventEmitter()
 
@@ -49,6 +50,7 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
   }
 
   function ensureWorker(): ReturnType<typeof utilityProcess.fork> {
+    if (destroyed) throw new Error('Importer has been destroyed')
     if (worker && !workerKilled) return worker
     worker = utilityProcess.fork(join(__dirname, 'worker/pdf-worker.js'), [], {
       serviceName: 'PDF Worker',
@@ -134,6 +136,7 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
     }
 
     for (let i = 0; i < paths.length; i++) {
+      if (destroyed) return { added, skipped, errors }
       const current = i + 1
       const raw = paths[i]
 
@@ -261,6 +264,7 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
   }
 
   function destroy(): void {
+    destroyed = true
     if (worker && !workerKilled) {
       worker.kill()
       workerKilled = true

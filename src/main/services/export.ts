@@ -348,10 +348,7 @@ function importReplace(
     .filter((d): d is NewDocument => d !== null)
 
   const doReplace = (): number => {
-    const existingDocIds = repos.documents.list({ mode: 'all' }).map((d) => d.id)
-    if (existingDocIds.length > 0) {
-      repos.documents.bulkDelete(existingDocIds)
-    }
+    repos.documents.deleteAll()
 
     const existingCats = repos.categories.list()
     for (const c of existingCats) {
@@ -404,57 +401,59 @@ function importReplace(
 }
 
 function importMerge(repos: Repositories, data: ExportData, libraryFolder: string): number {
-  const oldCatIdToNew = new Map<string, string>()
-  const nameToDbId = new Map<string, string>()
-  for (const cat of repos.categories.list()) {
-    nameToDbId.set(cat.name, cat.id)
-  }
-  for (const cat of data.categories) {
-    if (typeof cat.id !== 'string' || typeof cat.name !== 'string') continue
-    if (oldCatIdToNew.has(cat.id)) continue
-    let dbId = nameToDbId.get(cat.name)
-    if (!dbId) {
+  return repos.transaction(() => {
+    const oldCatIdToNew = new Map<string, string>()
+    const nameToDbId = new Map<string, string>()
+    for (const cat of repos.categories.list()) {
+      nameToDbId.set(cat.name, cat.id)
+    }
+    for (const cat of data.categories) {
+      if (typeof cat.id !== 'string' || typeof cat.name !== 'string') continue
+      if (oldCatIdToNew.has(cat.id)) continue
+      let dbId = nameToDbId.get(cat.name)
+      if (!dbId) {
+        try {
+          const created = repos.categories.create(cat.name)
+          dbId = created.id
+          nameToDbId.set(cat.name, dbId)
+        } catch {
+          continue
+        }
+      }
+      oldCatIdToNew.set(cat.id, dbId)
+    }
+
+    const insertedDocIds = new Set<string>()
+    let count = 0
+    for (const doc of data.documents) {
+      const sanitized = sanitizeImportedDoc(doc, libraryFolder)
+      if (!sanitized) continue
+      const existing = repos.documents.get(sanitized.id)
+      if (existing) continue
       try {
-        const created = repos.categories.create(cat.name)
-        dbId = created.id
-        nameToDbId.set(cat.name, dbId)
+        repos.documents.insert(sanitized)
+        insertedDocIds.add(sanitized.id)
+        count++
       } catch {
         continue
       }
     }
-    oldCatIdToNew.set(cat.id, dbId)
-  }
 
-  const insertedDocIds = new Set<string>()
-  let count = 0
-  for (const doc of data.documents) {
-    const sanitized = sanitizeImportedDoc(doc, libraryFolder)
-    if (!sanitized) continue
-    const existing = repos.documents.get(sanitized.id)
-    if (existing) continue
-    try {
-      repos.documents.insert(sanitized)
-      insertedDocIds.add(sanitized.id)
-      count++
-    } catch {
-      continue
-    }
-  }
-
-  for (const dc of data.documentCategories) {
-    if (typeof dc.documentId !== 'string' || typeof dc.categoryId !== 'string') continue
-    if (!insertedDocIds.has(dc.documentId)) continue
-    const newCatId = oldCatIdToNew.get(dc.categoryId)
-    if (newCatId) {
-      try {
-        repos.categories.assign(dc.documentId, newCatId)
-      } catch {
-        continue
+    for (const dc of data.documentCategories) {
+      if (typeof dc.documentId !== 'string' || typeof dc.categoryId !== 'string') continue
+      if (!insertedDocIds.has(dc.documentId)) continue
+      const newCatId = oldCatIdToNew.get(dc.categoryId)
+      if (newCatId) {
+        try {
+          repos.categories.assign(dc.documentId, newCatId)
+        } catch {
+          continue
+        }
       }
     }
-  }
 
-  return count
+    return count
+  })
 }
 
 export function writeExportFile(repos: Repositories, filePath: string): void {

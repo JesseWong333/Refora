@@ -6,7 +6,6 @@ import { logger } from '../services/logger'
 type BetterSqlite3Database = Database.Database
 
 let activeSearchMode: 'trigram' | 'like' = 'trigram'
-let connection: BetterSqlite3Database | null = null
 
 function adapt(db: BetterSqlite3Database): SqliteLike {
   return {
@@ -32,7 +31,6 @@ export function openDatabase(dbPath: string): BetterSqlite3Database {
   logger.info(
     `db:opened path=${dbPath} from=v${result.from} to=v${result.to} search=${activeSearchMode}`
   )
-  connection = db
   return db
 }
 
@@ -51,9 +49,8 @@ export function getSearchMode(): 'trigram' | 'like' {
   return activeSearchMode
 }
 
-export function closeDatabase(): void {
-  if (connection) {
-    connection.close()
-    connection = null
+export function closeDatabase(db: BetterSqlite3Database): void {
+  if (db.open) {
+    db.close()
   }
 }

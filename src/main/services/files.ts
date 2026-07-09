@@ -37,7 +37,8 @@ export function findPdfsRecursively(
 
 export function checkMissing(
   repos: Repositories,
-  win: BrowserWindow | null
+  win: BrowserWindow | null,
+  signal?: AbortSignal
 ): void {
   const docs = repos.documents.list({ mode: 'all' })
   const batchSize = 50
@@ -45,6 +46,7 @@ export function checkMissing(
   const changed: Document[] = []
 
   function emitBatch() {
+    if (signal?.aborted) return
     if (!win || changed.length === 0) return
     const slice = changed.splice(0, batchSize)
     for (const doc of slice) emitDocumentUpdated(win, doc)
@@ -52,6 +54,7 @@ export function checkMissing(
   }
 
   function processBatch() {
+    if (signal?.aborted) return
     const end = Math.min(i + batchSize, docs.length)
     for (; i < end; i++) {
       const doc = docs[i]

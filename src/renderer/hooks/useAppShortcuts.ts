@@ -29,7 +29,7 @@ export function useAppShortcuts(): void {
         focusSearch()
         return
       }
-      if (mod && e.key === 'Backspace') {
+      if (mod && e.key === 'Backspace' && !isInteractive(e.target)) {
         e.preventDefault()
         const store = useDocumentStore.getState()
         if (store.selectedIds.length > 0) {

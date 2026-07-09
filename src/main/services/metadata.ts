@@ -1,5 +1,6 @@
 import { type BrowserWindow, utilityProcess, net } from 'electron'
 import { join } from 'node:path'
+import { XMLParser } from 'fast-xml-parser'
 import type { Repositories } from '../db/repositories'
 import type { Document, DocumentPatch, EditableField, MetadataSource, RemoteValues } from '../../shared/ipc-types'
 import { newId } from '../db/repositories/documents'
@@ -394,6 +395,53 @@ async function fetchCrossrefByTitle(title: string, mailto: string): Promise<{ da
   }
 }
 
+const arxivXmlParser = new XMLParser({ parseTagValue: false, trimValues: true })
+
+interface ParsedArxivEntry {
+  title: string
+  authors: string | null
+  year: string | null
+  abstract: string | null
+  id: string | null
+}
+
+function asArray<T>(value: T | T[] | undefined): T[] {
+  if (value === undefined) return []
+  return Array.isArray(value) ? value : [value]
+}
+
+function parseArxivEntry(xml: string): ParsedArxivEntry | null {
+  try {
+    const parsed = arxivXmlParser.parse(xml) as Record<string, unknown>
+    const feed = parsed?.feed
+    if (!feed || typeof feed !== 'object') return null
+    const feedObj = feed as Record<string, unknown>
+    const entries = asArray(feedObj.entry as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    if (entries.length === 0) return null
+    const e = entries[0]
+
+    const title = typeof e.title === 'string' ? e.title.replace(/\s+/g, ' ').trim() : null
+    if (!title) return null
+
+    const rawAuthors = asArray(e.author as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const authors = rawAuthors
+      .map((a) => (typeof a.name === 'string' ? a.name.trim() : ''))
+      .filter(Boolean)
+      .join('; ') || null
+
+    const published = typeof e.published === 'string' ? e.published : null
+    const year = published ? published.slice(0, 4) : null
+
+    const abstract = typeof e.summary === 'string' ? e.summary.replace(/\s+/g, ' ').trim() : null
+
+    const idValue = typeof e.id === 'string' ? e.id.trim() : null
+
+    return { title, authors, year, abstract, id: idValue }
+  } catch {
+    return null
+  }
+}
+
 async function fetchArxiv(id: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
@@ -404,32 +452,17 @@ async function fetchArxiv(id: string): Promise<{ data: Partial<Document>; confid
     if (!response.ok) return null
     const text = await response.text()
 
-    const entryMatch = text.match(/<entry>([\s\S]*?)<\/entry>/)
-    if (!entryMatch) return null
-    const entry = entryMatch[1]
+    const entry = parseArxivEntry(text)
+    if (!entry) return null
 
-    const titleMatch = entry.match(/<title>(.*?)<\/title>/s)
-    const arxivTitle = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : null
-    if (!arxivTitle) return null
-
-    const authorMatches = entry.matchAll(/<author>[\s\S]*?<name>(.*?)<\/name>[\s\S]*?<\/author>/gs)
-    const authors = [...authorMatches].map((m) => m[1].trim()).join('; ') || null
-
-    const yearMatch = entry.match(/<published>(\d{4})/)
-    const year = yearMatch ? yearMatch[1] : null
-
-    const abstractMatch = entry.match(/<summary>(.*?)<\/summary>/s)
-    const abstractText = abstractMatch ? abstractMatch[1].trim().replace(/\s+/g, ' ') : null
-
-    const idMatch = entry.match(/<id>(.*?)<\/id>/)
-    const arxivUrl = idMatch ? idMatch[1].trim() : `https://arxiv.org/abs/${id}`
+    const arxivUrl = entry.id ?? `https://arxiv.org/abs/${id}`
 
     return {
       data: {
-        title: arxivTitle,
-        authors: normalizeAuthors(authors),
-        year,
-        abstract: abstractText,
+        title: entry.title,
+        authors: normalizeAuthors(entry.authors),
+        year: entry.year,
+        abstract: entry.abstract,
         url: arxivUrl,
         metadataSource: 'arxiv' as MetadataSource
       },
@@ -569,36 +602,19 @@ async function fetchArxivByTitle(title: string): Promise<{ data: Partial<Documen
     if (!response.ok) return null
     const text = await response.text()
 
-    const entryMatch = text.match(/<entry>([\s\S]*?)<\/entry>/)
-    if (!entryMatch) return null
-    const entry = entryMatch[1]
+    const entry = parseArxivEntry(text)
+    if (!entry) return null
 
-    const titleMatch = entry.match(/<title>(.*?)<\/title>/s)
-    const arxivTitle = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : null
-    if (!arxivTitle) return null
-
-    const confidence = titleSimilarity(title, arxivTitle)
+    const confidence = titleSimilarity(title, entry.title)
     if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
-
-    const authorMatches = entry.matchAll(/<author>[\s\S]*?<name>(.*?)<\/name>[\s\S]*?<\/author>/gs)
-    const authors = [...authorMatches].map((m) => m[1].trim()).join('; ') || null
-
-    const yearMatch = entry.match(/<published>(\d{4})/)
-    const year = yearMatch ? yearMatch[1] : null
-
-    const abstractMatch = entry.match(/<summary>(.*?)<\/summary>/s)
-    const abstractText = abstractMatch ? abstractMatch[1].trim().replace(/\s+/g, ' ') : null
-
-    const idMatch = entry.match(/<id>(.*?)<\/id>/)
-    const arxivUrl = idMatch ? idMatch[1].trim() : null
 
     return {
       data: {
-        title: arxivTitle,
-        authors: normalizeAuthors(authors),
-        year,
-        abstract: abstractText,
-        url: arxivUrl,
+        title: entry.title,
+        authors: normalizeAuthors(entry.authors),
+        year: entry.year,
+        abstract: entry.abstract,
+        url: entry.id,
         metadataSource: 'arxiv' as MetadataSource
       },
       confidence
@@ -613,6 +629,7 @@ async function fetchArxivByTitle(title: string): Promise<{ data: Partial<Documen
 export function createMetadataService(repos: Repositories, win: BrowserWindow | (() => BrowserWindow | null)) {
   let worker: ReturnType<typeof utilityProcess.fork> | null = null
   let workerKilled = false
+  let destroyed = false
   let workerIdleTimer: ReturnType<typeof setTimeout> | null = null
   const pending = new Map<string, PendingRequest>()
   const jobQueue: MetadataJob[] = []
@@ -753,6 +770,8 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       return
     }
 
+    if (destroyed) return
+
     if (workerResponse.error) {
       logger.warn(`metadata:processJob worker-error id=${docId} type=${workerResponse.error.type} msg=${workerResponse.error.message}`)
       repos.documents.incrementMetadataAttempts(docId)
@@ -856,11 +875,15 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       source = 'pdf'
     }
 
+    if (destroyed) return
+
     await supplementVenueFields(docId, fetchedData, {
       searchTitle,
       text,
       mailto: repos.settings.get<string>('crossrefMailto', '')
     })
+
+    if (destroyed) return
 
     const current = repos.documents.get(docId)
     if (!current) return
@@ -922,6 +945,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
   }
 
   function processQueue(): void {
+    if (destroyed) return
     while (activeJobs < MAX_CONCURRENT && jobQueue.length > 0) {
       const job = jobQueue.shift()
       if (!job) break
@@ -972,6 +996,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
   }
 
   function destroy(): void {
+    destroyed = true
     if (workerIdleTimer) {
       clearTimeout(workerIdleTimer)
       workerIdleTimer = null

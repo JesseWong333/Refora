@@ -31,6 +31,7 @@ let runtime: Runtime | null = null
 let win: BrowserWindow | null = null
 let isQuitting = false
 let switchPromise: Promise<LibrarySwitchResult> | null = null
+let missingCheckAbort: AbortController | null = null
 
 function detectLanguage(): 'zh' | 'en' {
   try {
@@ -212,7 +213,14 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
   })
 
   bw.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        void shell.openExternal(url)
+      }
+    } catch {
+      void url
+    }
     return { action: 'deny' }
   })
 
@@ -227,6 +235,10 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
 
 function teardownRuntime(): void {
   if (!runtime) return
+  if (missingCheckAbort) {
+    missingCheckAbort.abort()
+    missingCheckAbort = null
+  }
   if (runtime.missingCheckInterval) {
     clearInterval(runtime.missingCheckInterval)
     runtime.missingCheckInterval = null
@@ -234,7 +246,7 @@ function teardownRuntime(): void {
   runtime.metadataService.destroy()
   runtime.watcher.destroy()
   runtime.importer.destroy()
-  closeDatabase()
+  closeDatabase(runtime.db)
   runtime = null
 }
 
@@ -287,12 +299,14 @@ function buildRuntime(dbPath: string): Runtime {
     }
   }
 
+  missingCheckAbort = new AbortController()
+  const signal = missingCheckAbort.signal
   setImmediate(() => {
-    checkMissing(repos, win)
+    checkMissing(repos, win, signal)
   })
 
   r.missingCheckInterval = setInterval(() => {
-    if (!isQuitting) checkMissing(repos, win)
+    if (!isQuitting && !signal.aborted) checkMissing(repos, win, signal)
   }, 10 * 60 * 1000)
 
   return r
@@ -319,9 +333,13 @@ function resolveStartupDbPath(): string {
   try {
     if (existsSync(userDataDbPath)) {
       const db = openDatabase(userDataDbPath)
-      const libraryFolder = getSetting(db, 'libraryFolderPath')
-      const trimmed = libraryFolder ? JSON.parse(libraryFolder) as string : ''
-      closeDatabase()
+      let trimmed = ''
+      try {
+        const libraryFolder = getSetting(db, 'libraryFolderPath')
+        trimmed = libraryFolder ? JSON.parse(libraryFolder) as string : ''
+      } finally {
+        closeDatabase(db)
+      }
       if (trimmed && dbExistsInLibraryFolder(trimmed)) {
         logger.info(`db:startup migrating to library db at ${trimmed}`)
         writeLibraryFolderPath(userDataDir, trimmed)
@@ -338,7 +356,6 @@ function resolveStartupDbPath(): string {
     }
   } catch (e) {
     logger.warn(`db:startup bootstrap read failed: ${e instanceof Error ? e.message : String(e)}`)
-    closeDatabase()
   }
   return userDataDbPath
 }

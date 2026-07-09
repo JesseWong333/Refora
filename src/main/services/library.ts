@@ -16,6 +16,9 @@ function collisionSafePath(destPath: string): string {
 }
 
 export function moveToLibrary(filePath: string, libraryFolder: string): string {
+  if (!existsSync(libraryFolder)) {
+    mkdirSync(libraryFolder, { recursive: true })
+  }
   const fileName = parse(filePath).base
   const destPath = collisionSafePath(join(libraryFolder, fileName))
   try {
