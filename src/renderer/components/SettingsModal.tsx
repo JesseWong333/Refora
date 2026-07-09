@@ -1,11 +1,18 @@
 import { useTranslation } from 'react-i18next'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Modal, Button, Input, Select } from '@lobehub/ui'
+import { Loader2 } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
 import { errorMessage } from '../../shared/ipc-types'
-import type { AiProvider } from '../../shared/ipc-types'
+import type { AiProvider, ModelVariantFormat, ProviderModelInfo } from '../../shared/ipc-types'
+import {
+  COMMON_VARIANTS,
+  composeModelId,
+  parseModelId,
+  supportsModelVariants
+} from '../../shared/modelVariant'
 
 interface SettingsModalProps {
   open: boolean
@@ -27,17 +34,26 @@ interface ProviderForm {
   id: string | null
   name: string
   baseUrl: string
-  model: string
+  baseModel: string
+  variant: string
+  variantFormat: ModelVariantFormat
   apiKey: string
 }
 
 type TestState = 'testing' | { ok: boolean; models?: string[] }
+type KeyStatus = 'idle' | 'checking' | 'ok' | 'fail'
 
 const PROVIDER_TEMPLATES: { name: string; baseUrl: string; model: string }[] = [
   { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { name: 'Zhipu (智谱)', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
   { name: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', model: 'llama3.1' }
+]
+
+const VARIANT_FORMAT_OPTIONS: { label: string; value: ModelVariantFormat }[] = [
+  { label: 'base-variant', value: 'dash' },
+  { label: 'base:variant', value: 'colon' },
+  { label: 'base only', value: 'none' }
 ]
 
 function AiProvidersSection() {
@@ -48,6 +64,13 @@ function AiProvidersSection() {
   const [testStates, setTestStates] = useState<Record<string, TestState>>({})
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [availableModels, setAvailableModels] = useState<ProviderModelInfo[]>([])
+  const [modelFilter, setModelFilter] = useState('')
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [keyStatus, setKeyStatus] = useState<KeyStatus>('idle')
+  const [manualModel, setManualModel] = useState(false)
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const fetchSeq = useRef(0)
 
   const load = async () => {
     try {
@@ -66,42 +89,138 @@ function AiProvidersSection() {
     void load()
   }, [])
 
+  const composedModel = form
+    ? composeModelId(form.baseModel, form.variant, form.variantFormat)
+    : ''
+
+  const fetchModels = useCallback(
+    async (opts: { baseUrl: string; apiKey?: string; providerId?: string | null }) => {
+      const seq = ++fetchSeq.current
+      setLoadingModels(true)
+      setModelsError(null)
+      setKeyStatus('checking')
+      try {
+        const result = await api.aiProviders.listModels({
+          providerId: opts.providerId ?? undefined,
+          baseUrl: opts.baseUrl.trim() || undefined,
+          apiKey: opts.apiKey?.trim() || undefined
+        })
+        if (seq !== fetchSeq.current) return
+        if (result.ok) {
+          setAvailableModels(result.models)
+          setKeyStatus('ok')
+          setManualModel(result.models.length === 0)
+          if (result.models.length === 0) {
+            setModelsError(
+              t(
+                'settings.aiProviders.modelsEmpty',
+                'No models returned. Enter a model id manually.'
+              )
+            )
+          }
+        } else {
+          setAvailableModels([])
+          setKeyStatus('fail')
+          setManualModel(true)
+          setModelsError(
+            result.error ||
+              t('settings.aiProviders.modelsFetchFail', 'Could not load models. Enter a model id manually.')
+          )
+        }
+      } catch (e) {
+        if (seq !== fetchSeq.current) return
+        setAvailableModels([])
+        setKeyStatus('fail')
+        setManualModel(true)
+        setModelsError(errorMessage(e, 'Could not load models'))
+      } finally {
+        if (seq === fetchSeq.current) setLoadingModels(false)
+      }
+    },
+    [t]
+  )
+
   const startAdd = () => {
     setError(null)
-    setForm({ id: null, name: '', baseUrl: '', model: '', apiKey: '' })
+    setAvailableModels([])
+    setModelFilter('')
+    setKeyStatus('idle')
+    setManualModel(false)
+    setModelsError(null)
+    setForm({
+      id: null,
+      name: '',
+      baseUrl: '',
+      baseModel: '',
+      variant: '',
+      variantFormat: 'dash',
+      apiKey: ''
+    })
   }
 
   const startEdit = (p: AiProvider) => {
     setError(null)
-    setForm({ id: p.id, name: p.name, baseUrl: p.baseUrl, model: p.model, apiKey: '' })
+    setAvailableModels([])
+    setModelFilter('')
+    setKeyStatus(p.hasKey ? 'ok' : 'idle')
+    setManualModel(false)
+    setModelsError(null)
+    const parsed = parseModelId(p.model)
+    setForm({
+      id: p.id,
+      name: p.name,
+      baseUrl: p.baseUrl,
+      baseModel: p.baseModel || parsed.baseModel || p.model,
+      variant: p.variant || parsed.variant,
+      variantFormat: p.variantFormat || 'dash',
+      apiKey: ''
+    })
+    if (p.hasKey) {
+      void fetchModels({ providerId: p.id, baseUrl: p.baseUrl })
+    }
   }
 
   const cancelForm = () => {
     setForm(null)
+    setAvailableModels([])
+    setModelsError(null)
+    setKeyStatus('idle')
   }
 
   const saveForm = async () => {
     if (!form) return
-    if (!form.name.trim() || !form.baseUrl.trim() || !form.model.trim()) {
-      setError('Name, Base URL and Model are required')
+    const baseModel = form.baseModel.trim()
+    if (!form.name.trim() || !form.baseUrl.trim() || !baseModel) {
+      setError(
+        t(
+          'settings.aiProviders.requiredFields',
+          'Name, Base URL and Model are required'
+        )
+      )
       return
     }
+    const model = composeModelId(baseModel, form.variant, form.variantFormat)
     setSaving(true)
     setError(null)
     try {
       if (form.id) {
-        const patch: Record<string, string> = {
+        await api.aiProviders.update(form.id, {
           name: form.name.trim(),
           baseUrl: form.baseUrl.trim(),
-          model: form.model.trim()
-        }
-        if (form.apiKey.trim()) patch.apiKey = form.apiKey.trim()
-        await api.aiProviders.update(form.id, patch)
+          model,
+          baseModel,
+          variant: form.variant.trim(),
+          variantFormat: form.variantFormat,
+          ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {})
+        })
       } else {
         await api.aiProviders.create({
           name: form.name.trim(),
           baseUrl: form.baseUrl.trim(),
-          model: form.model.trim(),
+          model,
+          baseModel,
+          variant: form.variant.trim(),
+          variantFormat: form.variantFormat,
           ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {})
         })
       }
@@ -150,6 +269,37 @@ function AiProvidersSection() {
     }
   }
 
+  const onApiKeyBlur = () => {
+    if (!form) return
+    if (!form.apiKey.trim() && form.id) {
+      void fetchModels({ providerId: form.id, baseUrl: form.baseUrl })
+      return
+    }
+    if (!form.apiKey.trim() || !form.baseUrl.trim()) return
+    void fetchModels({
+      baseUrl: form.baseUrl,
+      apiKey: form.apiKey,
+      providerId: form.id
+    })
+  }
+
+  const filteredModels = availableModels.filter((m) =>
+    modelFilter.trim()
+      ? m.id.toLowerCase().includes(modelFilter.trim().toLowerCase())
+      : true
+  )
+
+  const showVariant =
+    !!form &&
+    (supportsModelVariants(form.baseModel) ||
+      availableModels.some((m) => m.id === form.baseModel && m.supportsVariants) ||
+      !!form.variant)
+
+  const variantOptions = [
+    { label: t('settings.aiProviders.variantNone', 'None (base only)'), value: '' },
+    ...COMMON_VARIANTS.map((v) => ({ label: v, value: v }))
+  ]
+
   return (
     <div className="flex flex-col gap-2 border-t border-border pt-4">
       <div className="flex items-center justify-between">
@@ -172,7 +322,17 @@ function AiProvidersSection() {
                   key={tpl.name}
                   type="button"
                   className="rounded-md border border-border bg-panel-2 px-2 py-1 text-[11px] text-muted hover:border-accent hover:text-foreground"
-                  onClick={() => setForm({ ...form, name: tpl.name, baseUrl: tpl.baseUrl, model: tpl.model })}
+                  onClick={() => {
+                    const parsed = parseModelId(tpl.model)
+                    setForm({
+                      ...form,
+                      name: tpl.name,
+                      baseUrl: tpl.baseUrl,
+                      baseModel: parsed.baseModel || tpl.model,
+                      variant: parsed.variant,
+                      variantFormat: 'dash'
+                    })
+                  }}
                 >
                   {tpl.name}
                 </button>
@@ -203,17 +363,6 @@ function AiProvidersSection() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-[11px] text-muted">
-              {t('settings.aiProviders.model', 'Model')}
-            </label>
-            <Input
-              value={form.model}
-              onChange={(e) => setForm({ ...form, model: e.target.value })}
-              placeholder="gpt-4o-mini"
-              size="small"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] text-muted">
               {t('settings.aiProviders.apiKey', 'API Key')}
               {form.id && (
                 <span className="ml-1 text-muted">
@@ -221,14 +370,172 @@ function AiProvidersSection() {
                 </span>
               )}
             </label>
-            <Input
-              type="password"
-              value={form.apiKey}
-              onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-              placeholder={form.id ? '' : 'sk-...'}
-              size="small"
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                value={form.apiKey}
+                onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                onBlur={onApiKeyBlur}
+                placeholder={form.id ? '' : 'sk-...'}
+                size="small"
+                className="flex-1"
+              />
+              <span
+                className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${
+                  keyStatus === 'ok'
+                    ? 'bg-green-500'
+                    : keyStatus === 'fail'
+                      ? 'bg-red-500'
+                      : keyStatus === 'checking'
+                        ? 'bg-yellow-500'
+                        : 'bg-border'
+                }`}
+                title={
+                  keyStatus === 'ok'
+                    ? t('settings.aiProviders.keyOk', 'API key valid')
+                    : keyStatus === 'fail'
+                      ? t('settings.aiProviders.keyFail', 'API key check failed')
+                      : keyStatus === 'checking'
+                        ? t('settings.aiProviders.keyChecking', 'Checking…')
+                        : t('settings.aiProviders.keyIdle', 'Not checked')
+                }
+              />
+              <Button
+                size="small"
+                onClick={() =>
+                  void fetchModels({
+                    baseUrl: form.baseUrl,
+                    apiKey: form.apiKey || undefined,
+                    providerId: form.id
+                  })
+                }
+                loading={loadingModels}
+                disabled={!form.baseUrl.trim() || (!form.apiKey.trim() && !form.id)}
+              >
+                {t('settings.aiProviders.fetchModels', 'Fetch models')}
+              </Button>
+            </div>
           </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-[11px] text-muted">
+                {t('settings.aiProviders.baseModel', 'Base model')}
+              </label>
+              <button
+                type="button"
+                className="text-[11px] text-accent hover:underline"
+                onClick={() => setManualModel((v) => !v)}
+              >
+                {manualModel
+                  ? t('settings.aiProviders.useList', 'Use model list')
+                  : t('settings.aiProviders.manualModel', 'Enter manually')}
+              </button>
+            </div>
+            {manualModel || availableModels.length === 0 ? (
+              <Input
+                value={form.baseModel}
+                onChange={(e) => setForm({ ...form, baseModel: e.target.value })}
+                placeholder="gpt-4o-mini"
+                size="small"
+              />
+            ) : (
+              <>
+                <Input
+                  value={modelFilter}
+                  onChange={(e) => setModelFilter(e.target.value)}
+                  placeholder={t(
+                    'settings.aiProviders.searchModels',
+                    'Search models…'
+                  )}
+                  size="small"
+                />
+                <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-panel-2">
+                  {loadingModels ? (
+                    <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-muted">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {t('settings.aiProviders.loadingModels', 'Loading models…')}
+                    </div>
+                  ) : filteredModels.length === 0 ? (
+                    <div className="px-2 py-3 text-[11px] text-muted">
+                      {t('settings.aiProviders.noModelMatch', 'No matching models')}
+                    </div>
+                  ) : (
+                    filteredModels.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-hover ${
+                          form.baseModel === m.id ? 'bg-active text-foreground' : 'text-muted'
+                        }`}
+                        onClick={() =>
+                          setForm({
+                            ...form,
+                            baseModel: m.id,
+                            variant: m.supportsVariants ? form.variant : ''
+                          })
+                        }
+                      >
+                        <span className="min-w-0 truncate font-medium text-foreground">
+                          {m.id}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          {m.providerName && (
+                            <span className="text-[10px] text-muted">{m.providerName}</span>
+                          )}
+                          {m.supportsVariants && (
+                            <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] text-accent">
+                              {t('settings.aiProviders.hasVariants', 'variants')}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+            {modelsError && (
+              <p className="text-[11px] text-muted">{modelsError}</p>
+            )}
+          </div>
+
+          {showVariant && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-muted">
+                  {t('settings.aiProviders.variant', 'Variant')}
+                </label>
+                <Select
+                  value={form.variant}
+                  onChange={(v: string) => setForm({ ...form, variant: v })}
+                  options={variantOptions}
+                  size="small"
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-muted">
+                  {t('settings.aiProviders.variantFormat', 'Variant format')}
+                </label>
+                <Select
+                  value={form.variantFormat}
+                  onChange={(v: ModelVariantFormat) =>
+                    setForm({ ...form, variantFormat: v })
+                  }
+                  options={VARIANT_FORMAT_OPTIONS}
+                  size="small"
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-md bg-panel-2 px-2 py-1.5 text-[11px] text-muted">
+            {t('settings.aiProviders.requestModel', 'Request model')}:{' '}
+            <span className="font-medium text-foreground">{composedModel || '—'}</span>
+          </div>
+
           <div className="flex justify-end gap-2">
             <Button size="small" onClick={cancelForm}>
               {t('settings.aiProviders.cancel', 'Cancel')}

@@ -59,6 +59,7 @@ export const IpcChannel = {
   AiProvidersUpdate: 'ai:providers:update',
   AiProvidersDelete: 'ai:providers:delete',
   AiProvidersTest: 'ai:providers:test',
+  AiProvidersListModels: 'ai:providers:listModels',
 
   AiDocTextGet: 'ai:docText:get',
   AiSummarize: 'ai:summarize',

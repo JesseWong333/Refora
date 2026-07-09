@@ -412,11 +412,11 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
 
   return (
     <div
-      className="flex min-w-0 flex-1 flex-col bg-background"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border drag-region">
+      <div className="relative z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border drag-region">
         {sidebarCollapsed && (
           <div
             className="no-drag self-stretch shrink-0"

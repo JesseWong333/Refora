@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Select } from '@lobehub/ui'
-import { Plus, Settings2, Send } from 'lucide-react'
+import { Plus, Send, ChevronDown, Paperclip, Sparkles } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
 import type {
@@ -9,9 +8,19 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatMessage,
-  ChatTokenEvent
+  ChatTokenEvent,
+  ProviderModelInfo
 } from '../../../shared/ipc-types'
+import {
+  COMMON_VARIANTS,
+  composeModelId,
+  parseModelId,
+  supportsModelVariants
+} from '../../../shared/modelVariant'
 import { useWorkspaceStore } from '../../store/workspaceStore'
+
+const RECENT_MODELS_KEY = 'chatRecentModels'
+const MAX_RECENT = 8
 
 function localMessage(
   threadId: string,
@@ -25,6 +34,25 @@ function localMessage(
     content,
     createdAt: Date.now()
   }
+}
+
+async function loadRecentModels(): Promise<string[]> {
+  try {
+    const raw = await api.settings.get<string>(RECENT_MODELS_KEY, '[]')
+    const parsed = JSON.parse(typeof raw === 'string' ? raw : '[]') as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((x): x is string => typeof x === 'string').slice(0, MAX_RECENT)
+  } catch {
+    return []
+  }
+}
+
+async function pushRecentModel(model: string): Promise<void> {
+  const id = model.trim()
+  if (!id) return
+  const prev = await loadRecentModels()
+  const next = [id, ...prev.filter((m) => m !== id)].slice(0, MAX_RECENT)
+  await api.settings.set(RECENT_MODELS_KEY, JSON.stringify(next))
 }
 
 export default function ChatPanel() {
@@ -41,23 +69,48 @@ export default function ChatPanel() {
   const [error, setError] = useState<string | null>(null)
   const [providers, setProviders] = useState<AiProvider[]>([])
   const [activeProviderId, setActiveProviderId] = useState('')
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('')
+  const [selectedVariant, setSelectedVariant] = useState('')
+  const [deepThinking, setDeepThinking] = useState(false)
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [providerModels, setProviderModels] = useState<ProviderModelInfo[]>([])
+  const [recentModels, setRecentModels] = useState<string[]>([])
+  const [customModel, setCustomModel] = useState('')
+  const [modelSwitchHint, setModelSwitchHint] = useState(false)
+  const [loadingModels, setLoadingModels] = useState(false)
 
   const threadIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const hadMessagesRef = useRef(false)
+
+  const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
+
+  const requestModel = useMemo(() => {
+    if (!selectedModel) return ''
+    const format = activeProvider?.variantFormat ?? 'dash'
+    return composeModelId(selectedModel, selectedVariant, format)
+  }, [selectedModel, selectedVariant, activeProvider?.variantFormat])
 
   const loadProviders = useCallback(async () => {
     try {
-      const [list, active] = await Promise.all([
+      const [list, active, recent] = await Promise.all([
         api.aiProviders.list(),
-        api.settings.get<string>('activeProviderId', '')
+        api.settings.get<string>('activeProviderId', ''),
+        loadRecentModels()
       ])
       setProviders(list)
-      setActiveProviderId((prev) => {
-        if (prev && list.some((p) => p.id === prev)) return prev
-        if (active && list.some((p) => p.id === active)) return active
-        return list.length > 0 ? list[0].id : ''
-      })
+      setRecentModels(recent)
+      const nextId =
+        (active && list.some((p) => p.id === active) && active) ||
+        (list.length > 0 ? list[0].id : '')
+      setActiveProviderId(nextId)
+      const p = list.find((x) => x.id === nextId)
+      if (p) {
+        const parsed = parseModelId(p.model)
+        setSelectedModel(p.baseModel || parsed.baseModel || p.model)
+        setSelectedVariant(p.variant || parsed.variant)
+      }
     } catch (e) {
       setError(errorMessage(e, 'Failed to load providers'))
     }
@@ -68,9 +121,28 @@ export default function ChatPanel() {
   }, [loadProviders])
 
   useEffect(() => {
-    if (!settingsOpen) return
-    void loadProviders()
-  }, [settingsOpen, loadProviders])
+    if (!activeProviderId) {
+      setProviderModels([])
+      return
+    }
+    let cancelled = false
+    setLoadingModels(true)
+    void api.aiProviders
+      .listModels({ providerId: activeProviderId })
+      .then((res) => {
+        if (cancelled) return
+        setProviderModels(res.ok ? res.models : [])
+      })
+      .catch(() => {
+        if (!cancelled) setProviderModels([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingModels(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeProviderId])
 
   useEffect(() => {
     threadIdRef.current = activeThreadId
@@ -79,6 +151,7 @@ export default function ChatPanel() {
     setError(null)
     if (!activeThreadId) {
       setMessages([])
+      hadMessagesRef.current = false
       return
     }
     let cancelled = false
@@ -87,6 +160,7 @@ export default function ChatPanel() {
       .then((history) => {
         if (cancelled || threadIdRef.current !== activeThreadId) return
         setMessages(history)
+        hadMessagesRef.current = history.length > 0
       })
       .catch(() => {
         if (cancelled) return
@@ -132,22 +206,52 @@ export default function ChatPanel() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streamingText])
 
-  const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
-
-  const handleProviderChange = (id: string) => {
-    setActiveProviderId(id)
-    void api.settings.set('activeProviderId', id)
-  }
-
-  const handleModelChange = async (model: string) => {
-    if (!activeProviderId || !model.trim()) return
-    try {
-      const updated = await api.aiProviders.update(activeProviderId, { model: model.trim() })
-      setProviders((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to update model'))
+  useEffect(() => {
+    if (!modelMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) {
+        setModelMenuOpen(false)
+      }
     }
-  }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [modelMenuOpen])
+
+  const applyModel = useCallback(
+    async (baseModel: string, variant = '', providerId?: string) => {
+      const nextProviderId = providerId ?? activeProviderId
+      if (providerId && providerId !== activeProviderId) {
+        setActiveProviderId(providerId)
+        void api.settings.set('activeProviderId', providerId)
+      }
+      setSelectedModel(baseModel)
+      setSelectedVariant(variant)
+      if (hadMessagesRef.current || messages.length > 0) {
+        setModelSwitchHint(true)
+        window.setTimeout(() => setModelSwitchHint(false), 3500)
+      }
+      const p = providers.find((x) => x.id === nextProviderId)
+      const format = p?.variantFormat ?? 'dash'
+      const full = composeModelId(baseModel, variant, format)
+      if (nextProviderId && full) {
+        try {
+          const updated = await api.aiProviders.update(nextProviderId, {
+            model: full,
+            baseModel,
+            variant,
+            variantFormat: format
+          })
+          setProviders((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+          await pushRecentModel(full)
+          setRecentModels(await loadRecentModels())
+        } catch {
+          void 0
+        }
+      }
+      setModelMenuOpen(false)
+    },
+    [activeProviderId, messages.length, providers]
+  )
 
   const handleSend = useCallback(async () => {
     if (!activeWorkspaceId || !activeProviderId || !input.trim() || streaming) return
@@ -158,12 +262,17 @@ export default function ChatPanel() {
     setStreaming(true)
     setStreamingText('')
     setError(null)
+    hadMessagesRef.current = true
     try {
+      const model = requestModel || undefined
+      if (model) void pushRecentModel(model)
       const { threadId } = await api.ai.chatSend({
         workspaceId: activeWorkspaceId,
         threadId: existingThread ?? undefined,
         text,
-        providerId: activeProviderId
+        providerId: activeProviderId,
+        model,
+        features: { deepThinking }
       })
       if (!existingThread) {
         setActiveThreadId(threadId)
@@ -174,7 +283,16 @@ export default function ChatPanel() {
       setStreaming(false)
       setStreamingText('')
     }
-  }, [activeWorkspaceId, activeProviderId, input, streaming, activeThreadId, setActiveThreadId])
+  }, [
+    activeWorkspaceId,
+    activeProviderId,
+    input,
+    streaming,
+    activeThreadId,
+    setActiveThreadId,
+    requestModel,
+    deepThinking
+  ])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -185,15 +303,17 @@ export default function ChatPanel() {
 
   const showEmpty = messages.length === 0 && !streamingText
   const canSend = !!activeWorkspaceId && !!activeProviderId && !!input.trim() && !streaming
+  const variantCapable =
+    supportsModelVariants(selectedModel) ||
+    providerModels.some((m) => m.id === selectedModel && m.supportsVariants)
 
-  const providerOptions = providers.map((p) => ({
-    label: `${p.name} · ${p.model}`,
-    value: p.id
-  }))
+  const displayModelLabel = providers.length === 0
+    ? t('workspace.chat.notConfigured', 'Not configured')
+    : requestModel || t('workspace.chat.selectProvider', 'Select model / provider')
 
   return (
-    <div className="flex h-full w-full flex-col bg-background">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
         <span className="truncate text-xs font-medium text-muted">
           {t('workspace.chat.title', 'Chat')}
         </span>
@@ -264,98 +384,246 @@ export default function ChatPanel() {
         </div>
       )}
 
-      <div className="shrink-0 border-t border-border p-3">
-        <textarea
-          className="w-full resize-none rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-          rows={2}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={t(
-            'workspace.chat.inputPlaceholder',
-            'Send a message… (Enter to send, Shift+Enter for newline)'
-          )}
-          disabled={providers.length === 0}
-        />
-
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <Select
-              value={activeProviderId || undefined}
-              onChange={handleProviderChange}
-              size="small"
-              options={providerOptions}
-              placeholder={t('workspace.chat.selectProvider', 'Select model / provider')}
-              style={{ width: '100%' }}
-              disabled={providers.length === 0 || streaming}
-              aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
-            />
+      {modelSwitchHint && (
+        <div className="shrink-0 px-3 pb-1">
+          <div className="rounded-lg bg-panel-2 px-3 py-1.5 text-[11px] text-muted">
+            {t(
+              'workspace.chat.modelSwitchHint',
+              'Model switched — applies to new messages only.'
+            )}
           </div>
-          <button
-            type="button"
-            className="sidebar-header-btn shrink-0"
-            onClick={() => setSettingsOpen((v) => !v)}
-            title={t('workspace.chat.modelConfig', 'Model settings')}
-            aria-label={t('workspace.chat.modelConfig', 'Model settings')}
-            aria-expanded={settingsOpen}
-            disabled={providers.length === 0}
-          >
-            <Settings2 className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={!canSend}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-40"
-          >
-            <Send className="h-3.5 w-3.5" />
-            {t('workspace.chat.send', 'Send')}
-          </button>
         </div>
+      )}
 
-        {settingsOpen && activeProvider && (
-          <div className="mt-2 rounded-lg border border-border bg-panel-2 p-2">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="truncate text-[11px] text-muted">
-                {activeProvider.name} · {activeProvider.baseUrl}
-              </span>
-              {!activeProvider.hasKey && (
-                <span className="shrink-0 text-[10px] text-error">
-                  {t('workspace.chat.noKey', 'No API key — set in Settings')}
-                </span>
-              )}
+      <div className="shrink-0 p-3">
+        <div className="flex flex-col rounded-2xl border border-border bg-panel-2 shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
+          <textarea
+            className="max-h-40 min-h-[52px] w-full resize-none bg-transparent px-3 pt-3 text-sm text-foreground placeholder:text-muted focus:outline-none"
+            rows={2}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={t(
+              'workspace.chat.inputPlaceholder',
+              'Send a message… (Enter to send, Shift+Enter for newline)'
+            )}
+            disabled={providers.length === 0}
+            aria-label={t('workspace.chat.inputPlaceholder', 'Send a message…')}
+          />
+
+          <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 pt-1">
+            <button
+              type="button"
+              className="sidebar-header-btn shrink-0 opacity-50"
+              disabled
+              title={t('workspace.chat.attachSoon', 'Attachments coming soon')}
+              aria-label={t('workspace.chat.attachSoon', 'Attachments coming soon')}
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+            <span className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted">
+              {t('workspace.chat.workspaceScope', 'Workspace')}
+            </span>
+
+            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
+              <div className="relative" ref={menuRef}>
+                <button
+                  type="button"
+                  className="inline-flex max-w-[160px] items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-foreground hover:bg-hover disabled:opacity-40"
+                  onClick={() => setModelMenuOpen((v) => !v)}
+                  disabled={providers.length === 0 || streaming}
+                  aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
+                  aria-expanded={modelMenuOpen}
+                  aria-haspopup="listbox"
+                >
+                  <span className="truncate font-medium">{displayModelLabel}</span>
+                  <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+                </button>
+
+                {modelMenuOpen && (
+                  <div
+                    className="absolute bottom-full right-0 z-50 mb-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
+                    role="listbox"
+                  >
+                    <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      {t('workspace.chat.providerModels', 'Provider models')}
+                    </p>
+                    {providers.map((p) => (
+                      <button
+                        key={`p-${p.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={p.id === activeProviderId}
+                        className={`mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left hover:bg-hover ${
+                          p.id === activeProviderId ? 'bg-active' : ''
+                        }`}
+                        onClick={() => {
+                          const parsed = parseModelId(p.model)
+                          void applyModel(
+                            p.baseModel || parsed.baseModel || p.model,
+                            p.variant || parsed.variant,
+                            p.id
+                          )
+                        }}
+                      >
+                        <span className="truncate text-xs font-medium text-foreground">
+                          {p.name}
+                        </span>
+                        <span className="truncate text-[10px] text-muted">{p.model}</span>
+                      </button>
+                    ))}
+
+                    {providerModels.length > 0 && (
+                      <>
+                        <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                          {t('workspace.chat.availableModels', 'Available models')}
+                          {loadingModels ? '…' : ''}
+                        </p>
+                        {providerModels.slice(0, 40).map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            role="option"
+                            className="mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-hover"
+                            onClick={() => void applyModel(m.id, '')}
+                          >
+                            <span className="truncate text-xs text-foreground">{m.id}</span>
+                            {m.supportsVariants && (
+                              <span className="shrink-0 text-[10px] text-accent">
+                                {t('settings.aiProviders.hasVariants', 'variants')}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {recentModels.length > 0 && (
+                      <>
+                        <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                          {t('workspace.chat.recentModels', 'Recent')}
+                        </p>
+                        {recentModels.map((m) => {
+                          const parsed = parseModelId(m)
+                          return (
+                            <button
+                              key={`r-${m}`}
+                              type="button"
+                              role="option"
+                              className="mb-0.5 flex w-full rounded-lg px-2 py-1.5 text-left text-xs text-foreground hover:bg-hover"
+                              onClick={() =>
+                                void applyModel(parsed.baseModel || m, parsed.variant)
+                              }
+                            >
+                              <span className="truncate">{m}</span>
+                            </button>
+                          )
+                        })}
+                      </>
+                    )}
+
+                    <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      {t('workspace.chat.customModel', 'Custom model')}
+                    </p>
+                    <div className="flex gap-1 px-1">
+                      <input
+                        className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:border-accent focus:outline-none"
+                        value={customModel}
+                        onChange={(e) => setCustomModel(e.target.value)}
+                        placeholder="model-id"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && customModel.trim()) {
+                            e.preventDefault()
+                            const parsed = parseModelId(customModel.trim())
+                            void applyModel(parsed.baseModel, parsed.variant)
+                            setCustomModel('')
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="rounded-md bg-accent px-2 py-1 text-[11px] text-white disabled:opacity-40"
+                        disabled={!customModel.trim()}
+                        onClick={() => {
+                          const parsed = parseModelId(customModel.trim())
+                          void applyModel(parsed.baseModel, parsed.variant)
+                          setCustomModel('')
+                        }}
+                      >
+                        {t('common.add', 'Add')}
+                      </button>
+                    </div>
+
+                    {variantCapable && (
+                      <>
+                        <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                          {t('workspace.chat.variant', 'Variant')}
+                        </p>
+                        <div className="flex flex-wrap gap-1 px-1 pb-1">
+                          <button
+                            type="button"
+                            className={`rounded-md border px-2 py-0.5 text-[10px] ${
+                              !selectedVariant
+                                ? 'border-accent bg-accent/10 text-accent'
+                                : 'border-border text-muted'
+                            }`}
+                            onClick={() => void applyModel(selectedModel, '')}
+                          >
+                            {t('settings.aiProviders.variantNone', 'None (base only)')}
+                          </button>
+                          {COMMON_VARIANTS.map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              className={`rounded-md border px-2 py-0.5 text-[10px] ${
+                                selectedVariant === v
+                                  ? 'border-accent bg-accent/10 text-accent'
+                                  : 'border-border text-muted'
+                              }`}
+                              onClick={() => void applyModel(selectedModel, v)}
+                            >
+                              {v}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] ${
+                  deepThinking
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-muted hover:bg-hover hover:text-foreground'
+                } disabled:opacity-40`}
+                onClick={() => setDeepThinking((v) => !v)}
+                disabled={providers.length === 0 || streaming}
+                aria-pressed={deepThinking}
+                title={t('workspace.chat.deepThinking', 'Deep thinking')}
+                aria-label={t('workspace.chat.deepThinking', 'Deep thinking')}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {deepThinking
+                  ? t('workspace.chat.featureOn', 'On')
+                  : t('workspace.chat.featureOff', 'Off')}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={!canSend}
+                className="inline-flex shrink-0 items-center justify-center rounded-lg bg-accent p-1.5 text-white disabled:opacity-40"
+                aria-label={t('workspace.chat.send', 'Send')}
+                title={t('workspace.chat.send', 'Send')}
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <label className="mb-1 block text-[11px] text-muted">
-              {t('workspace.chat.model', 'Model')}
-            </label>
-            <input
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-              value={activeProvider.model}
-              onChange={(e) => {
-                const model = e.target.value
-                setProviders((prev) =>
-                  prev.map((p) => (p.id === activeProviderId ? { ...p, model } : p))
-                )
-              }}
-              onBlur={(e) => void handleModelChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void handleModelChange((e.target as HTMLInputElement).value)
-                }
-              }}
-              placeholder="gpt-4o-mini"
-              disabled={streaming}
-              aria-label={t('workspace.chat.model', 'Model')}
-            />
-            <p className="mt-1 text-[10px] text-muted">
-              {t(
-                'workspace.chat.modelHint',
-                'OpenAI-compatible model id for the selected provider. Change providers or API keys in Settings.'
-              )}
-            </p>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

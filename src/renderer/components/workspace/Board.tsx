@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { api } from '../../ipc'
 import type { AiSummary, Document, SummaryErrorEvent } from '../../../shared/ipc-types'
 import PaperCard from './PaperCard'
 import ReportCard from './ReportCard'
+import ResizableCard, {
+  clampCardSize,
+  defaultCardSize,
+  type CardSize
+} from './ResizableCard'
 
 const DOC_MIME = 'application/x-refora-docids'
 
@@ -23,6 +28,7 @@ export default function Board() {
   const [summarizing, setSummarizing] = useState<Set<string>>(new Set())
   const [summaryErrors, setSummaryErrors] = useState<Map<string, string>>(new Map())
   const [dropActive, setDropActive] = useState(false)
+  const [cardSizes, setCardSizes] = useState<Record<string, CardSize>>({})
 
   const docItems = items.filter((it) => it.kind === 'document' && it.docId)
   const docIds = docItems.map((it) => it.docId as string)
@@ -33,7 +39,14 @@ export default function Board() {
     setSummaries(new Map())
     setSummarizing(new Set())
     setSummaryErrors(new Map())
+    setCardSizes({})
   }, [activeWorkspaceId])
+
+  const handleCardSizeChange = useCallback((sizeKey: string, size: CardSize) => {
+    setCardSizes((prev) => ({ ...prev, [sizeKey]: clampCardSize(size) }))
+  }, [])
+
+  const sizeFor = (key: string): CardSize => cardSizes[key] ?? defaultCardSize()
 
   useEffect(() => {
     let cancelled = false
@@ -191,8 +204,12 @@ export default function Board() {
 
   return (
     <div
-      className="h-full w-full overflow-auto p-4"
-      style={dropActive ? { outline: '2px dashed var(--color-accent)', outlineOffset: '-6px' } : undefined}
+      className="board-surface h-full w-full min-h-0 min-w-0 overflow-auto p-4"
+      style={
+        dropActive
+          ? { outline: '2px dashed var(--color-accent)', outlineOffset: '-6px' }
+          : undefined
+      }
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -203,25 +220,42 @@ export default function Board() {
           <p className="text-sm text-muted">{t('workspace.dragPapersHint')}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+        <div className="flex flex-wrap content-start gap-3">
           {sortedDocItems.map((it) => {
             const docId = it.docId as string
+            const key = `doc:${it.id}`
             return (
-              <PaperCard
+              <ResizableCard
                 key={it.id}
-                doc={docs.get(docId) ?? null}
-                summary={summaries.get(docId) ?? null}
-                summarizing={summarizing.has(docId)}
-                summaryError={summaryErrors.get(docId) ?? null}
-                onSummarize={() => handleSummarize(docId)}
-                onOpenPdf={() => void api.documents.openPdf(docId)}
-                onRemove={() => void removeItem(it.id)}
-              />
+                sizeKey={key}
+                size={sizeFor(key)}
+                onSizeChange={handleCardSizeChange}
+              >
+                <PaperCard
+                  doc={docs.get(docId) ?? null}
+                  summary={summaries.get(docId) ?? null}
+                  summarizing={summarizing.has(docId)}
+                  summaryError={summaryErrors.get(docId) ?? null}
+                  onSummarize={() => handleSummarize(docId)}
+                  onOpenPdf={() => void api.documents.openPdf(docId)}
+                  onRemove={() => void removeItem(it.id)}
+                />
+              </ResizableCard>
             )
           })}
-          {sortedReports.map((r) => (
-            <ReportCard key={r.id} report={r} onDelete={() => void deleteReport(r.id)} />
-          ))}
+          {sortedReports.map((r) => {
+            const key = `report:${r.id}`
+            return (
+              <ResizableCard
+                key={r.id}
+                sizeKey={key}
+                size={sizeFor(key)}
+                onSizeChange={handleCardSizeChange}
+              >
+                <ReportCard report={r} onDelete={() => void deleteReport(r.id)} />
+              </ResizableCard>
+            )
+          })}
         </div>
       )}
     </div>

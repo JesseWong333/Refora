@@ -288,6 +288,31 @@
   .no-drag {
     -webkit-app-region: no-drag;
   }
+
+  .workspace-fullscreen {
+    position: relative;
+    z-index: 40;
+    isolation: isolate;
+  }
+
+  .workspace-fullscreen .drag-region {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .board-surface {
+    background:
+      radial-gradient(ellipse at top, color-mix(in srgb, var(--color-panel) 55%, transparent), transparent 70%),
+      var(--color-background);
+  }
+
+  .resizable-card {
+    flex: 0 0 auto;
+    border-radius: var(--radius-md);
+  }
+
+  .resizable-card > .card {
+    height: 100%;
+  }
 }
 
 @keyframes shimmer {

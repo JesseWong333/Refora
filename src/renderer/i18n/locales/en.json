@@ -88,6 +88,7 @@
       "name": "Name",
       "baseUrl": "Base URL",
       "model": "Model",
+      "baseModel": "Base model",
       "apiKey": "API Key",
       "apiKeyHint": "leave blank to keep current",
       "cancel": "Cancel",
@@ -101,7 +102,25 @@
       "setActive": "Set Active",
       "delete": "Delete",
       "testOk": "OK · {{count}} models",
-      "testFail": "Failed"
+      "testFail": "Failed",
+      "fetchModels": "Fetch models",
+      "loadingModels": "Loading models…",
+      "searchModels": "Search models…",
+      "noModelMatch": "No matching models",
+      "modelsEmpty": "No models returned. Enter a model id manually.",
+      "modelsFetchFail": "Could not load models. Enter a model id manually.",
+      "manualModel": "Enter manually",
+      "useList": "Use model list",
+      "hasVariants": "variants",
+      "variant": "Variant",
+      "variantFormat": "Variant format",
+      "variantNone": "None (base only)",
+      "requestModel": "Request model",
+      "requiredFields": "Name, Base URL and Model are required",
+      "keyOk": "API key valid",
+      "keyFail": "API key check failed",
+      "keyChecking": "Checking…",
+      "keyIdle": "Not checked"
     }
   },
   "common": {
@@ -187,7 +206,19 @@
       "model": "Model",
       "modelConfig": "Model settings",
       "modelHint": "OpenAI-compatible model id for the selected provider. Change providers or API keys in Settings.",
-      "noKey": "No API key — set in Settings"
+      "noKey": "No API key — set in Settings",
+      "notConfigured": "Not configured",
+      "providerModels": "Provider models",
+      "availableModels": "Available models",
+      "recentModels": "Recent",
+      "customModel": "Custom model",
+      "variant": "Variant",
+      "deepThinking": "Deep thinking",
+      "featureOn": "On",
+      "featureOff": "Off",
+      "modelSwitchHint": "Model switched — applies to new messages only.",
+      "attachSoon": "Attachments coming soon",
+      "workspaceScope": "Workspace"
     }
   }
 }

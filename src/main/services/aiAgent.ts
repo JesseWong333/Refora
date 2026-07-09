@@ -170,21 +170,27 @@ export function createAiAgentService(
         return
       }
 
+      const modelId = (req.model && req.model.trim()) || provider.model
+      const deepThinking = req.features?.deepThinking === true
+      const systemPrompt = deepThinking
+        ? `${SYSTEM_PROMPT} Prefer careful multi-step reasoning before answering.`
+        : SYSTEM_PROMPT
+
       const llm = new ChatOpenAI({
-        model: provider.model,
+        model: modelId,
         configuration: { baseURL: provider.baseUrl },
         apiKey: key,
         streaming: true
       })
 
-      const tools = buildTools(req, provider.model)
+      const tools = buildTools(req, modelId)
       const agent = createReactAgent({ llm, tools })
 
       const history = repos.chat.listMessages(threadId).slice(-HISTORY_LIMIT)
       const historyMsgs = history.map((m) =>
         m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content)
       )
-      const inputMsgs = [new SystemMessage(SYSTEM_PROMPT), ...historyMsgs]
+      const inputMsgs = [new SystemMessage(systemPrompt), ...historyMsgs]
 
       let finalText = ''
       try {

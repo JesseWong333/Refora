@@ -16,6 +16,8 @@ import type {
   Document,
   DocumentPatch,
   ListFilter,
+  ListModelsRequest,
+  ListModelsResult,
   LibrarySwitchResult,
   Result,
   SearchResult,
@@ -522,6 +524,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.AiProvidersTest]: (id: string): Promise<Result<{ ok: boolean; models?: string[] }>> => {
       const rt = deps.getRuntime()
       return asyncWrap(async () => rt!.aiProvidersService!.test(id))
+    },
+    [IpcChannel.AiProvidersListModels]: (req: ListModelsRequest): Promise<Result<ListModelsResult>> => {
+      const rt = deps.getRuntime()
+      return asyncWrap(async () => rt!.aiProvidersService!.listModels(req))
     },
 
     [IpcChannel.AiDocTextGet]: (id: string): Promise<Result<string>> => {

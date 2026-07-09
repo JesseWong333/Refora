@@ -75,11 +75,11 @@ export default function PaperCard({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className="card flex cursor-pointer flex-col gap-2 p-3 transition-colors hover:border-accent"
+        className="card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3 transition-colors hover:border-accent"
         onClick={() => setModalOpen(true)}
         onContextMenu={handleContextMenu}
       >
-        <div className="flex items-start gap-2">
+        <div className="flex shrink-0 items-start gap-2">
           <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
           <div className="min-w-0 flex-1">
             <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{title}</h3>
@@ -88,13 +88,13 @@ export default function PaperCard({
         </div>
 
         {(doc?.year || doc?.venue) && (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex shrink-0 flex-wrap gap-1">
             {doc?.year && <Badge>{doc.year}</Badge>}
             {doc?.venue && <Badge>{doc.venue}</Badge>}
           </div>
         )}
 
-        <div className="min-h-[2.5rem] text-xs">
+        <div className="min-h-0 flex-1 overflow-hidden text-xs">
           {summarizing ? (
             <div className="flex items-center gap-1.5 text-muted">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -104,7 +104,7 @@ export default function PaperCard({
             <div className="space-y-1.5">
               <div className="flex items-start gap-1.5 rounded-lg bg-red-500/10 px-2 py-1.5 text-error">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span className="line-clamp-2">{summaryError}</span>
+                <span className="line-clamp-3">{summaryError}</span>
               </div>
               <button
                 type="button"
@@ -119,14 +119,14 @@ export default function PaperCard({
               </button>
             </div>
           ) : content ? (
-            <div className="space-y-1.5">
-              <p className="line-clamp-3 text-foreground">{content.core}</p>
+            <div className="h-full space-y-1.5 overflow-hidden">
+              <p className="line-clamp-6 text-foreground">{content.core}</p>
               {previewKeyPoints.length > 0 && (
                 <ul className="space-y-0.5">
                   {previewKeyPoints.map((kp, i) => (
                     <li key={i} className="flex gap-1">
                       <span className="shrink-0 text-accent">•</span>
-                      <span className="line-clamp-1 text-muted">{kp}</span>
+                      <span className="line-clamp-2 text-muted">{kp}</span>
                     </li>
                   ))}
                 </ul>

@@ -3,10 +3,14 @@ import { useRef, useCallback } from 'react'
 interface ResizeDividerProps {
   onResize: (delta: number) => void
   orientation?: 'vertical' | 'horizontal'
-  variant?: 'gap' | 'line'
+  variant?: 'gap' | 'line' | 'soft'
 }
 
-export default function ResizeDivider({ onResize, orientation = 'vertical', variant = 'line' }: ResizeDividerProps) {
+export default function ResizeDivider({
+  onResize,
+  orientation = 'vertical',
+  variant = 'line'
+}: ResizeDividerProps) {
   const startRef = useRef({ pos: 0 })
 
   const handleMouseDown = useCallback(
@@ -38,7 +42,36 @@ export default function ResizeDivider({ onResize, orientation = 'vertical', vari
   )
 
   const isGap = variant === 'gap'
+  const isSoft = variant === 'soft'
   const isVertical = orientation === 'vertical'
+
+  if (isSoft) {
+    return (
+      <div
+        className={`group relative z-20 shrink-0 ${
+          isVertical ? 'w-3 cursor-col-resize' : 'h-3 cursor-row-resize'
+        }`}
+        onMouseDown={handleMouseDown}
+        role="separator"
+        aria-orientation={isVertical ? 'vertical' : 'horizontal'}
+      >
+        <div
+          className={
+            isVertical
+              ? 'pointer-events-none absolute inset-y-2 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-border to-transparent opacity-70 transition-opacity group-hover:opacity-100'
+              : 'pointer-events-none absolute inset-x-6 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-border to-transparent opacity-70 transition-opacity group-hover:opacity-100'
+          }
+        />
+        <div
+          className={
+            isVertical
+              ? 'pointer-events-none absolute left-1/2 top-1/2 flex h-8 w-1 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-panel-2 opacity-0 shadow-sm ring-1 ring-border transition-opacity group-hover:opacity-100'
+              : 'pointer-events-none absolute left-1/2 top-1/2 flex h-1 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-panel-2 opacity-0 shadow-sm ring-1 ring-border transition-opacity group-hover:opacity-100'
+          }
+        />
+      </div>
+    )
+  }
 
   const gapStyle = isGap
     ? isVertical
@@ -71,11 +104,7 @@ export default function ResizeDivider({ onResize, orientation = 'vertical', vari
       : 'pointer-events-none absolute inset-x-0 top-0 h-px bg-accent opacity-0 group-hover:opacity-100'
 
   return (
-    <div
-      className={containerClass}
-      style={gapStyle}
-      onMouseDown={handleMouseDown}
-    >
+    <div className={containerClass} style={gapStyle} onMouseDown={handleMouseDown}>
       <div className={hitClass} />
       <div className={accentClass} />
     </div>

@@ -20,8 +20,9 @@ const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
 const DETAIL_MIN = 320
 const DETAIL_MAX = 640
-const WORKSPACE_MIN = 400
-const WORKSPACE_MAX = 1100
+const WORKSPACE_MIN = 360
+const WORKSPACE_MAX = 900
+const DOC_LIST_MIN = 280
 
 interface AppProps {
   listColumnState: ListColumnState | null
@@ -43,7 +44,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(224)
   const [detailWidth, setDetailWidth] = useState(384)
-  const [workspaceWidth, setWorkspaceWidth] = useState(560)
+  const [workspaceWidth, setWorkspaceWidth] = useState(480)
   const { mode: themeMode, resolvedTheme } = useTheme()
   useAppShortcuts()
 
@@ -148,39 +149,46 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
       <div className="h-screen w-screen overflow-hidden bg-background text-foreground">
         {showWizard && <FirstRunWizard onDone={() => setShowWizard(false)} />}
         {workspaceFullscreen ? (
-          <WorkspacePanel />
+          <div className="relative z-40 h-full min-h-0 w-full overflow-hidden">
+            <WorkspacePanel />
+          </div>
         ) : (
-          <div className="flex h-full min-h-0">
-            <div style={sidebarStyle} className="shrink-0">
-              <div className="h-full py-0">
+          <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+            <div style={sidebarStyle} className="relative z-30 shrink-0 overflow-hidden">
+              <div className="h-full min-h-0 py-0">
                 <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
               </div>
             </div>
             {!sidebarCollapsed && (
               <ResizeDivider onResize={handleSidebarResize} variant="gap" />
             )}
-            <DocumentList sidebarCollapsed={sidebarCollapsed} />
+            <div
+              className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              style={{ minWidth: DOC_LIST_MIN }}
+            >
+              <DocumentList sidebarCollapsed={sidebarCollapsed} />
+            </div>
             {rightPanelOpen && (
               <ResizeDivider onResize={handleDetailResize} variant="line" />
             )}
             <div
               className={clsx(
-                'shrink-0 overflow-hidden transition-all duration-200',
-                rightPanelOpen ? 'border-l border-border' : 'w-0'
+                'relative z-20 shrink-0 overflow-hidden transition-[width] duration-200',
+                rightPanelOpen ? 'border-l border-border' : 'w-0 border-0'
               )}
-              style={rightPanelOpen ? { width: `${detailWidth}px` } : undefined}
+              style={rightPanelOpen ? { width: `${detailWidth}px`, minWidth: 0 } : { width: 0 }}
             >
-              <div className="h-full overflow-y-auto">
+              <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
                 <DetailPanel onClose={() => setRightPanelOpen(false)} />
               </div>
             </div>
             {workspacePanelOpen && (
-              <ResizeDivider onResize={handleWorkspaceResize} variant="line" />
+              <ResizeDivider onResize={handleWorkspaceResize} variant="soft" />
             )}
             {workspacePanelOpen && (
               <div
                 style={{ width: `${workspaceWidth}px` }}
-                className="shrink-0 border-l border-border"
+                className="relative z-20 min-h-0 min-w-0 shrink-0 overflow-hidden border-l border-border/50"
               >
                 <WorkspacePanel />
               </div>

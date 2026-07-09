@@ -7,8 +7,8 @@ import Board from './Board'
 import ChatPanel from './ChatPanel'
 
 const CHAT_MIN = 180
-const CHAT_MAX = 480
-const CHAT_DEFAULT = 260
+const CHAT_MAX = 520
+const CHAT_DEFAULT = 280
 
 export default function WorkspacePanel() {
   const { t } = useTranslation()
@@ -30,10 +30,14 @@ export default function WorkspacePanel() {
   const padTrafficLights = isMac && fullscreen
 
   return (
-    <div className="flex h-full w-full flex-col bg-background">
+    <div
+      className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background ${
+        fullscreen ? 'workspace-fullscreen' : ''
+      }`}
+    >
       <div
-        className={`drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 ${
-          padTrafficLights ? 'pl-[78px]' : ''
+        className={`drag-region relative z-30 flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 ${
+          padTrafficLights ? 'pl-[86px]' : ''
         }`}
       >
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground no-drag">
@@ -49,23 +53,28 @@ export default function WorkspacePanel() {
           >
             {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </button>
-          <button
-            type="button"
-            className="sidebar-header-btn"
-            onClick={closePanel}
-            title={t('workspace.close')}
-            aria-label={t('workspace.close')}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {!fullscreen && (
+            <button
+              type="button"
+              className="sidebar-header-btn"
+              onClick={closePanel}
+              title={t('workspace.close')}
+              aria-label={t('workspace.close')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <Board />
         </div>
-        <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="line" />
-        <div style={{ height: `${chatHeight}px` }} className="shrink-0 border-t border-border">
+        <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="soft" />
+        <div
+          style={{ height: `${chatHeight}px` }}
+          className="min-h-0 shrink-0 overflow-hidden bg-background"
+        >
           <ChatPanel />
         </div>
       </div>

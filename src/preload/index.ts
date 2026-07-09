@@ -20,6 +20,8 @@ import type {
   ImportProgress,
   LibrarySwitchResult,
   ListFilter,
+  ListModelsRequest,
+  ListModelsResult,
   Result,
   ReforaApi,
   SearchResult,
@@ -166,7 +168,9 @@ const api: ReforaApi = {
       invoke<AiProvider>(IpcChannel.AiProvidersUpdate, id, patch),
     delete: (id: string) => invoke<void>(IpcChannel.AiProvidersDelete, id),
     test: (id: string) =>
-      invoke<{ ok: boolean; models?: string[] }>(IpcChannel.AiProvidersTest, id)
+      invoke<{ ok: boolean; models?: string[] }>(IpcChannel.AiProvidersTest, id),
+    listModels: (req: ListModelsRequest) =>
+      invoke<ListModelsResult>(IpcChannel.AiProvidersListModels, req)
   },
 
   ai: {

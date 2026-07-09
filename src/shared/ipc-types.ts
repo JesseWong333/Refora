@@ -172,11 +172,16 @@ export interface WorkspaceItem {
   addedAt: number
 }
 
+export type ModelVariantFormat = 'dash' | 'colon' | 'none'
+
 export interface AiProvider {
   id: string
   name: string
   baseUrl: string
   model: string
+  baseModel: string
+  variant: string
+  variantFormat: ModelVariantFormat
   hasKey: boolean
   createdAt: number
 }
@@ -185,6 +190,9 @@ export interface AiProviderInput {
   name: string
   baseUrl: string
   model: string
+  baseModel?: string
+  variant?: string
+  variantFormat?: ModelVariantFormat
   apiKey?: string
 }
 
@@ -192,7 +200,28 @@ export interface AiProviderPatch {
   name?: string
   baseUrl?: string
   model?: string
+  baseModel?: string
+  variant?: string
+  variantFormat?: ModelVariantFormat
   apiKey?: string
+}
+
+export interface ProviderModelInfo {
+  id: string
+  providerName?: string
+  supportsVariants: boolean
+}
+
+export interface ListModelsRequest {
+  providerId?: string
+  baseUrl?: string
+  apiKey?: string
+}
+
+export interface ListModelsResult {
+  ok: boolean
+  models: ProviderModelInfo[]
+  error?: string
 }
 
 export interface AiSummaryContent {
@@ -240,6 +269,10 @@ export interface ChatSendRequest {
   threadId?: string
   text: string
   providerId: string
+  model?: string
+  features?: {
+    deepThinking?: boolean
+  }
 }
 
 export interface ChatTokenEvent {
@@ -353,6 +386,7 @@ export interface ReforaApi {
     update(id: string, patch: AiProviderPatch): Promise<AiProvider>
     delete(id: string): Promise<void>
     test(id: string): Promise<{ ok: boolean; models?: string[] }>
+    listModels(req: ListModelsRequest): Promise<ListModelsResult>
   }
   ai: {
     docTextGet(docId: string): Promise<string>

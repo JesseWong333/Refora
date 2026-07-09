@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { AiProvider } from '../../../shared/ipc-types'
+import type { AiProvider, ModelVariantFormat } from '../../../shared/ipc-types'
+import { composeModelId, parseModelId } from '../../../shared/modelVariant'
 import type { SqliteDb } from '../types'
 import { RepoError } from './errors'
 
@@ -8,6 +9,9 @@ export interface AiProviderRawRow {
   name: string
   baseUrl: string
   model: string
+  baseModel: string
+  variant: string
+  variantFormat: ModelVariantFormat
   apiKeyEnc: Buffer | null
   createdAt: number
 }
@@ -16,6 +20,9 @@ export interface AiProviderCreateInput {
   name: string
   baseUrl: string
   model: string
+  baseModel: string
+  variant: string
+  variantFormat: ModelVariantFormat
   apiKeyEnc: Buffer | null
 }
 
@@ -23,17 +30,48 @@ export interface AiProviderUpdateInput {
   name?: string
   baseUrl?: string
   model?: string
+  baseModel?: string
+  variant?: string
+  variantFormat?: ModelVariantFormat
   apiKeyEnc?: Buffer | null
 }
 
+function asFormat(v: unknown): ModelVariantFormat {
+  if (v === 'colon' || v === 'none' || v === 'dash') return v
+  return 'dash'
+}
+
 function mapProvider(row: Record<string, unknown>): AiProvider {
+  const model = (row.model as string) || ''
+  const parsed = parseModelId(model)
+  const baseModel = (row.baseModel as string | null) || parsed.baseModel || model
+  const variant = (row.variant as string | null) ?? parsed.variant ?? ''
+  const variantFormat = asFormat(row.variantFormat)
   return {
     id: row.id as string,
     name: row.name as string,
     baseUrl: row.baseUrl as string,
-    model: row.model as string,
+    model: model || composeModelId(baseModel, variant, variantFormat),
+    baseModel,
+    variant,
+    variantFormat,
     hasKey: row.apiKeyEnc != null,
     createdAt: row.createdAt as number
+  }
+}
+
+function mapRaw(row: Record<string, unknown>): AiProviderRawRow {
+  const mapped = mapProvider(row)
+  return {
+    id: mapped.id,
+    name: mapped.name,
+    baseUrl: mapped.baseUrl,
+    model: mapped.model,
+    baseModel: mapped.baseModel,
+    variant: mapped.variant,
+    variantFormat: mapped.variantFormat,
+    apiKeyEnc: (row.apiKeyEnc as Buffer | null) ?? null,
+    createdAt: mapped.createdAt
   }
 }
 
@@ -51,22 +89,27 @@ export function createAiProvidersRepository(db: SqliteDb) {
       | Record<string, unknown>
       | undefined
     if (!row) return null
-    return {
-      id: row.id as string,
-      name: row.name as string,
-      baseUrl: row.baseUrl as string,
-      model: row.model as string,
-      apiKeyEnc: (row.apiKeyEnc as Buffer | null) ?? null,
-      createdAt: row.createdAt as number
-    }
+    return mapRaw(row)
   }
 
   function create(input: AiProviderCreateInput): AiProvider {
     const id = randomUUID()
     const now = Date.now()
     db.prepare(
-      'INSERT INTO ai_providers (id, name, baseUrl, model, apiKeyEnc, createdAt) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, input.name, input.baseUrl, input.model, input.apiKeyEnc, now)
+      `INSERT INTO ai_providers
+        (id, name, baseUrl, model, baseModel, variant, variantFormat, apiKeyEnc, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      input.name,
+      input.baseUrl,
+      input.model,
+      input.baseModel,
+      input.variant,
+      input.variantFormat,
+      input.apiKeyEnc,
+      now
+    )
     const row = db.prepare('SELECT * FROM ai_providers WHERE id = ?').get(id) as Record<
       string,
       unknown
@@ -88,6 +131,18 @@ export function createAiProvidersRepository(db: SqliteDb) {
     if (input.model !== undefined) {
       sets.push('model = ?')
       params.push(input.model)
+    }
+    if (input.baseModel !== undefined) {
+      sets.push('baseModel = ?')
+      params.push(input.baseModel)
+    }
+    if (input.variant !== undefined) {
+      sets.push('variant = ?')
+      params.push(input.variant)
+    }
+    if (input.variantFormat !== undefined) {
+      sets.push('variantFormat = ?')
+      params.push(input.variantFormat)
     }
     if (input.apiKeyEnc !== undefined) {
       sets.push('apiKeyEnc = ?')
