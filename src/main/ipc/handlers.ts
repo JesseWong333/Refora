@@ -12,6 +12,7 @@ import type {
   Category,
   ChatMessage,
   ChatSendRequest,
+  ChatThread,
   Document,
   DocumentPatch,
   ListFilter,
@@ -51,6 +52,7 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventLibraryScanning
   | typeof IpcChannel.EventLibrarySwitched
   | typeof IpcChannel.EventAiSummaryUpdated
+  | typeof IpcChannel.EventAiSummaryError
   | typeof IpcChannel.EventAiChatToken
   | typeof IpcChannel.EventAiChatDone
   | typeof IpcChannel.EventAiChatError
@@ -564,6 +566,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (!threadId) return []
         return repos().chat.listMessages(threadId)
       }),
+    [IpcChannel.AiChatThreads]: (workspaceId: string): Result<ChatThread[]> =>
+      wrap(() => repos().chat.listThreads(workspaceId)),
 
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),

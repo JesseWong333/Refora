@@ -171,13 +171,18 @@
     "aiSummary": "AI Summary",
     "openPdf": "Open PDF",
     "removeFromWorkspace": "Remove from workspace",
+    "summaryFailed": "Summary failed",
+    "retry": "Retry",
+    "reportDelete": "Delete report",
+    "reportDeleteConfirm": "Delete this report? This cannot be undone.",
     "chatPlaceholder": "Ask anything about the papers in this workspace.",
     "chat": {
       "selectProvider": "Select provider",
       "send": "Send",
       "thinking": "Thinking…",
       "noProvider": "No AI provider configured. Add one in Settings.",
-      "inputPlaceholder": "Send a message… (Enter to send, Shift+Enter for newline)"
+      "inputPlaceholder": "Send a message… (Enter to send, Shift+Enter for newline)",
+      "newChat": "New chat"
     }
   }
 }

@@ -12,6 +12,7 @@ import { useDocumentStore } from './documentStore'
 interface WorkspaceState {
   workspaces: Workspace[]
   activeWorkspaceId: string | null
+  activeThreadId: string | null
   panelOpen: boolean
   fullscreen: boolean
   items: WorkspaceItem[]
@@ -24,6 +25,8 @@ interface WorkspaceState {
   renameWorkspace: (id: string, name: string) => Promise<void>
   deleteWorkspace: (id: string) => Promise<void>
   setActiveWorkspace: (id: string) => void
+  setActiveThreadId: (id: string | null) => void
+  startNewChat: () => void
   openPanel: () => void
   closePanel: () => void
   toggleFullscreen: () => void
@@ -31,6 +34,7 @@ interface WorkspaceState {
   addDocs: (docIds: string[]) => Promise<void>
   removeItem: (itemId: string) => Promise<void>
   fetchReports: () => Promise<void>
+  deleteReport: (id: string) => Promise<void>
   addItem: (kind: WorkspaceItemKind, ids: string[]) => Promise<void>
 }
 
@@ -44,6 +48,7 @@ function toast(message: string): void {
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   workspaces: [],
   activeWorkspaceId: null,
+  activeThreadId: null,
   panelOpen: false,
   fullscreen: false,
   items: [],
@@ -120,7 +125,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         return {
           workspaces: s.workspaces.filter((w) => w.id !== id),
           ...(activeCleared
-            ? { activeWorkspaceId: null, panelOpen: false, items: [], reports: [] }
+            ? {
+                activeWorkspaceId: null,
+                activeThreadId: null,
+                panelOpen: false,
+                items: [],
+                reports: []
+              }
             : {})
         }
       })
@@ -133,6 +144,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ activeWorkspaceId: id, panelOpen: true })
     void get().fetchItems()
     void get().fetchReports()
+    void api.ai.chatThreads(id).then((threads) => {
+      if (get().activeWorkspaceId !== id) return
+      const latest = threads.length > 0 ? threads[0] : null
+      set({ activeThreadId: latest ? latest.id : null })
+    }).catch(() => {
+      set({ activeThreadId: null })
+    })
+  },
+
+  setActiveThreadId: (id: string | null) => {
+    set({ activeThreadId: id })
+  },
+
+  startNewChat: () => {
+    set({ activeThreadId: null })
   },
 
   openPanel: () => {
@@ -203,6 +229,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({ reports: list })
     } catch (e) {
       toast(errorMessage(e, 'Failed to load reports'))
+    }
+  },
+
+  deleteReport: async (id: string) => {
+    const prev = get().reports
+    set((s) => ({ reports: s.reports.filter((r) => r.id !== id) }))
+    try {
+      await api.reports.delete(id)
+    } catch (e) {
+      set({ reports: prev })
+      toast(errorMessage(e, 'Failed to delete report'))
     }
   }
 }))

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Select } from '@lobehub/ui'
+import { Plus } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
 import type {
@@ -29,9 +30,11 @@ function localMessage(
 export default function ChatPanel() {
   const { t } = useTranslation()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const activeThreadId = useWorkspaceStore((s) => s.activeThreadId)
+  const setActiveThreadId = useWorkspaceStore((s) => s.setActiveThreadId)
+  const startNewChat = useWorkspaceStore((s) => s.startNewChat)
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
@@ -58,13 +61,26 @@ export default function ChatPanel() {
   }, [])
 
   useEffect(() => {
-    setMessages([])
-    setCurrentThreadId(null)
-    threadIdRef.current = null
+    threadIdRef.current = activeThreadId
     setStreamingText('')
     setStreaming(false)
     setError(null)
-  }, [activeWorkspaceId])
+    if (!activeThreadId) {
+      setMessages([])
+      return
+    }
+    let cancelled = false
+    void api.ai.chatHistory(activeThreadId).then((history) => {
+      if (cancelled || threadIdRef.current !== activeThreadId) return
+      setMessages(history)
+    }).catch(() => {
+      if (cancelled) return
+      setMessages([])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeThreadId])
 
   useEffect(() => {
     const onToken = (payload: ChatTokenEvent) => {
@@ -109,9 +125,10 @@ export default function ChatPanel() {
   const handleSend = useCallback(async () => {
     if (!activeWorkspaceId || !activeProviderId || !input.trim() || streaming) return
     const text = input.trim()
+    const existingThread = activeThreadId
     setMessages((prev) => [
       ...prev,
-      localMessage(currentThreadId ?? '', 'user', text)
+      localMessage(existingThread ?? '', 'user', text)
     ])
     setInput('')
     setStreaming(true)
@@ -120,12 +137,12 @@ export default function ChatPanel() {
     try {
       const { threadId } = await api.ai.chatSend({
         workspaceId: activeWorkspaceId,
-        threadId: currentThreadId ?? undefined,
+        threadId: existingThread ?? undefined,
         text,
         providerId: activeProviderId
       })
-      if (!currentThreadId) {
-        setCurrentThreadId(threadId)
+      if (!existingThread) {
+        setActiveThreadId(threadId)
         threadIdRef.current = threadId
       }
     } catch (e) {
@@ -133,7 +150,7 @@ export default function ChatPanel() {
       setStreaming(false)
       setStreamingText('')
     }
-  }, [activeWorkspaceId, activeProviderId, input, streaming, currentThreadId])
+  }, [activeWorkspaceId, activeProviderId, input, streaming, activeThreadId, setActiveThreadId])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -157,6 +174,16 @@ export default function ChatPanel() {
           style={{ width: '100%' }}
           disabled={providers.length === 0}
         />
+        <button
+          type="button"
+          className="sidebar-header-btn shrink-0"
+          onClick={startNewChat}
+          title={t('workspace.chat.newChat', 'New chat')}
+          aria-label={t('workspace.chat.newChat', 'New chat')}
+          disabled={streaming}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">

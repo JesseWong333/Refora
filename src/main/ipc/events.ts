@@ -7,7 +7,8 @@ import type {
   ChatTokenEvent,
   Document,
   ImportProgress,
-  LibrarySwitchResult
+  LibrarySwitchResult,
+  SummaryErrorEvent
 } from '../../shared/ipc-types'
 
 export function emitDocumentUpdated(win: BrowserWindow, doc: Document): void {
@@ -37,6 +38,12 @@ export function emitLibrarySwitched(win: BrowserWindow, payload: LibrarySwitchRe
 export function emitAiSummaryUpdated(win: BrowserWindow, docId: string): void {
   if (!win.isDestroyed()) {
     win.webContents.send(IpcChannel.EventAiSummaryUpdated, docId)
+  }
+}
+
+export function emitAiSummaryError(win: BrowserWindow, payload: SummaryErrorEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiSummaryError, payload)
   }
 }
 

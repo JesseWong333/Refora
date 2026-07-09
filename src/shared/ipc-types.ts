@@ -257,6 +257,11 @@ export interface ChatErrorEvent {
   message: string
 }
 
+export interface SummaryErrorEvent {
+  docId: string
+  message: string
+}
+
 export type EventChannelKey = keyof typeof IpcChannel & `Event${string}`
 export type EventChannel = (typeof IpcChannel)[EventChannelKey]
 
@@ -268,6 +273,7 @@ export interface DocumentEvents {
   onLibraryScanning(cb: (payload: ImportProgress) => void): void
   onLibrarySwitched(cb: (payload: LibrarySwitchResult) => void): void
   onAiSummaryUpdated(cb: (docId: string) => void): void
+  onAiSummaryError(cb: (payload: SummaryErrorEvent) => void): void
   onAiChatToken(cb: (payload: ChatTokenEvent) => void): void
   onAiChatDone(cb: (payload: ChatDoneEvent) => void): void
   onAiChatError(cb: (payload: ChatErrorEvent) => void): void
@@ -354,6 +360,7 @@ export interface ReforaApi {
     summaryGet(docId: string): Promise<AiSummary | null>
     chatSend(req: ChatSendRequest): Promise<{ threadId: string }>
     chatHistory(threadId: string): Promise<ChatMessage[]>
+    chatThreads(workspaceId: string): Promise<ChatThread[]>
   }
   reports: {
     list(workspaceId: string): Promise<AiReport[]>

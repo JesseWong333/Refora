@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal } from 'antd'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { Sparkles, FileText, Trash2, Loader2, BookOpen } from 'lucide-react'
+import { Sparkles, FileText, Trash2, Loader2, BookOpen, AlertCircle, RotateCw } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { AiSummary, Document } from '../../../shared/ipc-types'
 
@@ -11,6 +11,7 @@ interface PaperCardProps {
   doc: Document | null
   summary: AiSummary | null
   summarizing: boolean
+  summaryError: string | null
   onSummarize: () => void
   onOpenPdf: () => void
   onRemove: () => void
@@ -26,6 +27,7 @@ export default function PaperCard({
   doc,
   summary,
   summarizing,
+  summaryError,
   onSummarize,
   onOpenPdf,
   onRemove
@@ -97,6 +99,24 @@ export default function PaperCard({
             <div className="flex items-center gap-1.5 text-muted">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span>{t('workspace.summarizing')}</span>
+            </div>
+          ) : summaryError ? (
+            <div className="space-y-1.5">
+              <div className="flex items-start gap-1.5 rounded-lg bg-red-500/10 px-2 py-1.5 text-error">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span className="line-clamp-2">{summaryError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSummarize()
+                }}
+                className="inline-flex items-center gap-1 text-muted hover:text-foreground"
+              >
+                <RotateCw className="h-3 w-3" />
+                {t('workspace.retry')}
+              </button>
             </div>
           ) : content ? (
             <div className="space-y-1.5">
@@ -173,11 +193,18 @@ export default function PaperCard({
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-muted">{t('workspace.summarizeHint')}</p>
+            {summaryError ? (
+              <div className="flex items-start gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-error">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{summaryError}</span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">{t('workspace.summarizeHint')}</p>
+            )}
             <div className="flex justify-end">
               <button className="toolbar-btn" onClick={onSummarize}>
                 <Sparkles className="h-3.5 w-3.5" />
-                {t('workspace.aiSummary')}
+                {summaryError ? t('workspace.retry') : t('workspace.aiSummary')}
               </button>
             </div>
           </div>

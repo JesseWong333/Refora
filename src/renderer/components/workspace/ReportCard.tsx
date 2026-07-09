@@ -1,21 +1,42 @@
 import { useState } from 'react'
-import { Modal } from 'antd'
-import { FileBarChart } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Modal, Button } from '@lobehub/ui'
+import { showContextMenu } from '@lobehub/ui'
+import type { ContextMenuItem } from '@lobehub/ui'
+import { FileBarChart, Trash2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { formatDate } from '../../utils/format'
 import type { AiReport } from '../../../shared/ipc-types'
 
 interface ReportCardProps {
   report: AiReport
+  onDelete: () => void
 }
 
-export default function ReportCard({ report }: ReportCardProps) {
+export default function ReportCard({ report, onDelete }: ReportCardProps) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const paragraphs = report.contentMd
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter((p) => p.length > 0)
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const menuItems: ContextMenuItem[] = [
+      {
+        key: 'delete',
+        label: t('workspace.reportDelete'),
+        icon: <Trash2 className="h-3.5 w-3.5" />,
+        onClick: () => setExpanded(true),
+        danger: true
+      }
+    ]
+    showContextMenu(menuItems)
+  }
 
   return (
     <>
@@ -25,6 +46,7 @@ export default function ReportCard({ report }: ReportCardProps) {
         transition={{ duration: 0.18 }}
         className="card flex cursor-pointer flex-col gap-2 border-l-2 border-l-accent p-3 transition-colors hover:border-accent"
         onClick={() => setExpanded(true)}
+        onContextMenu={handleContextMenu}
       >
         <div className="flex items-start gap-2">
           <FileBarChart className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
@@ -40,11 +62,40 @@ export default function ReportCard({ report }: ReportCardProps) {
 
       <Modal
         open={expanded}
-        onCancel={() => setExpanded(false)}
+        onCancel={() => {
+          setExpanded(false)
+          setConfirmDelete(false)
+        }}
         title={report.title}
-        footer={null}
         width={640}
+        footer={
+          <div className="flex justify-between">
+            <Button
+              danger
+              onClick={() => {
+                if (confirmDelete) {
+                  setExpanded(false)
+                  setConfirmDelete(false)
+                  onDelete()
+                } else {
+                  setConfirmDelete(true)
+                }
+              }}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              {confirmDelete ? t('common.confirm') : t('workspace.reportDelete')}
+            </Button>
+            <Button onClick={() => { setExpanded(false); setConfirmDelete(false) }}>
+              {t('common.close')}
+            </Button>
+          </div>
+        }
       >
+        {confirmDelete && (
+          <div className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-error">
+            {t('workspace.reportDeleteConfirm')}
+          </div>
+        )}
         <p className="mb-3 text-xs text-muted">{formatDate(report.createdAt)}</p>
         <div className="max-h-[60vh] space-y-3 overflow-y-auto text-sm text-foreground">
           {paragraphs.length > 0 ? (

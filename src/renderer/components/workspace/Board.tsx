@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { api } from '../../ipc'
-import type { AiSummary, Document } from '../../../shared/ipc-types'
+import type { AiSummary, Document, SummaryErrorEvent } from '../../../shared/ipc-types'
 import PaperCard from './PaperCard'
 import ReportCard from './ReportCard'
 
@@ -16,10 +16,12 @@ export default function Board() {
   const addDocs = useWorkspaceStore((s) => s.addDocs)
   const removeItem = useWorkspaceStore((s) => s.removeItem)
   const fetchItems = useWorkspaceStore((s) => s.fetchItems)
+  const deleteReport = useWorkspaceStore((s) => s.deleteReport)
 
   const [docs, setDocs] = useState<Map<string, Document>>(new Map())
   const [summaries, setSummaries] = useState<Map<string, AiSummary>>(new Map())
   const [summarizing, setSummarizing] = useState<Set<string>>(new Set())
+  const [summaryErrors, setSummaryErrors] = useState<Map<string, string>>(new Map())
   const [dropActive, setDropActive] = useState(false)
 
   const docItems = items.filter((it) => it.kind === 'document' && it.docId)
@@ -30,6 +32,7 @@ export default function Board() {
     setDocs(new Map())
     setSummaries(new Map())
     setSummarizing(new Set())
+    setSummaryErrors(new Map())
   }, [activeWorkspaceId])
 
   useEffect(() => {
@@ -82,13 +85,34 @@ export default function Board() {
         })
       })
     }
+    const errCb = (payload: SummaryErrorEvent) => {
+      setSummarizing((prev) => {
+        if (!prev.has(payload.docId)) return prev
+        const next = new Set(prev)
+        next.delete(payload.docId)
+        return next
+      })
+      setSummaryErrors((prev) => {
+        const next = new Map(prev)
+        next.set(payload.docId, payload.message)
+        return next
+      })
+    }
     api.events.onAiSummaryUpdated(cb)
+    api.events.onAiSummaryError(errCb)
     return () => {
       api.events.off('ai:summary:updated', cb)
+      api.events.off('ai:summary:error', errCb)
     }
   }, [])
 
   const handleSummarize = (docId: string) => {
+    setSummaryErrors((prev) => {
+      if (!prev.has(docId)) return prev
+      const next = new Map(prev)
+      next.delete(docId)
+      return next
+    })
     setSummarizing((prev) => {
       const next = new Set(prev)
       next.add(docId)
@@ -159,6 +183,7 @@ export default function Board() {
                 doc={docs.get(docId) ?? null}
                 summary={summaries.get(docId) ?? null}
                 summarizing={summarizing.has(docId)}
+                summaryError={summaryErrors.get(docId) ?? null}
                 onSummarize={() => handleSummarize(docId)}
                 onOpenPdf={() => void api.documents.openPdf(docId)}
                 onRemove={() => void removeItem(it.id)}
@@ -166,7 +191,7 @@ export default function Board() {
             )
           })}
           {sortedReports.map((r) => (
-            <ReportCard key={r.id} report={r} />
+            <ReportCard key={r.id} report={r} onDelete={() => void deleteReport(r.id)} />
           ))}
         </div>
       )}

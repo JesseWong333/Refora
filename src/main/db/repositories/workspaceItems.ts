@@ -33,11 +33,23 @@ export function createWorkspaceItemsRepository(db: SqliteDb) {
     const stmt = db.prepare(
       'INSERT INTO workspace_items (id, workspaceId, kind, docId, reportId, sortOrder, addedAt) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
+    const existingStmt = db.prepare(
+      'SELECT id FROM workspace_items WHERE workspaceId = ? AND kind = ? AND docId = ?'
+    )
     const createdIds: string[] = []
     for (const id of ids) {
-      const itemId = randomUUID()
       const docId = kind === 'document' ? id : null
       const reportId = kind === 'report' ? id : null
+      if (kind === 'document' && docId) {
+        const existing = existingStmt.get(workspaceId, kind, docId) as
+          | { id: string }
+          | undefined
+        if (existing) {
+          createdIds.push(existing.id)
+          continue
+        }
+      }
+      const itemId = randomUUID()
       stmt.run(itemId, workspaceId, kind, docId, reportId, next, now)
       createdIds.push(itemId)
       next += 1

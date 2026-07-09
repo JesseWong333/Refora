@@ -33,6 +33,13 @@ interface ProviderForm {
 
 type TestState = 'testing' | { ok: boolean; models?: string[] }
 
+const PROVIDER_TEMPLATES: { name: string; baseUrl: string; model: string }[] = [
+  { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { name: 'Zhipu (智谱)', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
+  { name: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', model: 'llama3.1' }
+]
+
 function AiProvidersSection() {
   const { t } = useTranslation()
   const [providers, setProviders] = useState<AiProvider[]>([])
@@ -158,6 +165,20 @@ function AiProvidersSection() {
 
       {form && (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-panel p-3">
+          {!form.id && (
+            <div className="flex flex-wrap gap-1">
+              {PROVIDER_TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.name}
+                  type="button"
+                  className="rounded-md border border-border bg-panel-2 px-2 py-1 text-[11px] text-muted hover:border-accent hover:text-foreground"
+                  onClick={() => setForm({ ...form, name: tpl.name, baseUrl: tpl.baseUrl, model: tpl.model })}
+                >
+                  {tpl.name}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <label className="text-[11px] text-muted">
               {t('settings.aiProviders.name', 'Name')}

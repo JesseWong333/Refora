@@ -1,10 +1,13 @@
+import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Maximize2, Minimize2, X } from 'lucide-react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
+import ResizeDivider from '../ResizeDivider'
 import Board from './Board'
 import ChatPanel from './ChatPanel'
 
-const CHAT_WIDTH = 360
+const CHAT_MIN = 280
+const CHAT_MAX = 520
 
 export default function WorkspacePanel() {
   const { t } = useTranslation()
@@ -13,6 +16,12 @@ export default function WorkspacePanel() {
   const fullscreen = useWorkspaceStore((s) => s.fullscreen)
   const toggleFullscreen = useWorkspaceStore((s) => s.toggleFullscreen)
   const closePanel = useWorkspaceStore((s) => s.closePanel)
+
+  const [chatWidth, setChatWidth] = useState(360)
+
+  const handleChatResize = useCallback((delta: number) => {
+    setChatWidth((w) => Math.max(CHAT_MIN, Math.min(CHAT_MAX, w - delta)))
+  }, [])
 
   const isMac = document.documentElement.dataset.platform === 'mac'
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -47,7 +56,8 @@ export default function WorkspacePanel() {
         <div className="min-w-0 flex-1">
           <Board />
         </div>
-        <div style={{ width: `${CHAT_WIDTH}px` }} className="shrink-0 border-l border-border">
+        <ResizeDivider onResize={handleChatResize} variant="line" />
+        <div style={{ width: `${chatWidth}px` }} className="shrink-0 border-l border-border">
           <ChatPanel />
         </div>
       </div>

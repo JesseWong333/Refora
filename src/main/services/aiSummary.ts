@@ -4,7 +4,7 @@ import type { Repositories } from '../db/repositories'
 import type { AiSummaryContent } from '../../shared/ipc-types'
 import type { AiProvidersService } from './aiProviders'
 import type { PdfTextService } from './pdfText'
-import { emitAiSummaryUpdated } from '../ipc/events'
+import { emitAiSummaryUpdated, emitAiSummaryError } from '../ipc/events'
 import { logger } from './logger'
 
 const MAX_CONCURRENT = 2
@@ -86,6 +86,12 @@ export function createAiSummaryService(
     if (w) emitAiSummaryUpdated(w, docId)
   }
 
+  function emitError(docId: string, message: string): void {
+    const w = getWin()
+    if (w) emitAiSummaryError(w, { docId, message })
+    emit(docId)
+  }
+
   async function processSummary(docId: string): Promise<void> {
     const doc = repos.documents.get(docId)
     if (!doc) {
@@ -98,10 +104,9 @@ export function createAiSummaryService(
     try {
       text = await pdfTextService.getOrExtract(docId)
     } catch (e) {
-      logger.warn(
-        `aiSummary:extract-failed id=${docId}: ${e instanceof Error ? e.message : String(e)}`
-      )
-      emit(docId)
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.warn(`aiSummary:extract-failed id=${docId}: ${msg}`)
+      emitError(docId, `Failed to extract PDF text: ${msg}`)
       return
     }
 
@@ -110,7 +115,7 @@ export function createAiSummaryService(
     const activeProviderId = repos.settings.get<string>('activeProviderId', '')
     if (!activeProviderId) {
       logger.info(`aiSummary:no-active-provider id=${docId}`)
-      emit(docId)
+      emitError(docId, 'No AI provider configured. Set one as active in Settings.')
       return
     }
 
@@ -120,10 +125,9 @@ export function createAiSummaryService(
       provider = aiProvidersService.getProvider(activeProviderId)
       key = aiProvidersService.getDecryptedKey(activeProviderId)
     } catch (e) {
-      logger.warn(
-        `aiSummary:provider-unavailable id=${docId}: ${e instanceof Error ? e.message : String(e)}`
-      )
-      emit(docId)
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.warn(`aiSummary:provider-unavailable id=${docId}: ${msg}`)
+      emitError(docId, `AI provider unavailable: ${msg}`)
       return
     }
 
@@ -170,10 +174,9 @@ export function createAiSummaryService(
       logger.info(`aiSummary:done id=${docId} model=${provider.model}`)
       emit(docId)
     } catch (e) {
-      logger.warn(
-        `aiSummary:failed id=${docId}: ${e instanceof Error ? e.message : String(e)}`
-      )
-      emit(docId)
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.warn(`aiSummary:failed id=${docId}: ${msg}`)
+      emitError(docId, `Summary generation failed: ${msg}`)
     }
   }
 

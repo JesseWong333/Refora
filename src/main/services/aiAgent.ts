@@ -187,7 +187,6 @@ export function createAiAgentService(
       const inputMsgs = [new SystemMessage(SYSTEM_PROMPT), ...historyMsgs]
 
       let finalText = ''
-      let streamedAny = false
       try {
         for await (const event of agent.streamEvents(
           { messages: inputMsgs },
@@ -198,29 +197,19 @@ export function createAiAgentService(
           const content = data?.chunk?.content
           const token = typeof content === 'string' ? content : ''
           if (!token) continue
-          streamedAny = true
           finalText += token
           const ww = getWin()
           if (ww) emitAiChatToken(ww, { threadId, token })
         }
       } catch (streamErr) {
-        logger.warn(
-          `aiAgent:stream-error: ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`
-        )
-        streamedAny = false
-        finalText = ''
-      }
-
-      if (!streamedAny || finalText.length === 0) {
-        const result = (await agent.invoke({ messages: inputMsgs })) as {
-          messages: Array<{ content: unknown }>
-        }
-        const last = result.messages[result.messages.length - 1]
-        const content = last?.content
-        finalText = typeof content === 'string' ? content : ''
-        if (finalText) {
+        const msg = streamErr instanceof Error ? streamErr.message : String(streamErr)
+        logger.warn(`aiAgent:stream-error: ${msg}`)
+        if (finalText.length > 0) {
+          finalText += `\n\n[Response interrupted: ${msg}]`
+        } else {
           const ww = getWin()
-          if (ww) emitAiChatToken(ww, { threadId, token: finalText })
+          if (ww) emitAiChatError(ww, { threadId, message: msg })
+          return
         }
       }
 

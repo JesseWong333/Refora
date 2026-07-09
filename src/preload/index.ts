@@ -12,6 +12,7 @@ import type {
   ChatErrorEvent,
   ChatMessage,
   ChatSendRequest,
+  ChatThread,
   ChatTokenEvent,
   Document,
   DocumentPatch,
@@ -22,6 +23,7 @@ import type {
   Result,
   ReforaApi,
   SearchResult,
+  SummaryErrorEvent,
   WatchFolder,
   Workspace,
   WorkspaceItem,
@@ -173,7 +175,9 @@ const api: ReforaApi = {
     summaryGet: (docId: string) => invoke<AiSummary | null>(IpcChannel.AiSummaryGet, docId),
     chatSend: (req: ChatSendRequest) =>
       invoke<{ threadId: string }>(IpcChannel.AiChatSend, req),
-    chatHistory: (threadId: string) => invoke<ChatMessage[]>(IpcChannel.AiChatHistory, threadId)
+    chatHistory: (threadId: string) => invoke<ChatMessage[]>(IpcChannel.AiChatHistory, threadId),
+    chatThreads: (workspaceId: string) =>
+      invoke<ChatThread[]>(IpcChannel.AiChatThreads, workspaceId)
   },
 
   reports: {
@@ -196,6 +200,8 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventLibrarySwitched, cb),
     onAiSummaryUpdated: (cb: (docId: string) => void) =>
       subscribe(IpcChannel.EventAiSummaryUpdated, cb),
+    onAiSummaryError: (cb: (payload: SummaryErrorEvent) => void) =>
+      subscribe(IpcChannel.EventAiSummaryError, cb),
     onAiChatToken: (cb: (payload: ChatTokenEvent) => void) =>
       subscribe(IpcChannel.EventAiChatToken, cb),
     onAiChatDone: (cb: (payload: ChatDoneEvent) => void) =>
