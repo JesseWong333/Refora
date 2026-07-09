@@ -9,6 +9,12 @@ import { registerIpcHandlers, validateProxyUrl, type RuntimeRef } from './ipc/ha
 import { createImporter } from './services/importer'
 import { createMetadataService } from './services/metadata'
 import { createWatcher } from './services/watcher'
+import { createAiProvidersService } from './services/aiProviders'
+import { createPdfTextService } from './services/pdfText'
+import { createAiSummaryService } from './services/aiSummary'
+import type { AiProvidersService } from './services/aiProviders'
+import type { PdfTextService } from './services/pdfText'
+import type { AiSummaryService } from './services/aiSummary'
 import { checkMissing, findPdfsRecursively } from './services/files'
 import { writeExportFile, importFromJsonFile } from './services/export'
 import { emitImportProgress, emitLibraryScanning, emitLibrarySwitched } from './ipc/events'
@@ -26,6 +32,9 @@ interface Runtime extends RuntimeRef {
   metadataService: ReturnType<typeof createMetadataService>
   watcher: ReturnType<typeof createWatcher>
   missingCheckInterval: ReturnType<typeof setInterval> | null
+  aiProvidersService: AiProvidersService
+  pdfTextService: PdfTextService
+  aiSummaryService: AiSummaryService
 }
 let runtime: Runtime | null = null
 let win: BrowserWindow | null = null
@@ -246,6 +255,8 @@ function teardownRuntime(): void {
   runtime.metadataService.destroy()
   runtime.watcher.destroy()
   runtime.importer.destroy()
+  runtime.aiSummaryService.destroy()
+  runtime.pdfTextService.destroy()
   closeDatabase(runtime.db)
   runtime = null
 }
@@ -256,6 +267,14 @@ function buildRuntime(dbPath: string): Runtime {
   const repos = createRepositories(db)
   const importer = createImporter(repos, () => win)
   const metadataService = createMetadataService(repos, () => win)
+  const aiProvidersService = createAiProvidersService(repos)
+  const pdfTextService = createPdfTextService(repos, () => win)
+  const aiSummaryService = createAiSummaryService(
+    repos,
+    () => win,
+    aiProvidersService,
+    pdfTextService
+  )
   const watcher = createWatcher({
     importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
     getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', '')
@@ -278,7 +297,17 @@ function buildRuntime(dbPath: string): Runtime {
 
   metadataService.resumeOnStartup()
 
-  const r: Runtime = { db, repos, importer, metadataService, watcher, missingCheckInterval: null }
+  const r: Runtime = {
+    db,
+    repos,
+    importer,
+    metadataService,
+    watcher,
+    missingCheckInterval: null,
+    aiProvidersService,
+    pdfTextService,
+    aiSummaryService
+  }
 
   setImmediate(() => {
     const enabledFolders = repos.watchFolders.getEnabled()

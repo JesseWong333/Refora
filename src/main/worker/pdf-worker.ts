@@ -166,7 +166,7 @@ async function parsePdf(filePath: string, maxPages: number): Promise<{ info: Rec
       info = {}
     }
 
-    const pageCount = Math.min(maxPages, pdfDoc.numPages)
+    const pageCount = maxPages === 0 ? pdfDoc.numPages : Math.min(maxPages, pdfDoc.numPages)
     const textParts: string[] = []
     let titleCandidate: string | null = null
 

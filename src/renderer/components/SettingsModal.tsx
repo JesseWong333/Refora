@@ -5,6 +5,7 @@ import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
 import { errorMessage } from '../../shared/ipc-types'
+import type { AiProvider } from '../../shared/ipc-types'
 
 interface SettingsModalProps {
   open: boolean
@@ -21,6 +22,277 @@ const LANG_OPTIONS = [
   { label: '中文', value: 'zh' },
   { label: 'English', value: 'en' },
 ]
+
+interface ProviderForm {
+  id: string | null
+  name: string
+  baseUrl: string
+  model: string
+  apiKey: string
+}
+
+type TestState = 'testing' | { ok: boolean; models?: string[] }
+
+function AiProvidersSection() {
+  const { t } = useTranslation()
+  const [providers, setProviders] = useState<AiProvider[]>([])
+  const [activeProviderId, setActiveProviderId] = useState('')
+  const [form, setForm] = useState<ProviderForm | null>(null)
+  const [testStates, setTestStates] = useState<Record<string, TestState>>({})
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const load = async () => {
+    try {
+      const [list, active] = await Promise.all([
+        api.aiProviders.list(),
+        api.settings.get<string>('activeProviderId', '')
+      ])
+      setProviders(list)
+      setActiveProviderId(active)
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to load AI providers'))
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const startAdd = () => {
+    setError(null)
+    setForm({ id: null, name: '', baseUrl: '', model: '', apiKey: '' })
+  }
+
+  const startEdit = (p: AiProvider) => {
+    setError(null)
+    setForm({ id: p.id, name: p.name, baseUrl: p.baseUrl, model: p.model, apiKey: '' })
+  }
+
+  const cancelForm = () => {
+    setForm(null)
+  }
+
+  const saveForm = async () => {
+    if (!form) return
+    if (!form.name.trim() || !form.baseUrl.trim() || !form.model.trim()) {
+      setError('Name, Base URL and Model are required')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      if (form.id) {
+        const patch: Record<string, string> = {
+          name: form.name.trim(),
+          baseUrl: form.baseUrl.trim(),
+          model: form.model.trim()
+        }
+        if (form.apiKey.trim()) patch.apiKey = form.apiKey.trim()
+        await api.aiProviders.update(form.id, patch)
+      } else {
+        await api.aiProviders.create({
+          name: form.name.trim(),
+          baseUrl: form.baseUrl.trim(),
+          model: form.model.trim(),
+          ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {})
+        })
+      }
+      setForm(null)
+      await load()
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to save provider'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeProvider = async (p: AiProvider) => {
+    setError(null)
+    try {
+      await api.aiProviders.delete(p.id)
+      if (activeProviderId === p.id) {
+        await api.settings.set('activeProviderId', '')
+        setActiveProviderId('')
+      }
+      await load()
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to delete provider'))
+    }
+  }
+
+  const testProvider = async (p: AiProvider) => {
+    setError(null)
+    setTestStates((prev) => ({ ...prev, [p.id]: 'testing' }))
+    try {
+      const result = await api.aiProviders.test(p.id)
+      setTestStates((prev) => ({ ...prev, [p.id]: result }))
+    } catch (e) {
+      setTestStates((prev) => ({ ...prev, [p.id]: { ok: false } }))
+      setError(errorMessage(e, 'Test failed'))
+    }
+  }
+
+  const setActive = async (p: AiProvider) => {
+    setError(null)
+    try {
+      await api.settings.set('activeProviderId', p.id)
+      setActiveProviderId(p.id)
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to set active provider'))
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-4">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-muted">
+          {t('settings.aiProviders.title', 'AI Providers')}
+        </label>
+        {!form && (
+          <Button size="small" onClick={startAdd}>
+            {t('settings.aiProviders.add', 'Add')}
+          </Button>
+        )}
+      </div>
+
+      {form && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-panel p-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] text-muted">
+              {t('settings.aiProviders.name', 'Name')}
+            </label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="OpenAI"
+              size="small"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] text-muted">
+              {t('settings.aiProviders.baseUrl', 'Base URL')}
+            </label>
+            <Input
+              value={form.baseUrl}
+              onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+              placeholder="https://api.openai.com/v1"
+              size="small"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] text-muted">
+              {t('settings.aiProviders.model', 'Model')}
+            </label>
+            <Input
+              value={form.model}
+              onChange={(e) => setForm({ ...form, model: e.target.value })}
+              placeholder="gpt-4o-mini"
+              size="small"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] text-muted">
+              {t('settings.aiProviders.apiKey', 'API Key')}
+              {form.id && (
+                <span className="ml-1 text-muted">
+                  ({t('settings.aiProviders.apiKeyHint', 'leave blank to keep current')})
+                </span>
+              )}
+            </label>
+            <Input
+              type="password"
+              value={form.apiKey}
+              onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+              placeholder={form.id ? '' : 'sk-...'}
+              size="small"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button size="small" onClick={cancelForm}>
+              {t('settings.aiProviders.cancel', 'Cancel')}
+            </Button>
+            <Button size="small" type="primary" onClick={saveForm} loading={saving}>
+              {t('settings.aiProviders.save', 'Save')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!form && providers.length === 0 && (
+        <span className="text-[11px] text-muted">
+          {t('settings.aiProviders.noProviders', 'No providers configured.')}
+        </span>
+      )}
+
+      {!form &&
+        providers.map((p) => {
+          const ts = testStates[p.id]
+          const isActive = activeProviderId === p.id
+          return (
+            <div key={p.id} className="flex flex-col gap-1 rounded-lg bg-panel-2 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-xs text-foreground">{p.name}</span>
+                    {isActive && (
+                      <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] text-white">
+                        {t('settings.aiProviders.active', 'Active')}
+                      </span>
+                    )}
+                    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted">
+                      {p.hasKey
+                        ? t('settings.aiProviders.hasKey', 'Key set')
+                        : t('settings.aiProviders.noKey', 'No key')}
+                    </span>
+                  </div>
+                  <div className="truncate text-[11px] text-muted">
+                    {p.model} · {p.baseUrl}
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    size="small"
+                    onClick={() => testProvider(p)}
+                    loading={ts === 'testing'}
+                  >
+                    {t('settings.aiProviders.test', 'Test')}
+                  </Button>
+                  <Button size="small" onClick={() => startEdit(p)}>
+                    {t('settings.aiProviders.edit', 'Edit')}
+                  </Button>
+                  {!isActive && (
+                    <Button size="small" onClick={() => setActive(p)}>
+                      {t('settings.aiProviders.setActive', 'Set Active')}
+                    </Button>
+                  )}
+                  <Button size="small" onClick={() => removeProvider(p)}>
+                    {t('settings.aiProviders.delete', 'Delete')}
+                  </Button>
+                </div>
+              </div>
+              {ts && ts !== 'testing' && (
+                <div
+                  className={`text-[11px] ${ts.ok ? 'text-foreground' : 'text-error'}`}
+                >
+                  {ts.ok
+                    ? t('settings.aiProviders.testOk', {
+                        count: ts.models?.length ?? 0,
+                        defaultValue: `OK · {{count}} models`
+                      })
+                    : t('settings.aiProviders.testFail', 'Failed')}
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+      {error && (
+        <div className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">{error}</div>
+      )}
+    </div>
+  )
+}
 
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { t, i18n } = useTranslation()
@@ -198,6 +470,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             {t('settings.sidebarCollapsed')}
           </span>
         </label>
+
+        <AiProvidersSection />
       </div>
 
       {error && (

@@ -4,6 +4,8 @@ import { resolve as resolvePath, parse as parsePath } from 'node:path'
 import { IpcChannel } from '../../shared/ipc-channels'
 import type {
   AiProvider,
+  AiProviderInput,
+  AiProviderPatch,
   AiReport,
   AiSummary,
   BootstrapData,
@@ -33,6 +35,9 @@ import { writeExportFile, importFromJsonFile, toBibtex } from '../services/expor
 import { isInsideLibrary, containsLibrary } from '../services/paths'
 import { logger } from '../services/logger'
 import type { createWatcher } from '../services/watcher'
+import type { AiProvidersService } from '../services/aiProviders'
+import type { PdfTextService } from '../services/pdfText'
+import type { AiSummaryService } from '../services/aiSummary'
 
 type IpcChannelValue = (typeof IpcChannel)[keyof typeof IpcChannel]
 type HandlerChannel = Exclude<
@@ -128,9 +133,9 @@ export interface RuntimeRef {
     destroy: () => void
   }
   watcher?: ReturnType<typeof createWatcher>
-  aiProvidersService?: unknown
-  pdfTextService?: unknown
-  aiSummaryService?: unknown
+  aiProvidersService?: AiProvidersService
+  pdfTextService?: PdfTextService
+  aiSummaryService?: AiSummaryService
   aiAgentService?: unknown
 }
 
@@ -491,21 +496,41 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.WorkspaceItemsReorder]: (workspaceId: string, orderedIds: string[]): Result<void> =>
       wrap(() => repos().workspaceItems.reorder(workspaceId, orderedIds)),
 
-    [IpcChannel.AiProvidersList]: (): Result<AiProvider[]> =>
-      notImplemented('ai:providers:list') as Result<AiProvider[]>,
-    [IpcChannel.AiProvidersCreate]: (_input: unknown): Result<AiProvider> =>
-      notImplemented('ai:providers:create') as Result<AiProvider>,
-    [IpcChannel.AiProvidersUpdate]: (_id: string, _patch: unknown): Result<AiProvider> =>
-      notImplemented('ai:providers:update') as Result<AiProvider>,
-    [IpcChannel.AiProvidersDelete]: (_id: string): Result<void> =>
-      notImplemented('ai:providers:delete') as Result<void>,
-    [IpcChannel.AiProvidersTest]: (_id: string): Result<{ ok: boolean; models?: string[] }> =>
-      notImplemented('ai:providers:test') as Result<{ ok: boolean; models?: string[] }>,
+    [IpcChannel.AiProvidersList]: (): Result<AiProvider[]> => {
+      const rt = deps.getRuntime()
+      return wrap(() => rt!.aiProvidersService!.list())
+    },
+    [IpcChannel.AiProvidersCreate]: (input: AiProviderInput): Promise<Result<AiProvider>> => {
+      const rt = deps.getRuntime()
+      return asyncWrap(async () => rt!.aiProvidersService!.create(input))
+    },
+    [IpcChannel.AiProvidersUpdate]: (
+      id: string,
+      patch: AiProviderPatch
+    ): Promise<Result<AiProvider>> => {
+      const rt = deps.getRuntime()
+      return asyncWrap(async () => rt!.aiProvidersService!.update(id, patch))
+    },
+    [IpcChannel.AiProvidersDelete]: (id: string): Result<void> => {
+      const rt = deps.getRuntime()
+      return wrap(() => rt!.aiProvidersService!.remove(id))
+    },
+    [IpcChannel.AiProvidersTest]: (id: string): Promise<Result<{ ok: boolean; models?: string[] }>> => {
+      const rt = deps.getRuntime()
+      return asyncWrap(async () => rt!.aiProvidersService!.test(id))
+    },
 
-    [IpcChannel.AiDocTextGet]: (_docId: string): Result<string> =>
-      notImplemented('ai:docText:get') as Result<string>,
-    [IpcChannel.AiSummarize]: (_docId: string): Result<void> =>
-      notImplemented('ai:summarize') as Result<void>,
+    [IpcChannel.AiDocTextGet]: (id: string): Promise<Result<string>> => {
+      const rt = deps.getRuntime()
+      return asyncWrap(async () => rt!.pdfTextService!.getOrExtract(id))
+    },
+    [IpcChannel.AiSummarize]: (id: string): Result<void> => {
+      const rt = deps.getRuntime()
+      return wrap(() => {
+        rt!.aiSummaryService!.summarize(id)
+        return undefined
+      })
+    },
     [IpcChannel.AiSummaryGet]: (docId: string): Result<AiSummary | null> =>
       wrap(() => repos().aiSummaries.getSummary(docId)),
 
