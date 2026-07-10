@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { type BrowserWindow, shell } from 'electron'
 import { ChatOpenAI } from '@langchain/openai'
 import { DynamicTool, DynamicStructuredTool } from '@langchain/core/tools'
-import { SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages'
+import { SystemMessage, HumanMessage, AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
 import { z } from 'zod'
 import type { Repositories } from '../db/repositories'
@@ -13,6 +13,7 @@ import type {
   AiProvider,
   AiSummaryContent,
   ChatAttachment,
+  ChatMessage,
   ChatSendRequest,
   Document
 } from '../../shared/ipc-types'
@@ -30,6 +31,7 @@ import {
 import { logger } from './logger'
 import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
+import { historyToMessages } from './chatHistoryMessages'
 
 const MAX_FULLTEXT_CHARS = 8000
 const HISTORY_TOKEN_BUDGET = 8000
@@ -189,6 +191,23 @@ function extractToolOutput(data: Record<string, unknown> | undefined): string | 
   if ('output' in data) return stringifyTraceValue(data.output)
   if ('outputs' in data) return stringifyTraceValue(data.outputs)
   return null
+}
+
+function extractToolCallId(
+  event: { run_id?: string },
+  data: Record<string, unknown> | undefined
+): string {
+  if (data) {
+    if (typeof data.tool_call_id === 'string' && data.tool_call_id) return data.tool_call_id
+    const input = data.input
+    if (input && typeof input === 'object' && 'tool_call_id' in input) {
+      const v = (input as Record<string, unknown>).tool_call_id
+      if (typeof v === 'string' && v) return v
+    }
+    if (typeof data.id === 'string' && data.id) return data.id
+  }
+  if (typeof event.run_id === 'string' && event.run_id) return event.run_id
+  return randomUUID()
 }
 
 export function createAiAgentService(
@@ -611,20 +630,14 @@ export function createAiAgentService(
 
       const allHistory = repos.chat.listMessages(threadId)
       const truncatedHistory = truncateHistoryByTokens(
-        allHistory.map((m) => ({ role: m.role, content: m.content })),
+        allHistory as ChatMessage[],
         {
           maxTokens: HISTORY_TOKEN_BUDGET,
           minMessages: HISTORY_MIN_MESSAGES,
           maxMessages: HISTORY_MAX_MESSAGES
         }
-      )
-      const historyMsgs = truncatedHistory.map((m) => {
-        if (m.role === 'user') return new HumanMessage(m.content)
-        if (m.role === 'tool') {
-          return new AIMessage(`[Previous tool call result: ${m.content}]`)
-        }
-        return new AIMessage(m.content)
-      })
+      ) as ChatMessage[]
+      const historyMsgs = historyToMessages(truncatedHistory)
       const inputMsgs = [new SystemMessage(systemPrompt), ...historyMsgs]
 
       if (req.attachments?.length) {
@@ -639,7 +652,7 @@ export function createAiAgentService(
       }
 
       let finalText = ''
-      const collectedToolCalls: Array<{ name: string; input: string | null; output: string | null }> = []
+      const collectedToolCalls: Array<{ name: string; toolCallId: string; input: string | null; output: string | null }> = []
       let activeLlmId: string | null = null
 
       try {
@@ -724,6 +737,7 @@ export function createAiAgentService(
             const toolOutput = extractToolOutput(data)
             collectedToolCalls.push({
               name: toolName ?? 'unknown',
+              toolCallId: extractToolCallId(event, data),
               input: extractToolInput(data),
               output: toolOutput
             })
@@ -746,6 +760,7 @@ export function createAiAgentService(
               'Tool error'
             collectedToolCalls.push({
               name: toolName ?? 'unknown',
+              toolCallId: extractToolCallId(event, data),
               input: extractToolInput(data),
               output: errMsg
             })
@@ -804,7 +819,7 @@ export function createAiAgentService(
         repos.chat.addMessage(
           threadId,
           'tool',
-          JSON.stringify({ name: tc.name, input: tc.input, output: tc.output })
+          JSON.stringify({ v: 2, name: tc.name, toolCallId: tc.toolCallId, input: tc.input, output: tc.output })
         )
       }
 
