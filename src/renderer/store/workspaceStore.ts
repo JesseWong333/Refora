@@ -40,6 +40,7 @@ interface WorkspaceState {
   removeItem: (itemId: string) => Promise<void>
   fetchReports: () => Promise<void>
   deleteReport: (id: string) => Promise<void>
+  updateReport: (id: string, patch: { title?: string; contentMd?: string }) => Promise<void>
   addItem: (kind: WorkspaceItemKind, ids: string[]) => Promise<void>
 }
 
@@ -284,6 +285,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     } catch (e) {
       set({ reports: prev })
       toast(errorMessage(e, 'Failed to delete report'))
+    }
+  },
+
+  updateReport: async (id: string, patch: { title?: string; contentMd?: string }) => {
+    const prev = get().reports
+    try {
+      const updated = await api.reports.update(id, patch)
+      set((s) => ({ reports: s.reports.map((r) => (r.id === id ? updated : r)) }))
+    } catch (e) {
+      toast(errorMessage(e, 'Failed to update report'))
+      set({ reports: prev })
     }
   }
 }))

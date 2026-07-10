@@ -24,6 +24,7 @@ import type {
   ChatMessage,
   ChatTokenEvent,
   ChatTraceEvent,
+  ChatTitleUpdatedEvent,
   ProviderModelInfo
 } from '../../../shared/ipc-types'
 import {
@@ -202,6 +203,14 @@ function TraceStepRow({ step }: { step: AgentTraceStep }) {
           ) : null}
         </span>
         {duration && <span className="shrink-0 text-[10px] text-muted">{duration}</span>}
+        {step.kind === 'llm' && step.totalTokens != null && (
+          <span
+            className="shrink-0 text-[10px] text-muted"
+            title={t('workspace.chat.tokenUsage', 'Tokens')}
+          >
+            ↑{step.inputTokens ?? 0} ↓{step.outputTokens ?? 0}
+          </span>
+        )}
         <span className={`shrink-0 text-[10px] ${statusClass}`}>{statusLabel}</span>
       </button>
       {open && hasBody && (
@@ -242,6 +251,8 @@ function AgentTracePanel({
   const { t } = useTranslation()
   const [open, setOpen] = useState(true)
   const visible = steps.filter((s) => s.kind !== 'run')
+  const totalTokensSum = visible.reduce((sum, s) => sum + (s.totalTokens ?? 0), 0)
+  const hasTokenData = visible.some((s) => s.totalTokens != null)
   if (visible.length === 0 && !streaming) return null
 
   return (
@@ -264,6 +275,11 @@ function AgentTracePanel({
         <span className="text-[10px] text-muted">
           {visible.length > 0 ? visible.length : streaming ? '…' : 0}
         </span>
+        {hasTokenData && (
+          <span className="text-[10px] text-muted">
+            {t('workspace.chat.tokenTotal', { count: totalTokensSum })}
+          </span>
+        )}
       </button>
       {open && (
         <div className="flex flex-col gap-1 px-2 pb-2">
@@ -445,15 +461,24 @@ export default function ChatPanel() {
       if (payload.threadId !== threadIdRef.current) return
       setTraceSteps((prev) => mergeTraceStep(prev, payload.step))
     }
+    const onTitleUpdated = (payload: ChatTitleUpdatedEvent) => {
+      useWorkspaceStore.setState((s) => ({
+        threads: s.threads.map((t) =>
+          t.id === payload.threadId ? { ...t, title: payload.title } : t
+        )
+      }))
+    }
     api.events.onAiChatToken(onToken)
     api.events.onAiChatDone(onDone)
     api.events.onAiChatError(onError)
     api.events.onAiChatTrace(onTrace)
+    api.events.onAiChatTitleUpdated(onTitleUpdated)
     return () => {
       api.events.off('ai:chat:token', onToken)
       api.events.off('ai:chat:done', onDone)
       api.events.off('ai:chat:error', onError)
       api.events.off('ai:chat:trace', onTrace)
+      api.events.off('ai:chat:titleUpdated', onTitleUpdated)
     }
   }, [])
 

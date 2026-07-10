@@ -16,6 +16,7 @@ import type {
   ChatThread,
   ChatTokenEvent,
   ChatTraceEvent,
+  ChatTitleUpdatedEvent,
   Document,
   DocumentPatch,
   EventChannel,
@@ -193,6 +194,8 @@ const api: ReforaApi = {
 
   reports: {
     list: (workspaceId: string) => invoke<AiReport[]>(IpcChannel.AiReportsList, workspaceId),
+    update: (id: string, patch: { title?: string; contentMd?: string }) =>
+      invoke<AiReport>(IpcChannel.AiReportsUpdate, id, patch),
     delete: (id: string) => invoke<void>(IpcChannel.AiReportsDelete, id)
   },
 
@@ -221,6 +224,8 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventAiChatError, cb),
     onAiChatTrace: (cb: (payload: ChatTraceEvent) => void) =>
       subscribe(IpcChannel.EventAiChatTrace, cb),
+    onAiChatTitleUpdated: (cb: (payload: ChatTitleUpdatedEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatTitleUpdated, cb),
     onAiReportCreated: (cb: (report: AiReport) => void) =>
       subscribe(IpcChannel.EventAiReportCreated, cb),
     onWorkspaceItemsChanged: (cb: (payload: WorkspaceItemsChangedEvent) => void) =>

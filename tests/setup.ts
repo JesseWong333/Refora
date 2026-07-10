@@ -174,6 +174,7 @@ const noop = async () => undefined
     onAiChatDone: (_cb: unknown) => undefined,
     onAiChatError: (_cb: unknown) => undefined,
     onAiChatTrace: (_cb: unknown) => undefined,
+    onAiChatTitleUpdated: (_cb: unknown) => undefined,
     off: (_channel: string, _cb: unknown) => undefined,
   },
 }

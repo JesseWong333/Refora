@@ -71,18 +71,18 @@ afterEach(() => {
 
 describe('ReportCard', () => {
   it('renders the report title and preview content', () => {
-    render(<ReportCard report={makeReport()} onDelete={() => {}} />)
+    render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={() => {}} />)
     expect(screen.getByText('Test Report')).toBeTruthy()
     expect(screen.getByText(/Paragraph one/)).toBeTruthy()
   })
 
   it('renders formatted date', () => {
-    render(<ReportCard report={makeReport({ createdAt: 1700000000000 })} onDelete={() => {}} />)
+    render(<ReportCard report={makeReport({ createdAt: 1700000000000 })} onDelete={() => {}} onUpdate={() => {}} />)
     expect(screen.getByText('2023-11-14')).toBeTruthy()
   })
 
-  it('shows context menu on right-click with a single delete option', () => {
-    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} />)
+  it('shows context menu on right-click with edit, export, and delete options', () => {
+    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={() => {}} />)
     const card = container.querySelector('.card') as HTMLElement
     expect(card).toBeTruthy()
     fireEvent.contextMenu(card)
@@ -93,31 +93,35 @@ describe('ReportCard', () => {
       danger?: boolean
       onClick: () => void
     }>
-    expect(items).toHaveLength(1)
-    expect(items[0].key).toBe('delete')
-    expect(items[0].danger).toBe(true)
-    expect(items[0].label).toBe('workspace.reportDelete')
+    expect(items).toHaveLength(3)
+    expect(items[0].key).toBe('edit')
+    expect(items[0].label).toBe('workspace.reportEdit')
+    expect(items[1].key).toBe('export')
+    expect(items[1].label).toBe('workspace.reportExportMd')
+    expect(items[2].key).toBe('delete')
+    expect(items[2].danger).toBe(true)
+    expect(items[2].label).toBe('workspace.reportDelete')
   })
 
   it('opens modal when context menu delete action is clicked', () => {
-    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} />)
+    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={() => {}} />)
     const card = container.querySelector('.card') as HTMLElement
     fireEvent.contextMenu(card)
     const items = mockShowContextMenu.mock.calls[0][0] as Array<{ onClick: () => void }>
     act(() => {
-      items[0].onClick()
+      items[2].onClick()
     })
     expect(screen.getByTestId('modal')).toBeTruthy()
   })
 
   it('triggers onDelete on second click of danger button (two-step confirm)', () => {
     const onDelete = vi.fn()
-    const { container } = render(<ReportCard report={makeReport()} onDelete={onDelete} />)
+    const { container } = render(<ReportCard report={makeReport()} onDelete={onDelete} onUpdate={() => {}} />)
     const card = container.querySelector('.card') as HTMLElement
     fireEvent.contextMenu(card)
     const items = mockShowContextMenu.mock.calls[0][0] as Array<{ onClick: () => void }>
     act(() => {
-      items[0].onClick()
+      items[2].onClick()
     })
     const dangerBtn = screen.getByTestId('modal-btn-danger')
     expect(dangerBtn.textContent).toContain('workspace.reportDelete')

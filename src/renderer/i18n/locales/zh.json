@@ -194,6 +194,12 @@
     "retry": "重试",
     "reportDelete": "删除报告",
     "reportDeleteConfirm": "删除此报告？此操作不可撤销。",
+    "reportEdit": "编辑",
+    "reportExportMd": "导出 Markdown",
+    "reportSave": "保存",
+    "reportCancelEdit": "取消",
+    "reportTitleLabel": "标题",
+    "reportContentLabel": "内容",
     "chatPlaceholder": "针对此工作空间中的文献提出任何问题。",
     "chat": {
       "title": "对话",
@@ -236,7 +242,9 @@
       "traceInput": "输入",
       "traceOutput": "输出",
       "traceExpand": "展开详情",
-      "traceCollapse": "收起详情"
+      "traceCollapse": "收起详情",
+      "tokenUsage": "Token",
+      "tokenTotal": "共 {{count}} tokens"
     }
   }
 }

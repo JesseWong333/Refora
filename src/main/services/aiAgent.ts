@@ -26,12 +26,14 @@ import {
   emitAiChatDone,
   emitAiChatError,
   emitAiChatTrace,
+  emitAiChatTitleUpdated,
   emitAiReportCreated,
   emitWorkspaceItemsChanged
 } from '../ipc/events'
 import { logger } from './logger'
 import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
+import { generateThreadTitle } from './generateThreadTitle'
 import { historyToMessages, truncateOutput } from './chatHistoryMessages'
 import { resolveDeepThinkingMode, type DeepThinkingMode } from '../../shared/deepThinking'
 import { openPdf } from './pdfOpen'
@@ -217,6 +219,54 @@ function extractToolCallId(
   }
   if (typeof event.run_id === 'string' && event.run_id) return event.run_id
   return randomUUID()
+}
+
+interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+function extractTokenUsage(data: Record<string, unknown> | undefined): TokenUsage | null {
+  if (!data) return null
+  const output = data.output as Record<string, unknown> | undefined
+  if (!output || typeof output !== 'object') return null
+
+  const usageMetadata = output.usage_metadata as Record<string, unknown> | undefined
+  if (usageMetadata && typeof usageMetadata === 'object') {
+    const inputTokens = usageMetadata.input_tokens
+    const outputTokens = usageMetadata.output_tokens
+    const totalTokens = usageMetadata.total_tokens
+    if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
+      return {
+        inputTokens,
+        outputTokens,
+        totalTokens:
+          typeof totalTokens === 'number' ? totalTokens : inputTokens + outputTokens
+      }
+    }
+  }
+
+  const responseMetadata = output.response_metadata as Record<string, unknown> | undefined
+  const tokenUsage = (responseMetadata?.token_usage ??
+    (output.additional_kwargs as Record<string, unknown> | undefined)?.token_usage) as
+    | Record<string, unknown>
+    | undefined
+  if (tokenUsage && typeof tokenUsage === 'object') {
+    const promptTokens = tokenUsage.prompt_tokens
+    const completionTokens = tokenUsage.completion_tokens
+    const totalTokens = tokenUsage.total_tokens
+    if (typeof promptTokens === 'number' && typeof completionTokens === 'number') {
+      return {
+        inputTokens: promptTokens,
+        outputTokens: completionTokens,
+        totalTokens:
+          typeof totalTokens === 'number' ? totalTokens : promptTokens + completionTokens
+      }
+    }
+  }
+
+  return null
 }
 
 export function createAiAgentService(
@@ -578,7 +628,8 @@ export function createAiAgentService(
     function finish(
       id: string,
       status: AgentTraceStepStatus,
-      output: string | null
+      output: string | null,
+      usage?: TokenUsage | null
     ): AgentTraceStep | null {
       for (const [k, v] of openByKey) {
         if (v === id) openByKey.delete(k)
@@ -586,7 +637,14 @@ export function createAiAgentService(
       const step = repos.agentTraces.updateStep(id, {
         status,
         output,
-        endedAt: Date.now()
+        endedAt: Date.now(),
+        ...(usage
+          ? {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens
+            }
+          : {})
       })
       if (step) emitStep(step)
       return step
@@ -595,11 +653,12 @@ export function createAiAgentService(
     function finishByKeys(
       keys: string[],
       status: AgentTraceStepStatus,
-      output: string | null
+      output: string | null,
+      usage?: TokenUsage | null
     ): AgentTraceStep | null {
       for (const key of keys) {
         const id = openByKey.get(key)
-        if (id) return finish(id, status, output)
+        if (id) return finish(id, status, output, usage)
       }
       return null
     }
@@ -719,6 +778,7 @@ export function createAiAgentService(
       const agent = createReactAgent({ llm, tools })
 
       const allHistory = repos.chat.listMessages(threadId)
+      const isFirstExchange = allHistory.length <= 1
       const truncatedHistory = truncateHistoryByTokens(
         allHistory as ChatMessage[],
         {
@@ -744,6 +804,7 @@ export function createAiAgentService(
       let finalText = ''
       const collectedToolCalls: Array<{ name: string; toolCallId: string; input: string | null; output: string | null }> = []
       let activeLlmId: string | null = null
+      let completedNormally = false
 
       try {
         for await (const event of agent.streamEvents(
@@ -756,7 +817,7 @@ export function createAiAgentService(
 
           if (eventName === 'on_chat_model_start') {
             if (activeLlmId) {
-              trace.finish(activeLlmId, 'done', null)
+              trace.finish(activeLlmId, 'done', null, null)
               activeLlmId = null
             }
             const keys = runKey ? [runKey, 'llm:active'] : ['llm:active']
@@ -766,11 +827,12 @@ export function createAiAgentService(
           }
 
           if (eventName === 'on_chat_model_end') {
+            const usage = extractTokenUsage(data)
             const keys = [runKey, 'llm:active'].filter((k): k is string => !!k)
-            const finished = trace.finishByKeys(keys, 'done', extractToolOutput(data))
+            const finished = trace.finishByKeys(keys, 'done', extractToolOutput(data), usage)
             if (finished && finished.id === activeLlmId) activeLlmId = null
             else if (activeLlmId) {
-              trace.finish(activeLlmId, 'done', extractToolOutput(data))
+              trace.finish(activeLlmId, 'done', extractToolOutput(data), usage)
               activeLlmId = null
             }
             continue
@@ -864,6 +926,7 @@ export function createAiAgentService(
             }
           }
         }
+        completedNormally = true
       } catch (streamErr) {
         const isAbort =
           controller.signal.aborted ||
@@ -871,7 +934,7 @@ export function createAiAgentService(
             (streamErr.name === 'AbortError' || /abort/i.test(streamErr.message)))
         if (isAbort) {
           if (activeLlmId) {
-            trace.finish(activeLlmId, 'done', null)
+            trace.finish(activeLlmId, 'done', null, null)
             activeLlmId = null
           }
           trace.failOpen('Cancelled by user')
@@ -893,7 +956,7 @@ export function createAiAgentService(
               : String(streamErr)
           logger.warn(`aiAgent:stream-error: ${msg}`)
           if (activeLlmId) {
-            trace.finish(activeLlmId, 'error', msg)
+            trace.finish(activeLlmId, 'error', msg, null)
             activeLlmId = null
           }
           trace.failOpen(msg)
@@ -909,7 +972,7 @@ export function createAiAgentService(
       }
 
       if (activeLlmId) {
-        trace.finish(activeLlmId, 'done', null)
+        trace.finish(activeLlmId, 'done', null, null)
         activeLlmId = null
       }
 
@@ -927,6 +990,21 @@ export function createAiAgentService(
       trace.finish(runStep.id, 'done', null)
       const ww = getWin()
       if (ww) emitAiChatDone(ww, { threadId, finalText, runId })
+
+      if (completedNormally && isFirstExchange && finalText && finalText !== 'No response generated.') {
+        void (async () => {
+          try {
+            const title = await generateThreadTitle(modelId, provider, key, req.text)
+            if (title) {
+              repos.chat.updateTitle(threadId, title)
+              const ww2 = getWin()
+              if (ww2) emitAiChatTitleUpdated(ww2, { threadId, title })
+            }
+          } catch {
+            // silently keep derived title
+          }
+        })()
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Agent failed'
       logger.warn(`aiAgent:run-error: ${message}`)

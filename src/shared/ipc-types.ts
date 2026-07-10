@@ -303,6 +303,9 @@ export interface AgentTraceStep {
   startedAt: number
   endedAt: number | null
   seq: number
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
 }
 
 export interface ChatTokenEvent {
@@ -326,6 +329,11 @@ export interface ChatTraceEvent {
   threadId: string
   runId: string
   step: AgentTraceStep
+}
+
+export interface ChatTitleUpdatedEvent {
+  threadId: string
+  title: string
 }
 
 export interface SummaryErrorEvent {
@@ -355,6 +363,7 @@ export interface DocumentEvents {
   onAiChatDone(cb: (payload: ChatDoneEvent) => void): void
   onAiChatError(cb: (payload: ChatErrorEvent) => void): void
   onAiChatTrace(cb: (payload: ChatTraceEvent) => void): void
+  onAiChatTitleUpdated(cb: (payload: ChatTitleUpdatedEvent) => void): void
   onAiReportCreated(cb: (report: AiReport) => void): void
   onWorkspaceItemsChanged(cb: (payload: WorkspaceItemsChangedEvent) => void): void
   off(channel: EventChannel, cb: unknown): void
@@ -447,6 +456,7 @@ export interface ReforaApi {
   }
   reports: {
     list(workspaceId: string): Promise<AiReport[]>
+    update(id: string, patch: { title?: string; contentMd?: string }): Promise<AiReport>
     delete(id: string): Promise<void>
   }
   events: DocumentEvents

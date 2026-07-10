@@ -74,6 +74,7 @@ export const IpcChannel = {
 
   AiReportsList: 'ai:reports:list',
   AiReportsDelete: 'ai:reports:delete',
+  AiReportsUpdate: 'ai:reports:update',
 
   EventDocumentUpdated: 'document:updated',
   EventImportProgress: 'import:progress',
@@ -87,6 +88,7 @@ export const IpcChannel = {
   EventAiChatDone: 'ai:chat:done',
   EventAiChatError: 'ai:chat:error',
   EventAiChatTrace: 'ai:chat:trace',
+  EventAiChatTitleUpdated: 'ai:chat:titleUpdated',
   EventAiReportCreated: 'ai:report:created',
   EventWorkspaceItemsChanged: 'workspace:items:changed'
 } as const

@@ -60,6 +60,7 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventAiChatDone
   | typeof IpcChannel.EventAiChatError
   | typeof IpcChannel.EventAiChatTrace
+  | typeof IpcChannel.EventAiChatTitleUpdated
   | typeof IpcChannel.EventAiReportCreated
   | typeof IpcChannel.EventWorkspaceItemsChanged
 >
@@ -607,7 +608,9 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),
     [IpcChannel.AiReportsDelete]: (id: string): Result<void> =>
-      wrap(() => repos().aiReports.delete(id))
+      wrap(() => repos().aiReports.delete(id)),
+    [IpcChannel.AiReportsUpdate]: (id: string, patch: { title?: string; contentMd?: string }): Result<AiReport> =>
+      wrap(() => repos().aiReports.update(id, patch))
   } satisfies Record<HandlerChannel, (...args: never[]) => unknown>
 
   return handlers

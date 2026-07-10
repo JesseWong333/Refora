@@ -56,6 +56,16 @@ export function createAiReportsRepository(db: SqliteDb) {
     return mapReport(row)
   }
 
+  function update(id: string, patch: { title?: string; contentMd?: string }): AiReport {
+    const existing = db.prepare('SELECT * FROM ai_reports WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    if (!existing) throw new RepoError('not_found', `report not found: ${id}`)
+    const title = patch.title !== undefined ? patch.title : (existing.title as string)
+    const contentMd = patch.contentMd !== undefined ? patch.contentMd : (existing.contentMd as string)
+    db.prepare('UPDATE ai_reports SET title = ?, contentMd = ? WHERE id = ?').run(title, contentMd, id)
+    const row = db.prepare('SELECT * FROM ai_reports WHERE id = ?').get(id) as Record<string, unknown>
+    return mapReport(row)
+  }
+
   function remove(id: string): void {
     const result = db.prepare('DELETE FROM ai_reports WHERE id = ?').run(id)
     if (result.changes === 0) throw new RepoError('not_found', `report not found: ${id}`)
@@ -77,5 +87,5 @@ export function createAiReportsRepository(db: SqliteDb) {
     }
   }
 
-  return { list, create, delete: remove, removeDocFromSources }
+  return { list, create, update, delete: remove, removeDocFromSources }
 }

@@ -14,7 +14,10 @@ function mapStep(row: Record<string, unknown>): AgentTraceStep {
     status: row.status as AgentTraceStepStatus,
     startedAt: row.startedAt as number,
     endedAt: (row.endedAt as number | null) ?? null,
-    seq: row.seq as number
+    seq: row.seq as number,
+    inputTokens: (row.inputTokens as number | null) ?? null,
+    outputTokens: (row.outputTokens as number | null) ?? null,
+    totalTokens: (row.totalTokens as number | null) ?? null
   }
 }
 
@@ -30,12 +33,15 @@ export function createAgentTracesRepository(db: SqliteDb) {
     startedAt: number
     endedAt?: number | null
     seq: number
+    inputTokens?: number | null
+    outputTokens?: number | null
+    totalTokens?: number | null
   }): AgentTraceStep {
     const id = randomUUID()
     db.prepare(
       `INSERT INTO agent_trace_steps
-        (id, threadId, runId, kind, name, input, output, status, startedAt, endedAt, seq)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, threadId, runId, kind, name, input, output, status, startedAt, endedAt, seq, inputTokens, outputTokens, totalTokens)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.threadId,
@@ -47,7 +53,10 @@ export function createAgentTracesRepository(db: SqliteDb) {
       input.status,
       input.startedAt,
       input.endedAt ?? null,
-      input.seq
+      input.seq,
+      input.inputTokens ?? null,
+      input.outputTokens ?? null,
+      input.totalTokens ?? null
     )
     const row = db.prepare('SELECT * FROM agent_trace_steps WHERE id = ?').get(id) as Record<
       string,
@@ -62,6 +71,9 @@ export function createAgentTracesRepository(db: SqliteDb) {
       output?: string | null
       status?: AgentTraceStepStatus
       endedAt?: number | null
+      inputTokens?: number | null
+      outputTokens?: number | null
+      totalTokens?: number | null
     }
   ): AgentTraceStep | null {
     const existing = db.prepare('SELECT * FROM agent_trace_steps WHERE id = ?').get(id) as
@@ -71,9 +83,26 @@ export function createAgentTracesRepository(db: SqliteDb) {
     const output = patch.output !== undefined ? patch.output : (existing.output as string | null)
     const status = patch.status ?? (existing.status as AgentTraceStepStatus)
     const endedAt = patch.endedAt !== undefined ? patch.endedAt : (existing.endedAt as number | null)
-    db.prepare(
-      'UPDATE agent_trace_steps SET output = ?, status = ?, endedAt = ? WHERE id = ?'
-    ).run(output, status, endedAt, id)
+
+    const sets: string[] = ['output = ?', 'status = ?', 'endedAt = ?']
+    const params: unknown[] = [output, status, endedAt]
+
+    if (patch.inputTokens !== undefined) {
+      sets.push('inputTokens = ?')
+      params.push(patch.inputTokens)
+    }
+    if (patch.outputTokens !== undefined) {
+      sets.push('outputTokens = ?')
+      params.push(patch.outputTokens)
+    }
+    if (patch.totalTokens !== undefined) {
+      sets.push('totalTokens = ?')
+      params.push(patch.totalTokens)
+    }
+
+    params.push(id)
+    db.prepare(`UPDATE agent_trace_steps SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+
     const row = db.prepare('SELECT * FROM agent_trace_steps WHERE id = ?').get(id) as Record<
       string,
       unknown

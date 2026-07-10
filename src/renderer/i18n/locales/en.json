@@ -194,6 +194,12 @@
     "retry": "Retry",
     "reportDelete": "Delete report",
     "reportDeleteConfirm": "Delete this report? This cannot be undone.",
+    "reportEdit": "Edit",
+    "reportExportMd": "Export Markdown",
+    "reportSave": "Save",
+    "reportCancelEdit": "Cancel",
+    "reportTitleLabel": "Title",
+    "reportContentLabel": "Content",
     "chatPlaceholder": "Ask anything about the papers in this workspace.",
     "chat": {
       "title": "Chat",
@@ -236,7 +242,9 @@
       "traceInput": "Input",
       "traceOutput": "Output",
       "traceExpand": "Show details",
-      "traceCollapse": "Hide details"
+      "traceCollapse": "Hide details",
+      "tokenUsage": "Tokens",
+      "tokenTotal": "Total {{count}} tokens"
     }
   }
 }

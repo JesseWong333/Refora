@@ -22,6 +22,7 @@ export default function Board() {
   const removeItem = useWorkspaceStore((s) => s.removeItem)
   const fetchItems = useWorkspaceStore((s) => s.fetchItems)
   const deleteReport = useWorkspaceStore((s) => s.deleteReport)
+  const updateReport = useWorkspaceStore((s) => s.updateReport)
 
   const [docs, setDocs] = useState<Map<string, Document>>(new Map())
   const [summaries, setSummaries] = useState<Map<string, AiSummary>>(new Map())
@@ -281,7 +282,7 @@ export default function Board() {
                 size={sizeFor(key)}
                 onSizeChange={handleCardSizeChange}
               >
-                <ReportCard report={r} onDelete={() => void deleteReport(r.id)} />
+                <ReportCard report={r} onDelete={() => void deleteReport(r.id)} onUpdate={(id, patch) => void updateReport(id, patch)} />
               </ResizableCard>
             )
           })}
