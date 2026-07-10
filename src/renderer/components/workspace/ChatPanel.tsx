@@ -43,13 +43,21 @@ function urlTransform(url: string): string {
   return defaultUrlTransform(url)
 }
 
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s)
+  } catch {
+    return s
+  }
+}
+
 export function parseReforaDocLink(href: string): { docId: string; query?: string } | null {
   if (!href) return null
   const match = href.match(/^refora:\/\/doc\/([^?]+)(?:\?(.*))?$/)
   if (!match) return null
   return {
-    docId: decodeURIComponent(match[1]),
-    query: match[2] ? decodeURIComponent(match[2]) : undefined
+    docId: safeDecode(match[1]),
+    query: match[2] ? safeDecode(match[2]) : undefined
   }
 }
 

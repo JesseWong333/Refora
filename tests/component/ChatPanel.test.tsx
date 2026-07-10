@@ -107,6 +107,14 @@ describe('parseReforaDocLink', () => {
     expect(result!.docId).toBe('my doc')
   })
 
+  it('does not throw on malformed percent-sequences', () => {
+    expect(() => parseReforaDocLink('refora://doc/%')).not.toThrow()
+    expect(() => parseReforaDocLink('refora://doc/a%zz')).not.toThrow()
+    const result = parseReforaDocLink('refora://doc/%')
+    expect(result).not.toBeNull()
+    expect(result!.docId).toBe('%')
+  })
+
   it('returns null for https links', () => {
     expect(parseReforaDocLink('https://example.com')).toBeNull()
   })
