@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { api } from '../../ipc'
@@ -29,6 +29,7 @@ export default function Board() {
   const [summaryErrors, setSummaryErrors] = useState<Map<string, string>>(new Map())
   const [dropActive, setDropActive] = useState(false)
   const [cardSizes, setCardSizes] = useState<Record<string, CardSize>>({})
+  const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const docItems = items.filter((it) => it.kind === 'document' && it.docId)
   const docIds = docItems.map((it) => it.docId as string)
@@ -41,6 +42,12 @@ export default function Board() {
     setSummaryErrors(new Map())
     setCardSizes({})
   }, [activeWorkspaceId])
+
+  useEffect(() => {
+    return () => {
+      if (dropErrorTimerRef.current) clearTimeout(dropErrorTimerRef.current)
+    }
+  }, [])
 
   const handleCardSizeChange = useCallback((sizeKey: string, size: CardSize) => {
     setCardSizes((prev) => ({ ...prev, [sizeKey]: clampCardSize(size) }))
@@ -73,6 +80,11 @@ export default function Board() {
           })
         } catch (e) {
           console.warn('Board: failed to load doc/summary', e)
+          setSummaryErrors((prev) => {
+            const next = new Map(prev)
+            next.set(docId, 'Failed to load document')
+            return next
+          })
         }
       })
     )
@@ -195,6 +207,18 @@ export default function Board() {
       await fetchItems()
     } catch (e) {
       console.warn('Board: failed to handle drop', e)
+      setSummaryErrors((prev) => {
+        const next = new Map(prev)
+        next.set('__drop__', 'Failed to add documents to board')
+        return next
+      })
+      dropErrorTimerRef.current = setTimeout(() => {
+        setSummaryErrors((prev) => {
+          const next = new Map(prev)
+          next.delete('__drop__')
+          return next
+        })
+      }, 3500)
     }
   }
 
@@ -215,6 +239,11 @@ export default function Board() {
       onDragLeave={handleDragLeave}
       onDrop={(e) => void handleDrop(e)}
     >
+      {summaryErrors.get('__drop__') && (
+        <div className="mb-2 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+          {summaryErrors.get('__drop__')}
+        </div>
+      )}
       {isEmpty ? (
         <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center">
           <p className="text-sm text-muted">{t('workspace.dragPapersHint')}</p>

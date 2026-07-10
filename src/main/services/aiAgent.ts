@@ -25,9 +25,12 @@ import {
   emitAiReportCreated
 } from '../ipc/events'
 import { logger } from './logger'
+import { truncateHistoryByTokens } from './tokenEstimate'
 
 const MAX_FULLTEXT_CHARS = 8000
-const HISTORY_LIMIT = 24
+const HISTORY_TOKEN_BUDGET = 8000
+const HISTORY_MIN_MESSAGES = 2
+const HISTORY_MAX_MESSAGES = 50
 const TRACE_TEXT_LIMIT = 4000
 const WORKSPACE_CONTEXT_DOC_LIMIT = 80
 const WORKSPACE_CONTEXT_CHAR_LIMIT = 6000
@@ -475,8 +478,16 @@ export function createAiAgentService(
       const tools = buildTools(req, modelId)
       const agent = createReactAgent({ llm, tools })
 
-      const history = repos.chat.listMessages(threadId).slice(-HISTORY_LIMIT)
-      const historyMsgs = history.map((m) => {
+      const allHistory = repos.chat.listMessages(threadId)
+      const truncatedHistory = truncateHistoryByTokens(
+        allHistory.map((m) => ({ role: m.role, content: m.content })),
+        {
+          maxTokens: HISTORY_TOKEN_BUDGET,
+          minMessages: HISTORY_MIN_MESSAGES,
+          maxMessages: HISTORY_MAX_MESSAGES
+        }
+      )
+      const historyMsgs = truncatedHistory.map((m) => {
         if (m.role === 'user') return new HumanMessage(m.content)
         if (m.role === 'tool') {
           return new AIMessage(`[Previous tool call result: ${m.content}]`)
@@ -665,8 +676,8 @@ export function createAiAgentService(
       try {
         trace.failOpen(message)
         trace.finish(runStep.id, 'error', message)
-      } catch {
-        void 0
+      } catch (traceErr) {
+        logger.warn(`aiAgent:trace-cleanup-failed: ${traceErr instanceof Error ? traceErr.message : String(traceErr)}`)
       }
       const ww = getWin()
       if (ww) emitAiChatError(ww, { threadId, message, runId })

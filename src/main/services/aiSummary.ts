@@ -164,7 +164,9 @@ export function createAiSummaryService(
         let parsed: AiSummaryContent | null = null
         try {
           parsed = toSummaryContent(JSON.parse(stripCodeFences(finalText)))
-        } catch {
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          logger.warn(`aiSummary:json-parse-failed id=${docId}: ${msg}`)
           parsed = null
         }
         content = parsed ?? { core: finalText.trim() || combined, keyPoints: [] }

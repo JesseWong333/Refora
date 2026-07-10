@@ -453,8 +453,8 @@ export default function ChatPanel() {
           setProviders((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
           await pushRecentModel(full)
           setRecentModels(await loadRecentModels())
-        } catch {
-          void 0
+        } catch (e) {
+          setError(errorMessage(e, 'Failed to update model'))
         }
       }
       setModelMenuOpen(false)
