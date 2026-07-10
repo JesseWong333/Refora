@@ -214,6 +214,8 @@
       "customModel": "自定义模型",
       "variant": "变体",
       "deepThinking": "深度思考",
+      "deepThinkingNative": "原生思考（由模型推理）",
+      "deepThinkingPrompt": "提示增强（兼容模式）",
       "featureOn": "开",
       "featureOff": "关",
       "modelSwitchHint": "已切换模型 — 仅对后续新消息生效。",

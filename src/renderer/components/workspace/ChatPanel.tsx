@@ -32,6 +32,7 @@ import {
   parseModelId,
   supportsModelVariants
 } from '../../../shared/modelVariant'
+import { resolveDeepThinkingMode } from '../../../shared/deepThinking'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -279,6 +280,14 @@ export default function ChatPanel() {
     const format = activeProvider?.variantFormat ?? 'dash'
     return composeModelId(selectedModel, selectedVariant, format)
   }, [selectedModel, selectedVariant, activeProvider?.variantFormat])
+
+  const thinkingMode = useMemo(
+    () =>
+      deepThinking
+        ? resolveDeepThinkingMode(requestModel || selectedModel, activeProvider?.baseUrl ?? '')
+        : 'none',
+    [deepThinking, requestModel, selectedModel, activeProvider]
+  )
 
   const loadProviders = useCallback(async () => {
     try {
@@ -991,8 +1000,20 @@ export default function ChatPanel() {
                 onClick={() => setDeepThinking((v) => !v)}
                 disabled={providers.length === 0 || streaming}
                 aria-pressed={deepThinking}
-                title={t('workspace.chat.deepThinking', 'Deep thinking')}
-                aria-label={t('workspace.chat.deepThinking', 'Deep thinking')}
+                title={
+                  deepThinking && thinkingMode === 'native'
+                    ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
+                    : deepThinking && thinkingMode === 'prompt'
+                      ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
+                      : t('workspace.chat.deepThinking', 'Deep thinking')
+                }
+                aria-label={
+                  deepThinking && thinkingMode === 'native'
+                    ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
+                    : deepThinking && thinkingMode === 'prompt'
+                      ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
+                      : t('workspace.chat.deepThinking', 'Deep thinking')
+                }
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 {deepThinking

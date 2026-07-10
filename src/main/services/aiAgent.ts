@@ -30,6 +30,7 @@ import {
 import { logger } from './logger'
 import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
+import { resolveDeepThinkingMode, type DeepThinkingMode } from '../../shared/deepThinking'
 
 const MAX_FULLTEXT_CHARS = 8000
 const HISTORY_TOKEN_BUDGET = 8000
@@ -588,22 +589,38 @@ export function createAiAgentService(
 
       const modelId = (req.model && req.model.trim()) || provider.model
       const deepThinking = req.features?.deepThinking === true
+      const thinkingMode: DeepThinkingMode = deepThinking
+        ? resolveDeepThinkingMode(modelId, provider.baseUrl)
+        : 'none'
       const workspaceContext = buildWorkspaceContext(repos, req.workspaceId)
       const systemPrompt = [
         SYSTEM_PROMPT,
-        deepThinking ? 'Prefer careful multi-step reasoning before answering.' : '',
+        thinkingMode === 'prompt' ? 'Prefer careful multi-step reasoning before answering.' : '',
         workspaceContext
       ]
         .filter((s) => s.length > 0)
         .join('\n\n')
+
+      const modelKwargs: Record<string, unknown> = {}
+      if (thinkingMode === 'native') {
+        const baseUrlLower = provider.baseUrl.toLowerCase()
+        if (/openrouter|together|siliconflow|dashscope|bigmodel|volcengine/i.test(baseUrlLower)) {
+          modelKwargs.enable_thinking = true
+        }
+      }
 
       const llm = new ChatOpenAI({
         model: modelId,
         configuration: { baseURL: provider.baseUrl },
         apiKey: key,
         streaming: true,
-        ...(provider.temperature != null ? { temperature: provider.temperature } : {}),
-        ...(provider.maxTokens != null ? { maxTokens: provider.maxTokens } : {})
+        ...(thinkingMode === 'native'
+          ? {}
+          : provider.temperature != null
+            ? { temperature: provider.temperature }
+            : {}),
+        ...(provider.maxTokens != null ? { maxTokens: provider.maxTokens } : {}),
+        ...(Object.keys(modelKwargs).length > 0 ? { modelKwargs } : {})
       })
 
       const tools = buildTools(req, modelId)
