@@ -97,5 +97,40 @@ export function historyToMessages(rows: ChatMessage[]): BaseMessage[] {
       )
     }
   }
+  sanitizeToolCallPairs(out)
   return out
+}
+
+export function sanitizeToolCallPairs(messages: BaseMessage[]): void {
+  const satisfiedIds = new Set<string>()
+  for (const msg of messages) {
+    if (msg instanceof ToolMessage && msg.tool_call_id) {
+      satisfiedIds.add(msg.tool_call_id)
+    }
+  }
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (!(msg instanceof AIMessage)) continue
+    const calls = msg.tool_calls
+    if (!Array.isArray(calls) || calls.length === 0) continue
+
+    const unpaired = calls.filter((c) => c.id && !satisfiedIds.has(c.id))
+    if (unpaired.length === 0) continue
+
+    if (unpaired.length === calls.length) {
+      messages.splice(i, 1)
+    } else {
+      const placeholders = unpaired.map(
+        (c) =>
+          new ToolMessage({
+            content: '[Tool result unavailable]',
+            tool_call_id: c.id!,
+            name: c.name ?? 'unknown'
+          })
+      )
+      messages.splice(i + 1, 0, ...placeholders)
+      for (const c of unpaired) satisfiedIds.add(c.id!)
+    }
+  }
 }

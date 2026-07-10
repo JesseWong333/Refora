@@ -4,6 +4,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { DynamicTool, DynamicStructuredTool } from '@langchain/core/tools'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
+import { GraphRecursionError } from '@langchain/langgraph'
 import { z } from 'zod'
 import type { Repositories } from '../db/repositories'
 import type {
@@ -42,6 +43,10 @@ const HISTORY_MAX_MESSAGES = 50
 const TRACE_TEXT_LIMIT = 4000
 const WORKSPACE_CONTEXT_DOC_LIMIT = 80
 const WORKSPACE_CONTEXT_CHAR_LIMIT = 6000
+const MAX_RECURSION_LIMIT = 50
+const RECURSION_LIMIT_MESSAGE =
+  'The agent reached the maximum number of reasoning steps without completing. ' +
+  'Please try refining or simplifying your request.'
 
 const SYSTEM_PROMPT =
   'You are a research assistant working in a workspace of academic papers. ' +
@@ -635,6 +640,12 @@ export function createAiAgentService(
     if (!w) return
 
     const runId = randomUUID()
+
+    const existingController = activeRuns.get(threadId)
+    if (existingController) {
+      existingController.abort()
+    }
+
     const controller = new AbortController()
     activeRuns.set(threadId, controller)
     const trace = createTraceRecorder(threadId, runId)
@@ -737,7 +748,7 @@ export function createAiAgentService(
       try {
         for await (const event of agent.streamEvents(
           { messages: inputMsgs },
-          { version: 'v2', signal: controller.signal }
+          { version: 'v2', signal: controller.signal, recursionLimit: MAX_RECURSION_LIMIT }
         )) {
           const eventName = event.event
           const data = (event.data ?? {}) as Record<string, unknown>
@@ -869,7 +880,17 @@ export function createAiAgentService(
               ? `${finalText}\n\n[Response cancelled by user]`
               : '[Response cancelled by user]'
         } else {
-          const msg = streamErr instanceof Error ? streamErr.message : String(streamErr)
+          const isRecursionError =
+            streamErr instanceof GraphRecursionError ||
+            (streamErr instanceof Error &&
+              (streamErr.name === 'GraphRecursionError' ||
+                (streamErr as unknown as Record<string, unknown>).lc_error_code === 'GRAPH_RECURSION_LIMIT' ||
+                /recursion limit/i.test(streamErr.message)))
+          const msg = isRecursionError
+            ? RECURSION_LIMIT_MESSAGE
+            : streamErr instanceof Error
+              ? streamErr.message
+              : String(streamErr)
           logger.warn(`aiAgent:stream-error: ${msg}`)
           if (activeLlmId) {
             trace.finish(activeLlmId, 'error', msg)
@@ -918,7 +939,9 @@ export function createAiAgentService(
       const ww = getWin()
       if (ww) emitAiChatError(ww, { threadId, message, runId })
     } finally {
-      activeRuns.delete(threadId)
+      if (activeRuns.get(threadId) === controller) {
+        activeRuns.delete(threadId)
+      }
     }
   }
 
