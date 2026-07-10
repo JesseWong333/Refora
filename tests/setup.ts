@@ -171,6 +171,7 @@ const noop = async () => undefined
     onAiSummaryError: (_cb: unknown) => undefined,
     onAiReportCreated: (_cb: unknown) => undefined,
     onAiChatToken: (_cb: unknown) => undefined,
+    onAiChatReasoning: (_cb: unknown) => undefined,
     onAiChatDone: (_cb: unknown) => undefined,
     onAiChatError: (_cb: unknown) => undefined,
     onAiChatTrace: (_cb: unknown) => undefined,

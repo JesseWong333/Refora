@@ -85,6 +85,7 @@ export const IpcChannel = {
   EventAiSummaryUpdated: 'ai:summary:updated',
   EventAiSummaryError: 'ai:summary:error',
   EventAiChatToken: 'ai:chat:token',
+  EventAiChatReasoning: 'ai:chat:reasoning',
   EventAiChatDone: 'ai:chat:done',
   EventAiChatError: 'ai:chat:error',
   EventAiChatTrace: 'ai:chat:trace',

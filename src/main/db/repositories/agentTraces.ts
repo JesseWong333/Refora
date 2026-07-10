@@ -126,5 +126,15 @@ export function createAgentTracesRepository(db: SqliteDb) {
     return rows.map(mapStep)
   }
 
-  return { addStep, updateStep, listByThread, listByRun }
+  function deleteByThread(threadId: string): number {
+    const result = db.prepare('DELETE FROM agent_trace_steps WHERE threadId = ?').run(threadId)
+    return result.changes
+  }
+
+  function deleteOlderThan(timestamp: number): number {
+    const result = db.prepare('DELETE FROM agent_trace_steps WHERE startedAt < ?').run(timestamp)
+    return result.changes
+  }
+
+  return { addStep, updateStep, listByThread, listByRun, deleteByThread, deleteOlderThan }
 }

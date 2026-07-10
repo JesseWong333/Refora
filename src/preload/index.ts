@@ -12,6 +12,7 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatMessage,
+  ChatReasoningEvent,
   ChatSendRequest,
   ChatThread,
   ChatTokenEvent,
@@ -218,6 +219,8 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventAiSummaryError, cb),
     onAiChatToken: (cb: (payload: ChatTokenEvent) => void) =>
       subscribe(IpcChannel.EventAiChatToken, cb),
+    onAiChatReasoning: (cb: (payload: ChatReasoningEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatReasoning, cb),
     onAiChatDone: (cb: (payload: ChatDoneEvent) => void) =>
       subscribe(IpcChannel.EventAiChatDone, cb),
     onAiChatError: (cb: (payload: ChatErrorEvent) => void) =>

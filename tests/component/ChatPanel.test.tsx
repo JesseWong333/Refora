@@ -47,7 +47,6 @@ function setupApi(messages: ChatMessage[]): void {
   const w = window as unknown as { api: Record<string, Record<string, unknown>> }
   w.api.aiProviders.list = async () => [TEST_PROVIDER]
   w.api.aiProviders.listModels = async () => ({ ok: true, models: [] })
-  w.api.aiProviders.update = async (id: string) => ({ ...TEST_PROVIDER, id })
   w.api.settings.get = async (_key: string, defaultValue: unknown) => defaultValue
   w.api.settings.set = async () => undefined
   w.api.ai.chatHistory = mockChatHistory

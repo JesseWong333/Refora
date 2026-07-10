@@ -23,6 +23,7 @@ import type { PdfTextService } from './pdfText'
 import type { AiSummaryService } from './aiSummary'
 import {
   emitAiChatToken,
+  emitAiChatReasoning,
   emitAiChatDone,
   emitAiChatError,
   emitAiChatTrace,
@@ -844,31 +845,33 @@ export function createAiAgentService(
             }
             const chunk = chunkData?.chunk
             const content = chunk?.content
-            let token = ''
+            let textToken = ''
+            let reasoningToken = ''
             if (typeof content === 'string') {
-              token = content
+              textToken = content
             } else if (Array.isArray(content)) {
-              token = content
-                .map((part) => {
-                  if (typeof part === 'string') return part
-                  if (part && typeof part === 'object') {
-                    const p = part as Record<string, unknown>
-                    if (p.type === 'text' && typeof p.text === 'string') return p.text
-                    if (p.type === 'reasoning' && typeof p.reasoning === 'string')
-                      return p.reasoning
-                  }
-                  return ''
-                })
-                .join('')
+              for (const part of content) {
+                if (typeof part === 'string') {
+                  textToken += part
+                } else if (part && typeof part === 'object') {
+                  const p = part as Record<string, unknown>
+                  if (p.type === 'text' && typeof p.text === 'string') textToken += p.text
+                  else if (p.type === 'reasoning' && typeof p.reasoning === 'string')
+                    reasoningToken += p.reasoning
+                }
+              }
             }
-            if (!token) {
+            if (!textToken && !reasoningToken) {
               const reasoning = chunk?.additional_kwargs?.reasoning_content
-              if (typeof reasoning === 'string' && reasoning.length > 0) token = reasoning
+              if (typeof reasoning === 'string' && reasoning.length > 0) reasoningToken = reasoning
             }
-            if (!token) continue
-            finalText += token
+            if (!textToken && !reasoningToken) continue
             const ww = getWin()
-            if (ww) emitAiChatToken(ww, { threadId, token })
+            if (reasoningToken && ww) emitAiChatReasoning(ww, { threadId, token: reasoningToken })
+            if (textToken) {
+              finalText += textToken
+              if (ww) emitAiChatToken(ww, { threadId, token: textToken })
+            }
             continue
           }
 

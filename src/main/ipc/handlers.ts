@@ -57,6 +57,7 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventAiSummaryUpdated
   | typeof IpcChannel.EventAiSummaryError
   | typeof IpcChannel.EventAiChatToken
+  | typeof IpcChannel.EventAiChatReasoning
   | typeof IpcChannel.EventAiChatDone
   | typeof IpcChannel.EventAiChatError
   | typeof IpcChannel.EventAiChatTrace
@@ -601,6 +602,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       }),
     [IpcChannel.AiChatDeleteThread]: (threadId: string): Result<void> =>
       wrap(() => {
+        repos().agentTraces.deleteByThread(threadId)
         repos().chat.deleteThread(threadId)
         return undefined
       }),

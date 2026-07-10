@@ -273,6 +273,9 @@ function buildRuntime(dbPath: string): Runtime {
   const db = openDatabase(dbPath)
   seedSettings(db, detectLanguage())
   const repos = createRepositories(db)
+  const traceTtlMs = 30 * 24 * 60 * 60 * 1000
+  const pruned = repos.agentTraces.deleteOlderThan(Date.now() - traceTtlMs)
+  if (pruned > 0) logger.info(`startup:pruned ${pruned} trace steps older than 30 days`)
   const importer = createImporter(repos, () => win)
   const metadataService = createMetadataService(repos, () => win)
   const aiProvidersService = createAiProvidersService(repos)

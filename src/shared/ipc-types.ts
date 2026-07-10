@@ -313,6 +313,11 @@ export interface ChatTokenEvent {
   token: string
 }
 
+export interface ChatReasoningEvent {
+  threadId: string
+  token: string
+}
+
 export interface ChatDoneEvent {
   threadId: string
   finalText: string
@@ -360,6 +365,7 @@ export interface DocumentEvents {
   onAiSummaryUpdated(cb: (docId: string) => void): void
   onAiSummaryError(cb: (payload: SummaryErrorEvent) => void): void
   onAiChatToken(cb: (payload: ChatTokenEvent) => void): void
+  onAiChatReasoning(cb: (payload: ChatReasoningEvent) => void): void
   onAiChatDone(cb: (payload: ChatDoneEvent) => void): void
   onAiChatError(cb: (payload: ChatErrorEvent) => void): void
   onAiChatTrace(cb: (payload: ChatTraceEvent) => void): void

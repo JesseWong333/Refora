@@ -4,6 +4,7 @@ import type {
   AiReport,
   ChatDoneEvent,
   ChatErrorEvent,
+  ChatReasoningEvent,
   ChatTokenEvent,
   ChatTraceEvent,
   ChatTitleUpdatedEvent,
@@ -53,6 +54,12 @@ export function emitAiSummaryError(win: BrowserWindow, payload: SummaryErrorEven
 export function emitAiChatToken(win: BrowserWindow, payload: ChatTokenEvent): void {
   if (!win.isDestroyed()) {
     win.webContents.send(IpcChannel.EventAiChatToken, payload)
+  }
+}
+
+export function emitAiChatReasoning(win: BrowserWindow, payload: ChatReasoningEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiChatReasoning, payload)
   }
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Plus,
@@ -22,6 +22,7 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatMessage,
+  ChatReasoningEvent,
   ChatTokenEvent,
   ChatTraceEvent,
   ChatTitleUpdatedEvent,
@@ -95,6 +96,12 @@ const MARKDOWN_COMPONENTS: Components = {
     )
   }
 }
+
+const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{content}</ReactMarkdown>
+  )
+})
 
 const RECENT_MODELS_KEY = 'chatRecentModels'
 const MAX_RECENT = 8
@@ -308,6 +315,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
+  const [streamingReasoning, setStreamingReasoning] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [providers, setProviders] = useState<AiProvider[]>([])
   const [activeProviderId, setActiveProviderId] = useState('')
@@ -408,6 +416,7 @@ export default function ChatPanel() {
   useEffect(() => {
     threadIdRef.current = activeThreadId
     setStreamingText('')
+    setStreamingReasoning('')
     setStreaming(false)
     setError(null)
     if (!activeThreadId) {
@@ -442,6 +451,10 @@ export default function ChatPanel() {
       if (payload.threadId !== threadIdRef.current) return
       setStreamingText((prev) => prev + payload.token)
     }
+    const onReasoning = (payload: ChatReasoningEvent) => {
+      if (payload.threadId !== threadIdRef.current) return
+      setStreamingReasoning((prev) => prev + payload.token)
+    }
     const onDone = (payload: ChatDoneEvent) => {
       if (payload.threadId !== threadIdRef.current) return
       setMessages((prev) => [
@@ -449,12 +462,14 @@ export default function ChatPanel() {
         localMessage(payload.threadId, 'assistant', payload.finalText)
       ])
       setStreamingText('')
+      setStreamingReasoning('')
       setStreaming(false)
     }
     const onError = (payload: ChatErrorEvent) => {
       if (payload.threadId !== threadIdRef.current) return
       setError(payload.message)
       setStreamingText('')
+      setStreamingReasoning('')
       setStreaming(false)
     }
     const onTrace = (payload: ChatTraceEvent) => {
@@ -469,12 +484,14 @@ export default function ChatPanel() {
       }))
     }
     api.events.onAiChatToken(onToken)
+    api.events.onAiChatReasoning(onReasoning)
     api.events.onAiChatDone(onDone)
     api.events.onAiChatError(onError)
     api.events.onAiChatTrace(onTrace)
     api.events.onAiChatTitleUpdated(onTitleUpdated)
     return () => {
       api.events.off('ai:chat:token', onToken)
+      api.events.off('ai:chat:reasoning', onReasoning)
       api.events.off('ai:chat:done', onDone)
       api.events.off('ai:chat:error', onError)
       api.events.off('ai:chat:trace', onTrace)
@@ -485,7 +502,7 @@ export default function ChatPanel() {
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, streamingText, traceSteps])
+  }, [messages, streamingText, streamingReasoning, traceSteps])
 
   useEffect(() => {
     if (!modelMenuOpen) return
@@ -559,15 +576,8 @@ export default function ChatPanel() {
       const p = providers.find((x) => x.id === nextProviderId)
       const format = p?.variantFormat ?? 'dash'
       const full = composeModelId(baseModel, variant, format)
-      if (nextProviderId && full) {
+      if (full) {
         try {
-          const updated = await api.aiProviders.update(nextProviderId, {
-            model: full,
-            baseModel,
-            variant,
-            variantFormat: format
-          })
-          setProviders((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
           await pushRecentModel(full)
           setRecentModels(await loadRecentModels())
         } catch (e) {
@@ -587,6 +597,7 @@ export default function ChatPanel() {
     setInput('')
     setStreaming(true)
     setStreamingText('')
+    setStreamingReasoning('')
     setError(null)
     hadMessagesRef.current = true
     try {
@@ -612,6 +623,7 @@ export default function ChatPanel() {
       setError(errorMessage(e, 'Failed to send message'))
       setStreaming(false)
       setStreamingText('')
+      setStreamingReasoning('')
     }
     setSelectedAttachments([])
     setAttachMenuOpen(false)
@@ -640,7 +652,7 @@ export default function ChatPanel() {
     }
   }
 
-  const showEmpty = messages.length === 0 && !streamingText
+  const showEmpty = messages.length === 0 && !streamingText && !streamingReasoning
   const canSend = !!activeWorkspaceId && !!activeProviderId && !!input.trim() && !streaming
   const variantCapable =
     supportsModelVariants(selectedModel) ||
@@ -759,14 +771,26 @@ export default function ChatPanel() {
             {(streaming || traceSteps.some((s) => s.kind !== 'run')) && (
               <AgentTracePanel steps={traceSteps} streaming={streaming} />
             )}
+            {streamingReasoning && (
+              <div className="flex justify-start">
+                <details className="max-w-[85%] rounded-2xl bg-panel-2 px-3 py-2 text-xs" open>
+                  <summary className="cursor-pointer select-none font-medium text-muted">
+                    {t('workspace.chat.reasoning', 'Reasoning')}
+                  </summary>
+                  <div className="mt-1 text-muted [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1">
+                    <StreamingMarkdown content={streamingReasoning} />
+                  </div>
+                </details>
+              </div>
+            )}
             {streamingText && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted">
-                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{streamingText}</ReactMarkdown>
+                  <StreamingMarkdown content={streamingText} />
                 </div>
               </div>
             )}
-            {streaming && !streamingText && (
+            {streaming && !streamingText && !streamingReasoning && (
               <div className="flex justify-start">
                 <span className="text-xs text-muted">
                   {t('workspace.chat.thinking', 'Thinking…')}
