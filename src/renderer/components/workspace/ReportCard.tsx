@@ -5,8 +5,20 @@ import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { FileBarChart, Trash2 } from 'lucide-react'
 import { motion } from 'motion/react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { formatDate } from '../../utils/format'
 import type { AiReport } from '../../../shared/ipc-types'
+
+const REMARK_PLUGINS = [remarkGfm]
+
+const MARKDOWN_COMPONENTS: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  )
+}
 
 interface ReportCardProps {
   report: AiReport
@@ -17,11 +29,6 @@ export default function ReportCard({ report, onDelete }: ReportCardProps) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-
-  const paragraphs = report.contentMd
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0)
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -55,8 +62,10 @@ export default function ReportCard({ report, onDelete }: ReportCardProps) {
             <p className="mt-0.5 text-xs text-muted">{formatDate(report.createdAt)}</p>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden text-xs text-muted">
-          <p className="line-clamp-[12] whitespace-pre-wrap">{report.contentMd}</p>
+        <div className="min-h-0 flex-1 overflow-hidden text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0">
+          <div className="line-clamp-[12]">
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{report.contentMd}</ReactMarkdown>
+          </div>
         </div>
       </motion.div>
 
@@ -97,14 +106,8 @@ export default function ReportCard({ report, onDelete }: ReportCardProps) {
           </div>
         )}
         <p className="mb-3 text-xs text-muted">{formatDate(report.createdAt)}</p>
-        <div className="max-h-[60vh] space-y-3 overflow-y-auto text-sm text-foreground">
-          {paragraphs.length > 0 ? (
-            paragraphs.map((p, i) => (
-              <p key={i} className="whitespace-pre-wrap">{p}</p>
-            ))
-          ) : (
-            <p className="whitespace-pre-wrap text-muted">{report.contentMd}</p>
-          )}
+        <div className="max-h-[60vh] overflow-y-auto text-sm text-foreground [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-panel-2 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-panel-2 [&_code]:px-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-2 [&_h1]:font-bold [&_h1]:text-base [&_h2]:mb-2 [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:font-medium [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted">
+          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{report.contentMd}</ReactMarkdown>
         </div>
       </Modal>
     </>

@@ -10,7 +10,9 @@ import {
   Sparkles,
   Wrench,
   Bot,
-  Activity
+  Activity,
+  MessageSquare,
+  Trash2
 } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
@@ -31,6 +33,18 @@ import {
   supportsModelVariants
 } from '../../../shared/modelVariant'
 import { useWorkspaceStore } from '../../store/workspaceStore'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
+const REMARK_PLUGINS = [remarkGfm]
+
+const MARKDOWN_COMPONENTS: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  )
+}
 
 const RECENT_MODELS_KEY = 'chatRecentModels'
 const MAX_RECENT = 8
@@ -242,6 +256,12 @@ export default function ChatPanel() {
   const [modelSwitchHint, setModelSwitchHint] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
 
+  const threads = useWorkspaceStore((s) => s.threads)
+  const fetchThreads = useWorkspaceStore((s) => s.fetchThreads)
+  const deleteThread = useWorkspaceStore((s) => s.deleteThread)
+  const [threadMenuOpen, setThreadMenuOpen] = useState(false)
+  const threadMenuRef = useRef<HTMLDivElement | null>(null)
+
   const threadIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -391,6 +411,21 @@ export default function ChatPanel() {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [modelMenuOpen])
 
+  useEffect(() => {
+    void fetchThreads()
+  }, [activeWorkspaceId, fetchThreads])
+
+  useEffect(() => {
+    if (!threadMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!threadMenuRef.current?.contains(e.target as Node)) {
+        setThreadMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [threadMenuOpen])
+
   const applyModel = useCallback(
     async (baseModel: string, variant = '', providerId?: string) => {
       const nextProviderId = providerId ?? activeProviderId
@@ -493,6 +528,59 @@ export default function ChatPanel() {
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
+        <div className="relative" ref={threadMenuRef}>
+          <button
+            type="button"
+            className="sidebar-header-btn"
+            onClick={() => setThreadMenuOpen((v) => !v)}
+            title={t('workspace.chat.threadHistory', 'Thread history')}
+            aria-label={t('workspace.chat.threadHistory', 'Thread history')}
+            disabled={streaming}
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
+          {threadMenuOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
+              {threads.length === 0 ? (
+                <p className="px-3 py-2 text-[11px] text-muted">
+                  {t('workspace.chat.noThreads', 'No conversations yet')}
+                </p>
+              ) : (
+                threads.map((th) => (
+                  <div
+                    key={th.id}
+                    className={`flex items-center gap-1 px-2 py-1.5 text-[11px] hover:bg-hover ${
+                      th.id === activeThreadId ? 'bg-active text-foreground' : 'text-muted'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate text-left"
+                      onClick={() => {
+                        setActiveThreadId(th.id)
+                        setThreadMenuOpen(false)
+                      }}
+                    >
+                      {t('workspace.chat.thread', 'Thread')} {th.id.slice(0, 8)}
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 text-muted hover:text-error"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void deleteThread(th.id).then(() => void fetchThreads())
+                      }}
+                      title={t('common.delete', 'Delete')}
+                      aria-label={t('common.delete', 'Delete')}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
         <span className="truncate text-xs font-medium text-muted">
           {t('workspace.chat.title', 'Chat')}
         </span>
@@ -531,11 +619,15 @@ export default function ChatPanel() {
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-xs ${
-                    m.role === 'user' ? 'bg-accent text-white' : 'bg-panel-2 text-foreground'
+                  className={`max-w-[85%] break-words rounded-2xl px-3 py-2 text-xs ${
+                    m.role === 'user'
+                      ? 'whitespace-pre-wrap bg-accent text-white'
+                      : 'bg-panel-2 text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted'
                   }`}
                 >
-                  {m.content}
+                  {m.role === 'user'
+                    ? m.content
+                    : <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{m.content}</ReactMarkdown>}
                 </div>
               </div>
             ))}
@@ -544,8 +636,8 @@ export default function ChatPanel() {
             )}
             {streamingText && (
               <div className="flex justify-start">
-                <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground">
-                  {streamingText}
+                <div className="max-w-[85%] break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted">
+                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{streamingText}</ReactMarkdown>
                 </div>
               </div>
             )}

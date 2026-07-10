@@ -30,6 +30,7 @@ function resetStoreState(): void {
     fullscreen: false,
     items: [],
     reports: [],
+    threads: [],
     initialized: false
   })
 }

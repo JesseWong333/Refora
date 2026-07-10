@@ -236,6 +236,10 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     return { action: 'deny' }
   })
 
+  bw.webContents.on('will-navigate', (e) => {
+    e.preventDefault()
+  })
+
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     void bw.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {

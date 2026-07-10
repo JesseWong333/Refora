@@ -183,6 +183,8 @@ export interface AiProvider {
   variant: string
   variantFormat: ModelVariantFormat
   hasKey: boolean
+  temperature: number | null
+  maxTokens: number | null
   createdAt: number
 }
 
@@ -194,6 +196,8 @@ export interface AiProviderInput {
   variant?: string
   variantFormat?: ModelVariantFormat
   apiKey?: string
+  temperature?: number | null
+  maxTokens?: number | null
 }
 
 export interface AiProviderPatch {
@@ -204,6 +208,8 @@ export interface AiProviderPatch {
   variant?: string
   variantFormat?: ModelVariantFormat
   apiKey?: string
+  temperature?: number | null
+  maxTokens?: number | null
 }
 
 export interface ProviderModelInfo {
@@ -423,6 +429,7 @@ export interface ReforaApi {
     chatThreads(workspaceId: string): Promise<ChatThread[]>
     chatTraces(threadId: string): Promise<AgentTraceStep[]>
     chatCancel(threadId: string): Promise<void>
+    chatDeleteThread(threadId: string): Promise<void>
   }
   reports: {
     list(workspaceId: string): Promise<AiReport[]>

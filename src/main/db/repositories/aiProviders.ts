@@ -13,6 +13,8 @@ export interface AiProviderRawRow {
   variant: string
   variantFormat: ModelVariantFormat
   apiKeyEnc: Buffer | null
+  temperature: number | null
+  maxTokens: number | null
   createdAt: number
 }
 
@@ -24,6 +26,8 @@ export interface AiProviderCreateInput {
   variant: string
   variantFormat: ModelVariantFormat
   apiKeyEnc: Buffer | null
+  temperature: number | null
+  maxTokens: number | null
 }
 
 export interface AiProviderUpdateInput {
@@ -34,6 +38,8 @@ export interface AiProviderUpdateInput {
   variant?: string
   variantFormat?: ModelVariantFormat
   apiKeyEnc?: Buffer | null
+  temperature?: number | null
+  maxTokens?: number | null
 }
 
 function asFormat(v: unknown): ModelVariantFormat {
@@ -55,6 +61,8 @@ function mapProvider(row: Record<string, unknown>): AiProvider {
     baseModel,
     variant,
     variantFormat,
+    temperature: (row.temperature as number | null) ?? null,
+    maxTokens: (row.maxTokens as number | null) ?? null,
     hasKey: row.apiKeyEnc != null,
     createdAt: row.createdAt as number
   }
@@ -70,6 +78,8 @@ function mapRaw(row: Record<string, unknown>): AiProviderRawRow {
     baseModel: mapped.baseModel,
     variant: mapped.variant,
     variantFormat: mapped.variantFormat,
+    temperature: mapped.temperature,
+    maxTokens: mapped.maxTokens,
     apiKeyEnc: (row.apiKeyEnc as Buffer | null) ?? null,
     createdAt: mapped.createdAt
   }
@@ -97,8 +107,8 @@ export function createAiProvidersRepository(db: SqliteDb) {
     const now = Date.now()
     db.prepare(
       `INSERT INTO ai_providers
-        (id, name, baseUrl, model, baseModel, variant, variantFormat, apiKeyEnc, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, name, baseUrl, model, baseModel, variant, variantFormat, apiKeyEnc, temperature, maxTokens, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.name,
@@ -108,6 +118,8 @@ export function createAiProvidersRepository(db: SqliteDb) {
       input.variant,
       input.variantFormat,
       input.apiKeyEnc,
+      input.temperature,
+      input.maxTokens,
       now
     )
     const row = db.prepare('SELECT * FROM ai_providers WHERE id = ?').get(id) as Record<
@@ -147,6 +159,14 @@ export function createAiProvidersRepository(db: SqliteDb) {
     if (input.apiKeyEnc !== undefined) {
       sets.push('apiKeyEnc = ?')
       params.push(input.apiKeyEnc)
+    }
+    if (input.temperature !== undefined) {
+      sets.push('temperature = ?')
+      params.push(input.temperature)
+    }
+    if (input.maxTokens !== undefined) {
+      sets.push('maxTokens = ?')
+      params.push(input.maxTokens)
     }
     if (sets.length === 0) {
       const row = db.prepare('SELECT * FROM ai_providers WHERE id = ?').get(id) as

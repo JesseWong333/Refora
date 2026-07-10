@@ -588,6 +588,11 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         rt.aiAgentService.cancel(threadId)
         return undefined
       }),
+    [IpcChannel.AiChatDeleteThread]: (threadId: string): Result<void> =>
+      wrap(() => {
+        repos().chat.deleteThread(threadId)
+        return undefined
+      }),
 
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),

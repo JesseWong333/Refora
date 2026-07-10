@@ -135,7 +135,9 @@ export function createAiSummaryService(
       model: provider.model,
       configuration: { baseURL: provider.baseUrl },
       apiKey: key,
-      streaming: false
+      streaming: false,
+      ...(provider.temperature != null ? { temperature: provider.temperature } : {}),
+      ...(provider.maxTokens != null ? { maxTokens: provider.maxTokens } : {})
     })
 
     try {

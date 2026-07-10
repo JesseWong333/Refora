@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { BrowserWindow } from 'electron'
+import { type BrowserWindow, shell } from 'electron'
 import { ChatOpenAI } from '@langchain/openai'
 import { DynamicTool, DynamicStructuredTool } from '@langchain/core/tools'
 import { SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages'
@@ -278,7 +278,53 @@ export function createAiAgentService(
       }
     })
 
-    return [searchWorkspaceDocs, searchLibrary, readPaperFulltext, getPaperSummary, generateReport]
+    const getPaperMetadata = new DynamicTool({
+      name: 'get_paper_metadata',
+      description:
+        'Get full metadata of a paper by its docId. Returns a JSON object with title, authors, year, venue, abstract, keywords, doi, url, and other fields.',
+      func: async (docId: string) => {
+        const doc = repos.documents.get(docId.trim())
+        if (!doc) return 'Document not found.'
+        return JSON.stringify({
+          docId: doc.id,
+          title: doc.title,
+          authors: doc.authors,
+          year: doc.year,
+          venue: doc.venue,
+          volume: doc.volume,
+          issue: doc.issue,
+          pages: doc.pages,
+          abstract: doc.abstract,
+          keywords: doc.keywords,
+          doi: doc.doi,
+          url: doc.url
+        })
+      }
+    })
+
+    const openPaper = new DynamicTool({
+      name: 'open_paper',
+      description:
+        'Open a paper PDF in the system default viewer by its docId. Use when the user wants to view or read a paper.',
+      func: async (docId: string) => {
+        const doc = repos.documents.get(docId.trim())
+        if (!doc) return 'Document not found.'
+        if (doc.fileMissing) return 'The PDF file is missing.'
+        const errMsg = await shell.openPath(doc.filePath)
+        if (errMsg) return `Failed to open: ${errMsg}`
+        return `Opened: ${doc.title ?? doc.fileName}`
+      }
+    })
+
+    return [
+      searchWorkspaceDocs,
+      searchLibrary,
+      readPaperFulltext,
+      getPaperSummary,
+      getPaperMetadata,
+      openPaper,
+      generateReport
+    ]
   }
 
   function createTraceRecorder(threadId: string, runId: string) {
@@ -421,7 +467,9 @@ export function createAiAgentService(
         model: modelId,
         configuration: { baseURL: provider.baseUrl },
         apiKey: key,
-        streaming: true
+        streaming: true,
+        ...(provider.temperature != null ? { temperature: provider.temperature } : {}),
+        ...(provider.maxTokens != null ? { maxTokens: provider.maxTokens } : {})
       })
 
       const tools = buildTools(req, modelId)

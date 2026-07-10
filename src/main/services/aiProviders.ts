@@ -86,6 +86,8 @@ function mapRaw(row: {
   variant: string
   variantFormat: ModelVariantFormat
   apiKeyEnc: Buffer | null
+  temperature: number | null
+  maxTokens: number | null
   createdAt: number
 }): AiProvider {
   return {
@@ -97,6 +99,8 @@ function mapRaw(row: {
     variant: row.variant,
     variantFormat: row.variantFormat,
     hasKey: row.apiKeyEnc != null,
+    temperature: row.temperature,
+    maxTokens: row.maxTokens,
     createdAt: row.createdAt
   }
 }
@@ -144,7 +148,9 @@ export function createAiProvidersService(repos: Repositories) {
       baseModel: fields.baseModel,
       variant: fields.variant,
       variantFormat: fields.variantFormat,
-      apiKeyEnc
+      apiKeyEnc,
+      temperature: input.temperature ?? null,
+      maxTokens: input.maxTokens ?? null
     })
   }
 
@@ -173,6 +179,8 @@ export function createAiProvidersService(repos: Repositories) {
       variant?: string
       variantFormat?: ModelVariantFormat
       apiKeyEnc?: Buffer | null
+      temperature?: number | null
+      maxTokens?: number | null
     } = {
       name: patch.name,
       baseUrl: patch.baseUrl
@@ -185,6 +193,12 @@ export function createAiProvidersService(repos: Repositories) {
     }
     if (patch.apiKey !== undefined) {
       updateInput.apiKeyEnc = encryptKey(patch.apiKey)
+    }
+    if (patch.temperature !== undefined) {
+      updateInput.temperature = patch.temperature
+    }
+    if (patch.maxTokens !== undefined) {
+      updateInput.maxTokens = patch.maxTokens
     }
     return repos.aiProviders.update(id, updateInput)
   }

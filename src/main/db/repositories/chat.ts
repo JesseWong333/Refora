@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ChatMessage, ChatThread } from '../../../shared/ipc-types'
 import type { SqliteDb } from '../types'
+import { RepoError } from './errors'
 
 function mapThread(row: Record<string, unknown>): ChatThread {
   return {
@@ -69,5 +70,10 @@ export function createChatRepository(db: SqliteDb) {
     return rows.map(mapMessage)
   }
 
-  return { createThread, listThreads, getThread, addMessage, listMessages }
+  function deleteThread(id: string): void {
+    const result = db.prepare('DELETE FROM chat_threads WHERE id = ?').run(id)
+    if (result.changes === 0) throw new RepoError('not_found', `thread not found: ${id}`)
+  }
+
+  return { createThread, listThreads, getThread, addMessage, listMessages, deleteThread }
 }

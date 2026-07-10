@@ -3,7 +3,8 @@ import type {
   Workspace,
   WorkspaceItem,
   WorkspaceItemKind,
-  AiReport
+  AiReport,
+  ChatThread
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 import { api } from '../ipc'
@@ -17,6 +18,7 @@ interface WorkspaceState {
   fullscreen: boolean
   items: WorkspaceItem[]
   reports: AiReport[]
+  threads: ChatThread[]
   initialized: boolean
   init: () => void
   destroy: () => void
@@ -26,6 +28,8 @@ interface WorkspaceState {
   deleteWorkspace: (id: string) => Promise<void>
   setActiveWorkspace: (id: string) => void
   setActiveThreadId: (id: string | null) => void
+  deleteThread: (threadId: string) => Promise<void>
+  fetchThreads: () => Promise<void>
   startNewChat: () => void
   openPanel: () => void
   closePanel: () => void
@@ -53,6 +57,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   fullscreen: false,
   items: [],
   reports: [],
+  threads: [],
   initialized: false,
 
   init: () => {
@@ -60,7 +65,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ initialized: true })
 
     aiSummaryUpdatedCb[0] = (_docId: string) => {
-      void get().fetchReports()
+      void get().fetchItems()
     }
     api.events.onAiSummaryUpdated(aiSummaryUpdatedCb[0])
 
@@ -130,7 +135,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 activeThreadId: null,
                 panelOpen: false,
                 items: [],
-                reports: []
+                reports: [],
+                threads: []
               }
             : {})
         }
@@ -155,6 +161,31 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveThreadId: (id: string | null) => {
     set({ activeThreadId: id })
+  },
+
+  deleteThread: async (threadId: string) => {
+    try {
+      await api.ai.chatDeleteThread(threadId)
+      if (get().activeThreadId === threadId) {
+        set({ activeThreadId: null })
+      }
+    } catch (e) {
+      toast(errorMessage(e, 'Failed to delete thread'))
+    }
+  },
+
+  fetchThreads: async () => {
+    const id = get().activeWorkspaceId
+    if (!id) {
+      set({ threads: [] })
+      return
+    }
+    try {
+      const list = await api.ai.chatThreads(id)
+      set({ threads: list })
+    } catch {
+      set({ threads: [] })
+    }
   },
 
   startNewChat: () => {

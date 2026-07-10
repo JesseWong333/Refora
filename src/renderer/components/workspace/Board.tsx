@@ -71,8 +71,8 @@ export default function Board() {
             next.set(docId, summary)
             return next
           })
-        } catch {
-          void 0
+        } catch (e) {
+          console.warn('Board: failed to load doc/summary', e)
         }
       })
     )
@@ -175,8 +175,8 @@ export default function Board() {
       if (Array.isArray(parsed)) {
         return parsed.filter((v): v is string => typeof v === 'string' && v.length > 0)
       }
-    } catch {
-      void 0
+    } catch (e) {
+      console.warn('Board: failed to parse doc ids', e)
     }
     return raw
       .split(',')
@@ -193,8 +193,8 @@ export default function Board() {
     try {
       await addDocs(ids)
       await fetchItems()
-    } catch {
-      void 0
+    } catch (e) {
+      console.warn('Board: failed to handle drop', e)
     }
   }
 

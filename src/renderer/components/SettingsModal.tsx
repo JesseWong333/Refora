@@ -38,6 +38,8 @@ interface ProviderForm {
   variant: string
   variantFormat: ModelVariantFormat
   apiKey: string
+  temperature: string
+  maxTokens: string
 }
 
 type TestState = 'testing' | { ok: boolean; models?: string[] }
@@ -154,7 +156,9 @@ function AiProvidersSection() {
       baseModel: '',
       variant: '',
       variantFormat: 'dash',
-      apiKey: ''
+      apiKey: '',
+      temperature: '',
+      maxTokens: ''
     })
   }
 
@@ -173,7 +177,9 @@ function AiProvidersSection() {
       baseModel: p.baseModel || parsed.baseModel || p.model,
       variant: p.variant || parsed.variant,
       variantFormat: p.variantFormat || 'dash',
-      apiKey: ''
+      apiKey: '',
+      temperature: p.temperature?.toString() ?? '',
+      maxTokens: p.maxTokens?.toString() ?? ''
     })
     if (p.hasKey) {
       void fetchModels({ providerId: p.id, baseUrl: p.baseUrl })
@@ -211,6 +217,8 @@ function AiProvidersSection() {
           baseModel,
           variant: form.variant.trim(),
           variantFormat: form.variantFormat,
+          temperature: form.temperature.trim() ? parseFloat(form.temperature.trim()) : null,
+          maxTokens: form.maxTokens.trim() ? parseInt(form.maxTokens.trim(), 10) : null,
           ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {})
         })
       } else {
@@ -221,6 +229,8 @@ function AiProvidersSection() {
           baseModel,
           variant: form.variant.trim(),
           variantFormat: form.variantFormat,
+          temperature: form.temperature.trim() ? parseFloat(form.temperature.trim()) : null,
+          maxTokens: form.maxTokens.trim() ? parseInt(form.maxTokens.trim(), 10) : null,
           ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {})
         })
       }
@@ -540,6 +550,37 @@ function AiProvidersSection() {
               </div>
             </div>
           )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-muted">
+                {t('settings.aiProviders.temperature', 'Temperature (0-2)')}
+              </label>
+              <Input
+                value={form.temperature}
+                onChange={(e) => setForm({ ...form, temperature: e.target.value })}
+                placeholder="0.7"
+                size="small"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-muted">
+                {t('settings.aiProviders.maxTokens', 'Max tokens')}
+              </label>
+              <Input
+                value={form.maxTokens}
+                onChange={(e) => setForm({ ...form, maxTokens: e.target.value })}
+                placeholder="4096"
+                size="small"
+                type="number"
+                min="1"
+              />
+            </div>
+          </div>
 
           <div className="rounded-md bg-panel-2 px-2 py-1.5 text-[11px] text-muted">
             {t('settings.aiProviders.requestModel', 'Request model')}:{' '}
