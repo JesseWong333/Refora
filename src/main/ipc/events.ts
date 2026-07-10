@@ -9,7 +9,8 @@ import type {
   Document,
   ImportProgress,
   LibrarySwitchResult,
-  SummaryErrorEvent
+  SummaryErrorEvent,
+  WorkspaceItemsChangedEvent
 } from '../../shared/ipc-types'
 
 export function emitDocumentUpdated(win: BrowserWindow, doc: Document): void {
@@ -75,5 +76,11 @@ export function emitAiChatTrace(win: BrowserWindow, payload: ChatTraceEvent): vo
 export function emitAiReportCreated(win: BrowserWindow, report: AiReport): void {
   if (!win.isDestroyed()) {
     win.webContents.send(IpcChannel.EventAiReportCreated, report)
+  }
+}
+
+export function emitWorkspaceItemsChanged(win: BrowserWindow, payload: WorkspaceItemsChangedEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventWorkspaceItemsChanged, payload)
   }
 }

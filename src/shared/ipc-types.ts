@@ -260,6 +260,12 @@ export interface ChatThread {
   workspaceId: string
   providerId: string
   createdAt: number
+  title: string | null
+}
+
+export interface ChatAttachment {
+  type: 'document'
+  docId: string
 }
 
 export interface ChatMessage {
@@ -279,6 +285,7 @@ export interface ChatSendRequest {
   features?: {
     deepThinking?: boolean
   }
+  attachments?: ChatAttachment[]
 }
 
 export type AgentTraceStepKind = 'llm' | 'tool' | 'run'
@@ -326,6 +333,12 @@ export interface SummaryErrorEvent {
   message: string
 }
 
+export interface WorkspaceItemsChangedEvent {
+  workspaceId: string
+  reason: 'agent_add_docs' | 'user' | 'other'
+  docIds?: string[]
+}
+
 export type EventChannelKey = keyof typeof IpcChannel & `Event${string}`
 export type EventChannel = (typeof IpcChannel)[EventChannelKey]
 
@@ -343,6 +356,7 @@ export interface DocumentEvents {
   onAiChatError(cb: (payload: ChatErrorEvent) => void): void
   onAiChatTrace(cb: (payload: ChatTraceEvent) => void): void
   onAiReportCreated(cb: (report: AiReport) => void): void
+  onWorkspaceItemsChanged(cb: (payload: WorkspaceItemsChangedEvent) => void): void
   off(channel: EventChannel, cb: unknown): void
 }
 

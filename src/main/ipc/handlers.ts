@@ -61,6 +61,7 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventAiChatError
   | typeof IpcChannel.EventAiChatTrace
   | typeof IpcChannel.EventAiReportCreated
+  | typeof IpcChannel.EventWorkspaceItemsChanged
 >
 
 function wrap<T>(fn: () => T): Result<T> {
@@ -564,6 +565,15 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           const thread = rt.repos.chat.getThread(threadId)
           if (!thread || thread.workspaceId !== req.workspaceId) {
             throw new RepoError('not_found', 'Chat thread not found in this workspace')
+          }
+        }
+        if (req.attachments?.length) {
+          const wsItems = repos().workspaceItems.list(req.workspaceId).filter((i) => i.kind === 'document')
+          const wsDocIds = new Set(wsItems.map((i) => i.docId).filter((d): d is string => d !== null))
+          for (const att of req.attachments) {
+            if (att.type !== 'document' || !wsDocIds.has(att.docId)) {
+              throw new RepoError('invalid_attachment', 'Attachment is not a valid document in this workspace')
+            }
           }
         }
         void rt.aiAgentService.run({ ...req, threadId }, threadId)

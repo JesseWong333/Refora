@@ -4,7 +4,8 @@ import type {
   WorkspaceItem,
   WorkspaceItemKind,
   AiReport,
-  ChatThread
+  ChatThread,
+  WorkspaceItemsChangedEvent
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 import { api } from '../ipc'
@@ -44,6 +45,7 @@ interface WorkspaceState {
 
 const aiSummaryUpdatedCb: Array<null | ((docId: string) => void)> = [null]
 const aiReportCreatedCb: Array<null | ((report: AiReport) => void)> = [null]
+const workspaceItemsChangedCb: Array<null | ((payload: WorkspaceItemsChangedEvent) => void)> = [null]
 
 function toast(message: string): void {
   useDocumentStore.getState().showToast(message)
@@ -76,6 +78,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
     api.events.onAiReportCreated(aiReportCreatedCb[0])
 
+    workspaceItemsChangedCb[0] = (payload: WorkspaceItemsChangedEvent) => {
+      if (payload.workspaceId === get().activeWorkspaceId) {
+        void get().fetchItems()
+      }
+    }
+    api.events.onWorkspaceItemsChanged(workspaceItemsChangedCb[0])
+
     void get().fetchWorkspaces()
   },
 
@@ -87,6 +96,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (aiReportCreatedCb[0]) {
       api.events.off('ai:report:created', aiReportCreatedCb[0])
       aiReportCreatedCb[0] = null
+    }
+    if (workspaceItemsChangedCb[0]) {
+      api.events.off('workspace:items:changed', workspaceItemsChangedCb[0])
+      workspaceItemsChangedCb[0] = null
     }
     set({ initialized: false })
   },

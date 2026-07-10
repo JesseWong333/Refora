@@ -283,7 +283,7 @@ function buildRuntime(dbPath: string): Runtime {
     aiProvidersService,
     pdfTextService
   )
-  const aiAgentService = createAiAgentService(repos, () => win, aiProvidersService, pdfTextService)
+  const aiAgentService = createAiAgentService(repos, () => win, aiProvidersService, pdfTextService, aiSummaryService)
   const watcher = createWatcher({
     importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
     getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', '')

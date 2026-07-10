@@ -256,6 +256,10 @@ export default function ChatPanel() {
   const [modelSwitchHint, setModelSwitchHint] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
 
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
+  const [workspaceDocs, setWorkspaceDocs] = useState<Array<{ docId: string; title: string }>>([])
+
   const threads = useWorkspaceStore((s) => s.threads)
   const fetchThreads = useWorkspaceStore((s) => s.fetchThreads)
   const deleteThread = useWorkspaceStore((s) => s.deleteThread)
@@ -265,6 +269,7 @@ export default function ChatPanel() {
   const threadIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const attachMenuRef = useRef<HTMLDivElement | null>(null)
   const hadMessagesRef = useRef(false)
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
@@ -426,6 +431,36 @@ export default function ChatPanel() {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [threadMenuOpen])
 
+  useEffect(() => {
+    if (!attachMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!attachMenuRef.current?.contains(e.target as Node)) {
+        setAttachMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [attachMenuOpen])
+
+  useEffect(() => {
+    if (!attachMenuOpen || !activeWorkspaceId) return
+    void (async () => {
+      try {
+        const items = await api.workspaceItems.list(activeWorkspaceId)
+        const docItems = items.filter((i) => i.kind === 'document' && i.docId)
+        const docs = await Promise.all(
+          docItems.map(async (i) => {
+            const doc = await api.documents.get(i.docId!)
+            return { docId: i.docId!, title: doc?.title ?? doc?.fileName ?? i.docId! }
+          })
+        )
+        setWorkspaceDocs(docs)
+      } catch {
+        setWorkspaceDocs([])
+      }
+    })()
+  }, [attachMenuOpen, activeWorkspaceId])
+
   const applyModel = useCallback(
     async (baseModel: string, variant = '', providerId?: string) => {
       const nextProviderId = providerId ?? activeProviderId
@@ -481,17 +516,23 @@ export default function ChatPanel() {
         text,
         providerId: activeProviderId,
         model,
-        features: { deepThinking }
+        features: { deepThinking },
+        attachments: selectedAttachments.length > 0
+          ? selectedAttachments.map((docId) => ({ type: 'document' as const, docId }))
+          : undefined
       })
       if (!existingThread) {
         setActiveThreadId(threadId)
         threadIdRef.current = threadId
       }
+      void fetchThreads()
     } catch (e) {
       setError(errorMessage(e, 'Failed to send message'))
       setStreaming(false)
       setStreamingText('')
     }
+    setSelectedAttachments([])
+    setAttachMenuOpen(false)
   }, [
     activeWorkspaceId,
     activeProviderId,
@@ -500,7 +541,9 @@ export default function ChatPanel() {
     activeThreadId,
     setActiveThreadId,
     requestModel,
-    deepThinking
+    deepThinking,
+    fetchThreads,
+    selectedAttachments
   ])
 
   const handleCancel = useCallback(() => {
@@ -561,7 +604,7 @@ export default function ChatPanel() {
                         setThreadMenuOpen(false)
                       }}
                     >
-                      {t('workspace.chat.thread', 'Thread')} {th.id.slice(0, 8)}
+                      {th.title?.trim() || `${t('workspace.chat.thread', 'Thread')} ${th.id.slice(0, 8)}`}
                     </button>
                     <button
                       type="button"
@@ -671,6 +714,30 @@ export default function ChatPanel() {
 
       <div className="shrink-0 p-3">
         <div className="flex flex-col rounded-2xl border border-border bg-panel-2 shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
+          {selectedAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-1 px-2 pt-1">
+              {selectedAttachments.map((docId) => {
+                const doc = workspaceDocs.find((d) => d.docId === docId)
+                return (
+                  <span
+                    key={docId}
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-panel-2 px-2 py-0.5 text-[10px] text-foreground"
+                  >
+                    <span className="max-w-[120px] truncate">{doc?.title ?? docId.slice(0, 8)}</span>
+                    <button
+                      type="button"
+                      className="text-muted hover:text-error"
+                      onClick={() =>
+                        setSelectedAttachments((prev) => prev.filter((id) => id !== docId))
+                      }
+                    >
+                      ×
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
+          )}
           <textarea
             className="max-h-40 min-h-[52px] w-full resize-none bg-transparent px-3 pt-3 text-sm text-foreground placeholder:text-muted focus:outline-none"
             rows={2}
@@ -686,15 +753,63 @@ export default function ChatPanel() {
           />
 
           <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 pt-1">
-            <button
-              type="button"
-              className="sidebar-header-btn shrink-0 opacity-50"
-              disabled
-              title={t('workspace.chat.attachSoon', 'Attachments coming soon')}
-              aria-label={t('workspace.chat.attachSoon', 'Attachments coming soon')}
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
+            <div className="relative shrink-0" ref={attachMenuRef}>
+              <button
+                type="button"
+                className={`sidebar-header-btn shrink-0 ${selectedAttachments.length > 0 ? 'text-accent' : ''}`}
+                onClick={() => setAttachMenuOpen((v) => !v)}
+                disabled={!activeWorkspaceId || streaming}
+                title={t('workspace.chat.attachPapers', 'Attach papers')}
+                aria-label={t('workspace.chat.attachPapers', 'Attach papers')}
+              >
+                <Paperclip className="h-4 w-4" />
+                {selectedAttachments.length > 0 && (
+                  <span className="ml-0.5 text-[10px] font-medium">{selectedAttachments.length}</span>
+                )}
+              </button>
+              {attachMenuOpen && (
+                <div className="absolute bottom-full left-0 z-50 mb-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
+                  {workspaceDocs.length === 0 ? (
+                    <p className="px-3 py-2 text-[11px] text-muted">
+                      {t('workspace.chat.noWorkspaceDocs', 'No papers in workspace. Add papers to the board first.')}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-0.5 p-1">
+                      {workspaceDocs.map((doc) => {
+                        const checked = selectedAttachments.includes(doc.docId)
+                        const maxReached = selectedAttachments.length >= 8 && !checked
+                        return (
+                          <label
+                            key={doc.docId}
+                            className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-hover ${maxReached ? 'opacity-40' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={maxReached}
+                              onChange={() => {
+                                setSelectedAttachments((prev) =>
+                                  checked
+                                    ? prev.filter((id) => id !== doc.docId)
+                                    : [...prev, doc.docId]
+                                )
+                              }}
+                              className="h-3 w-3 shrink-0"
+                            />
+                            <span className="min-w-0 flex-1 truncate text-foreground">{doc.title}</span>
+                          </label>
+                        )
+                      })}
+                      {selectedAttachments.length >= 8 && (
+                        <p className="px-2 py-1 text-[10px] text-muted">
+                          {t('workspace.chat.attachMax', 'Maximum 8 attachments.')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <span className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted">
               {t('workspace.chat.workspaceScope', 'Workspace')}
             </span>

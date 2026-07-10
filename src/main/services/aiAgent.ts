@@ -12,20 +12,24 @@ import type {
   AgentTraceStepStatus,
   AiProvider,
   AiSummaryContent,
+  ChatAttachment,
   ChatSendRequest,
   Document
 } from '../../shared/ipc-types'
 import type { AiProvidersService } from './aiProviders'
 import type { PdfTextService } from './pdfText'
+import type { AiSummaryService } from './aiSummary'
 import {
   emitAiChatToken,
   emitAiChatDone,
   emitAiChatError,
   emitAiChatTrace,
-  emitAiReportCreated
+  emitAiReportCreated,
+  emitWorkspaceItemsChanged
 } from '../ipc/events'
 import { logger } from './logger'
 import { truncateHistoryByTokens } from './tokenEstimate'
+import { deriveThreadTitle } from './deriveThreadTitle'
 
 const MAX_FULLTEXT_CHARS = 8000
 const HISTORY_TOKEN_BUDGET = 8000
@@ -43,6 +47,10 @@ const SYSTEM_PROMPT =
   'Prefer get_paper_summary when hasSummary is true; use read_paper_fulltext only when summary is missing or insufficient. ' +
   'When the user asks for a report, survey, or comparison, call generate_report to pin a structured report to the board. ' +
   'Use search_library for full-text search across the entire library, not just the workspace. ' +
+  'When the user wants papers added to this workspace, first use search_library to find them, then call add_docs_to_workspace with the docIds. ' +
+  'If a paper has hasSummary=false and you need a condensed overview, call request_summary to queue async generation, or read_paper_fulltext for immediate text. ' +
+  'When the user message includes [Attached papers], prioritize those docIds in your analysis. ' +
+  'If the workspace catalog is empty, suggest using search_library and add_docs_to_workspace rather than asking the user to add papers manually. ' +
   'Reference papers by their docId.'
 
 function buildWorkspaceContext(repos: Repositories, workspaceId: string): string {
@@ -128,6 +136,26 @@ function truncateTraceText(value: string | null | undefined): string | null {
   return `${value.slice(0, TRACE_TEXT_LIMIT)}\n...[truncated]`
 }
 
+function buildAttachmentContext(
+  repos: Repositories,
+  attachments: ChatAttachment[],
+  workspaceId: string
+): string {
+  const items = repos.workspaceItems.list(workspaceId).filter((i) => i.kind === 'document')
+  const wsDocIds = new Set(items.map((i) => i.docId).filter((d): d is string => d !== null))
+  const valid = attachments.filter((a) => a.type === 'document' && wsDocIds.has(a.docId)).slice(0, 8)
+  const lines = valid.map((a) => {
+    const doc = repos.documents.get(a.docId)
+    if (!doc) return `- docId: ${a.docId} (not found)`
+    const hasSummary = !!(repos.aiSummaries.getSummary(a.docId)?.content)
+    return `- docId: ${doc.id}\n  title: ${doc.title ?? doc.fileName}\n  authors: ${doc.authors ?? ''}\n  year: ${doc.year ?? ''}\n  hasSummary: ${hasSummary}`
+  })
+  if (valid.length < attachments.length) {
+    lines.push(`(Note: ${attachments.length - valid.length} attachment(s) were not in this workspace and were omitted.)`)
+  }
+  return lines.join('\n')
+}
+
 function stringifyTraceValue(value: unknown): string | null {
   if (value == null) return null
   if (typeof value === 'string') return truncateTraceText(value)
@@ -167,7 +195,8 @@ export function createAiAgentService(
   repos: Repositories,
   win: () => BrowserWindow | null,
   aiProvidersService: AiProvidersService,
-  pdfTextService: PdfTextService
+  pdfTextService: PdfTextService,
+  aiSummaryService: AiSummaryService
 ) {
   const getWin = (): BrowserWindow | null => {
     const w = win()
@@ -181,28 +210,41 @@ export function createAiAgentService(
     const searchWorkspaceDocs = new DynamicTool({
       name: 'search_workspace_docs',
       description:
-        'Search documents added to the current workspace by title or keywords. ' +
-        'Returns a JSON array of objects [{docId, title}]. Pass an empty string to list every workspace document.',
-      func: async (query: string) => {
+        'Search documents in the current workspace by title, authors, abstract, or keywords (full-text). ' +
+        'Returns JSON [{docId, title, authors, year, hasSummary}]. Pass an empty string to list all workspace documents.',
+      func: async (query: string): Promise<string> => {
         const items = repos.workspaceItems
           .list(req.workspaceId)
           .filter((i) => i.kind === 'document')
-        const docs = items
-          .map((i) => i.docId)
-          .filter((d): d is string => d !== null)
-          .map((id) => repos.documents.get(id))
-          .filter((d): d is Document => d !== null)
-        const q = query.trim().toLowerCase()
-        const matched = q
-          ? docs.filter((d) => {
-              const title = (d.title ?? '').toLowerCase()
-              const keywords = (d.keywords ?? '').toLowerCase()
-              return title.includes(q) || keywords.includes(q)
-            })
-          : docs
-        return JSON.stringify(
-          matched.map((d) => ({ docId: d.id, title: d.title ?? d.fileName }))
+        const workspaceDocIds = new Set(
+          items.map((i) => i.docId).filter((d): d is string => d !== null)
         )
+        const q = query.trim()
+        if (!q) {
+          const docs: Document[] = []
+          for (const id of workspaceDocIds) {
+            const d = repos.documents.get(id)
+            if (d) docs.push(d)
+          }
+          const result = docs.slice(0, 50).map((d) => ({
+            docId: d.id,
+            title: d.title ?? d.fileName,
+            authors: d.authors ?? '',
+            year: d.year ?? '',
+            hasSummary: !!(repos.aiSummaries.getSummary(d.id)?.content)
+          }))
+          return JSON.stringify(result)
+        }
+        const hits = repos.documents.search(q)
+        const filtered = hits.filter((d) => workspaceDocIds.has(d.id))
+        const result = filtered.slice(0, 30).map((d) => ({
+          docId: d.id,
+          title: d.title ?? d.fileName,
+          authors: d.authors ?? '',
+          year: d.year ?? '',
+          hasSummary: !!(repos.aiSummaries.getSummary(d.id)?.content)
+        }))
+        return JSON.stringify(result)
       }
     })
 
@@ -257,6 +299,88 @@ export function createAiAgentService(
         const w = getWin()
         if (w) emitAiReportCreated(w, report)
         return 'Report created and pinned to the board.'
+      }
+    })
+
+    const addDocsToWorkspace = new DynamicStructuredTool({
+      name: 'add_docs_to_workspace',
+      description:
+        'Add documents from the library to the current workspace board. ' +
+        'Pass docIds as a comma-separated list or JSON array string. ' +
+        'Returns JSON with added, alreadyInWorkspace, and missing arrays.',
+      schema: z.object({
+        docIds: z
+          .string()
+          .describe('Comma-separated list or JSON array string of docIds to add')
+      }),
+      func: async ({ docIds }) => {
+        const ids = parseSourceDocIds(docIds)
+        if (ids.length === 0) {
+          return JSON.stringify({
+            added: [],
+            alreadyInWorkspace: [],
+            missing: [],
+            error: 'No docIds provided.'
+          })
+        }
+        const existingItems = repos.workspaceItems
+          .list(req.workspaceId)
+          .filter((i) => i.kind === 'document')
+          .map((i) => i.docId)
+          .filter((d): d is string => d !== null)
+        const existingSet = new Set(existingItems)
+        const added: string[] = []
+        const alreadyInWorkspace: string[] = []
+        const missing: string[] = []
+        const validIds: string[] = []
+        for (const id of ids) {
+          const doc = repos.documents.get(id)
+          if (!doc) {
+            missing.push(id)
+            continue
+          }
+          if (existingSet.has(id)) {
+            alreadyInWorkspace.push(id)
+            continue
+          }
+          validIds.push(id)
+        }
+        if (validIds.length > 0) {
+          repos.workspaceItems.add(req.workspaceId, 'document', validIds)
+          added.push(...validIds)
+          const w = getWin()
+          if (w) {
+            emitWorkspaceItemsChanged(w, {
+              workspaceId: req.workspaceId,
+              reason: 'agent_add_docs',
+              docIds: added
+            })
+          }
+        }
+        return JSON.stringify({ added, alreadyInWorkspace, missing })
+      }
+    })
+
+    const requestSummary = new DynamicStructuredTool({
+      name: 'request_summary',
+      description:
+        'Request an AI summary for a paper. If a summary already exists, returns it immediately. ' +
+        'If not, queues summary generation (async) and returns status queued. ' +
+        'Do NOT wait for the summary in the same turn - use get_paper_summary in a subsequent turn.',
+      schema: z.object({
+        docId: z.string().describe('The docId of the paper to summarize')
+      }),
+      func: async ({ docId }) => {
+        const doc = repos.documents.get(docId.trim())
+        if (!doc) {
+          return JSON.stringify({ status: 'error', message: 'Document not found.' })
+        }
+        const existing = repos.aiSummaries.getSummary(docId.trim())
+        if (existing && existing.content) {
+          return JSON.stringify({ status: 'ready', summary: existing.content })
+        }
+        aiSummaryService.summarize(docId.trim())
+        return JSON.stringify({ status: 'queued', docId: docId.trim() })
       }
     })
 
@@ -326,7 +450,9 @@ export function createAiAgentService(
       getPaperSummary,
       getPaperMetadata,
       openPaper,
-      generateReport
+      generateReport,
+      addDocsToWorkspace,
+      requestSummary
     ]
   }
 
@@ -435,6 +561,11 @@ export function createAiAgentService(
     try {
       repos.chat.addMessage(threadId, 'user', req.text)
 
+      const existingThread = repos.chat.getThread(threadId)
+      if (existingThread && !existingThread.title) {
+        repos.chat.updateTitle(threadId, deriveThreadTitle(req.text))
+      }
+
       const pid = req.providerId || repos.settings.get<string>('activeProviderId', '')
       if (!pid) {
         const message = 'No AI provider configured'
@@ -495,6 +626,17 @@ export function createAiAgentService(
         return new AIMessage(m.content)
       })
       const inputMsgs = [new SystemMessage(systemPrompt), ...historyMsgs]
+
+      if (req.attachments?.length) {
+        const lastIdx = inputMsgs.length - 1
+        const lastMsg = inputMsgs[lastIdx]
+        if (lastMsg instanceof HumanMessage && typeof lastMsg.content === 'string') {
+          const attachmentBlock = buildAttachmentContext(repos, req.attachments, req.workspaceId)
+          inputMsgs[lastIdx] = new HumanMessage(
+            `${lastMsg.content}\n\n[Attached papers]\n${attachmentBlock}`
+          )
+        }
+      }
 
       let finalText = ''
       const collectedToolCalls: Array<{ name: string; input: string | null; output: string | null }> = []

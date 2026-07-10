@@ -31,7 +31,8 @@ import type {
   WatchFolder,
   Workspace,
   WorkspaceItem,
-  WorkspaceItemKind
+  WorkspaceItemKind,
+  WorkspaceItemsChangedEvent
 } from '../shared/ipc-types'
 
 class IpcResponseError extends Error {
@@ -222,6 +223,8 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventAiChatTrace, cb),
     onAiReportCreated: (cb: (report: AiReport) => void) =>
       subscribe(IpcChannel.EventAiReportCreated, cb),
+    onWorkspaceItemsChanged: (cb: (payload: WorkspaceItemsChangedEvent) => void) =>
+      subscribe(IpcChannel.EventWorkspaceItemsChanged, cb),
     off: (channel: EventChannel, cb: unknown) => unsubscribe(channel, cb)
   }
 }

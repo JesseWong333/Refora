@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useWorkspaceStore } from '../../src/renderer/store/workspaceStore'
 import { useDocumentStore } from '../../src/renderer/store/documentStore'
-import type { AiReport } from '../../src/shared/ipc-types'
+import type { AiReport, WorkspaceItemsChangedEvent } from '../../src/shared/ipc-types'
 
 function makeReport(overrides: Partial<AiReport> = {}): AiReport {
   return {
@@ -20,6 +20,11 @@ const mockReportsList = vi.fn()
 const mockReportsDelete = vi.fn()
 const mockChatThreads = vi.fn()
 const mockEventsOff = vi.fn()
+const mockOnWorkspaceItemsChanged = vi.fn()
+const mockOnAiSummaryUpdated = vi.fn()
+const mockOnAiReportCreated = vi.fn()
+const mockWorkspacesList = vi.fn()
+const mockWorkspaceItemsList = vi.fn()
 
 function resetStoreState(): void {
   useWorkspaceStore.setState({
@@ -40,10 +45,17 @@ beforeEach(() => {
   mockReportsDelete.mockReset()
   mockChatThreads.mockReset()
   mockEventsOff.mockReset()
+  mockOnWorkspaceItemsChanged.mockReset()
+  mockOnAiSummaryUpdated.mockReset()
+  mockOnAiReportCreated.mockReset()
+  mockWorkspacesList.mockReset()
+  mockWorkspaceItemsList.mockReset()
 
   mockReportsList.mockResolvedValue([])
   mockReportsDelete.mockResolvedValue(undefined)
   mockChatThreads.mockResolvedValue([])
+  mockWorkspacesList.mockResolvedValue([])
+  mockWorkspaceItemsList.mockResolvedValue([])
 
   const api = window.api as unknown as Record<string, unknown>
   const reports = api.reports as Record<string, unknown>
@@ -55,6 +67,15 @@ beforeEach(() => {
 
   const events = api.events as Record<string, unknown>
   events.off = mockEventsOff
+  events.onWorkspaceItemsChanged = mockOnWorkspaceItemsChanged
+  events.onAiSummaryUpdated = mockOnAiSummaryUpdated
+  events.onAiReportCreated = mockOnAiReportCreated
+
+  const workspaces = api.workspaces as Record<string, unknown>
+  workspaces.list = mockWorkspacesList
+
+  const workspaceItems = api.workspaceItems as Record<string, unknown>
+  workspaceItems.list = mockWorkspaceItemsList
 
   useDocumentStore.setState({ showToast: vi.fn() })
 
@@ -142,6 +163,36 @@ describe('WorkspaceStore', () => {
       useWorkspaceStore.setState({ activeThreadId: 'thread-1' })
       useWorkspaceStore.getState().startNewChat()
       expect(useWorkspaceStore.getState().activeThreadId).toBe(null)
+    })
+  })
+
+  describe('onWorkspaceItemsChanged', () => {
+    it('fetches items when workspaceId matches active workspace', async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1' })
+      useWorkspaceStore.getState().init()
+
+      expect(mockOnWorkspaceItemsChanged).toHaveBeenCalledTimes(1)
+      const cb = mockOnWorkspaceItemsChanged.mock.calls[0][0] as (
+        payload: WorkspaceItemsChangedEvent
+      ) => void
+      cb({ workspaceId: 'ws-1', reason: 'agent_add_docs' })
+
+      await vi.waitFor(() => {
+        expect(mockWorkspaceItemsList).toHaveBeenCalledWith('ws-1')
+      })
+    })
+
+    it('does not fetch items when workspaceId does not match', async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1' })
+      useWorkspaceStore.getState().init()
+
+      const cb = mockOnWorkspaceItemsChanged.mock.calls[0][0] as (
+        payload: WorkspaceItemsChangedEvent
+      ) => void
+      cb({ workspaceId: 'ws-other', reason: 'user' })
+
+      await new Promise((r) => setTimeout(r, 50))
+      expect(mockWorkspaceItemsList).not.toHaveBeenCalled()
     })
   })
 })

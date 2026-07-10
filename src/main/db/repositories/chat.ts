@@ -8,7 +8,8 @@ function mapThread(row: Record<string, unknown>): ChatThread {
     id: row.id as string,
     workspaceId: row.workspaceId as string,
     providerId: row.providerId as string,
-    createdAt: row.createdAt as number
+    createdAt: row.createdAt as number,
+    title: (row.title as string | null) ?? null
   }
 }
 
@@ -75,5 +76,14 @@ export function createChatRepository(db: SqliteDb) {
     if (result.changes === 0) throw new RepoError('not_found', `thread not found: ${id}`)
   }
 
-  return { createThread, listThreads, getThread, addMessage, listMessages, deleteThread }
+  function updateTitle(threadId: string, title: string): ChatThread {
+    db.prepare('UPDATE chat_threads SET title = ? WHERE id = ?').run(title, threadId)
+    const row = db.prepare('SELECT * FROM chat_threads WHERE id = ?').get(threadId) as
+      | Record<string, unknown>
+      | undefined
+    if (!row) throw new RepoError('not_found', `thread not found: ${threadId}`)
+    return mapThread(row)
+  }
+
+  return { createThread, listThreads, getThread, addMessage, listMessages, deleteThread, updateTitle }
 }
