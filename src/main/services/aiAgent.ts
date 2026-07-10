@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { type BrowserWindow, shell } from 'electron'
+import { type BrowserWindow } from 'electron'
 import { ChatOpenAI } from '@langchain/openai'
 import { DynamicTool, DynamicStructuredTool } from '@langchain/core/tools'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
@@ -31,8 +31,9 @@ import {
 import { logger } from './logger'
 import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
-import { historyToMessages } from './chatHistoryMessages'
+import { historyToMessages, truncateOutput } from './chatHistoryMessages'
 import { resolveDeepThinkingMode, type DeepThinkingMode } from '../../shared/deepThinking'
+import { openPdf } from './pdfOpen'
 
 const MAX_FULLTEXT_CHARS = 8000
 const HISTORY_TOKEN_BUDGET = 8000
@@ -138,8 +139,7 @@ function parseSourceDocIds(raw: string): string[] {
 
 function truncateTraceText(value: string | null | undefined): string | null {
   if (value == null) return null
-  if (value.length <= TRACE_TEXT_LIMIT) return value
-  return `${value.slice(0, TRACE_TEXT_LIMIT)}\n...[truncated]`
+  return truncateOutput(value, TRACE_TEXT_LIMIT)
 }
 
 function buildAttachmentContext(
@@ -516,12 +516,12 @@ export function createAiAgentService(
       description:
         'Open a paper PDF in the system default viewer by its docId. Use when the user wants to view or read a paper.',
       func: async (docId: string) => {
-        const doc = repos.documents.get(docId.trim())
-        if (!doc) return 'Document not found.'
-        if (doc.fileMissing) return 'The PDF file is missing.'
-        const errMsg = await shell.openPath(doc.filePath)
-        if (errMsg) return `Failed to open: ${errMsg}`
-        return `Opened: ${doc.title ?? doc.fileName}`
+        try {
+          const doc = await openPdf(repos, getWin(), docId.trim())
+          return `Opened: ${doc.title ?? doc.fileName}`
+        } catch (e) {
+          return `Failed to open: ${e instanceof Error ? e.message : String(e)}`
+        }
       }
     })
 
@@ -671,7 +671,7 @@ export function createAiAgentService(
       const modelId = (req.model && req.model.trim()) || provider.model
       const deepThinking = req.features?.deepThinking === true
       const thinkingMode: DeepThinkingMode = deepThinking
-        ? resolveDeepThinkingMode(modelId, provider.baseUrl)
+        ? resolveDeepThinkingMode(modelId)
         : 'none'
       const workspaceContext = buildWorkspaceContext(repos, req.workspaceId)
       const systemPrompt = [

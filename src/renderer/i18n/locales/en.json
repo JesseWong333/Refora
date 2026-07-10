@@ -236,8 +236,7 @@
       "traceInput": "Input",
       "traceOutput": "Output",
       "traceExpand": "Show details",
-      "traceCollapse": "Hide details",
-      "citationOpenFailed": "Could not open document"
+      "traceCollapse": "Hide details"
     }
   }
 }

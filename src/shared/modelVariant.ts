@@ -6,8 +6,14 @@ export type CommonVariant = (typeof COMMON_VARIANTS)[number]
 
 const VARIANT_PATTERN = /(?:[-:])(high|xhigh|max|fast|thinking)$/i
 
-const VARIANT_HINT_RE =
-  /glm|claude|o1|o3|o4|gpt-5|deepseek-r1|qwq|reasoner|thinking|gemini/i
+export const REASONING_MODEL_TOKENS = [
+  'deepseek-r1', 'reasoner', 'qwq', 'o1', 'o3', 'o4', 'gpt-5', 'thinking'
+] as const
+
+const VARIANT_HINT_RE = new RegExp(
+  [...REASONING_MODEL_TOKENS, 'glm', 'claude', 'gemini'].join('|'),
+  'i'
+)
 
 export function supportsModelVariants(modelId: string): boolean {
   const id = modelId.trim()

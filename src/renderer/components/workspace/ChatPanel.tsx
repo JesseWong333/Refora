@@ -332,9 +332,9 @@ export default function ChatPanel() {
   const thinkingMode = useMemo(
     () =>
       deepThinking
-        ? resolveDeepThinkingMode(requestModel || selectedModel, activeProvider?.baseUrl ?? '')
+        ? resolveDeepThinkingMode(requestModel || selectedModel)
         : 'none',
-    [deepThinking, requestModel, selectedModel, activeProvider]
+    [deepThinking, requestModel, selectedModel]
   )
 
   const loadProviders = useCallback(async () => {

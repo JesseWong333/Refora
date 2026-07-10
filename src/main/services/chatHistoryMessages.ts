@@ -32,7 +32,7 @@ export function parseToolPayload(content: string): ParsedToolPayload {
 
 export function truncateOutput(output: string, max: number): string {
   if (output.length <= max) return output
-  return `${output.slice(0, max)}\n…[truncated]`
+  return `${output.slice(0, max)}\n...[truncated]`
 }
 
 export function lastIsAiWithToolCall(
