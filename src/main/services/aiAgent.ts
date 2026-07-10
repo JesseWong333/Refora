@@ -51,7 +51,10 @@ const SYSTEM_PROMPT =
   'If a paper has hasSummary=false and you need a condensed overview, call request_summary to queue async generation, or read_paper_fulltext for immediate text. ' +
   'When the user message includes [Attached papers], prioritize those docIds in your analysis. ' +
   'If the workspace catalog is empty, suggest using search_library and add_docs_to_workspace rather than asking the user to add papers manually. ' +
-  'Reference papers by their docId.'
+  'Reference papers by their docId. ' +
+  'Full text: use read_paper_fulltext with offset/limit; it returns a window with nextOffset - follow nextOffset until done or you have enough evidence. Do not assume the first window is the whole paper. When quoting, include the offset range you used. ' +
+  'Citations: cite papers as markdown links [Title](refora://doc/<docId>). Prefer titles users can recognize. ' +
+  'Never invent docIds; only use ids from the workspace catalog, tools, or attachments.'
 
 function buildWorkspaceContext(repos: Repositories, workspaceId: string): string {
   const items = repos.workspaceItems.list(workspaceId).filter((i) => i.kind === 'document')
@@ -248,16 +251,75 @@ export function createAiAgentService(
       }
     })
 
-    const readPaperFulltext = new DynamicTool({
+    const readPaperFulltext = new DynamicStructuredTool({
       name: 'read_paper_fulltext',
       description:
-        'Read the full extracted text of a paper by its docId. Returns up to about 8000 characters of text.',
-      func: async (docId: string) => {
-        const text = await pdfTextService.getOrExtract(docId.trim())
-        if (text.length > MAX_FULLTEXT_CHARS) {
-          return `${text.slice(0, MAX_FULLTEXT_CHARS)}\n...[truncated]`
+        'Read a chunk of the full extracted text of a paper by its docId. ' +
+        'Use offset (character position, default 0) and limit (max characters per call, 500-12000, default 8000) to paginate. ' +
+        'Returns JSON with {docId, title, offset, limit, totalChars, nextOffset, chunkIndex, chunkCount, text}. ' +
+        'If nextOffset is not null, call again with offset=nextOffset to read the next chunk. ' +
+        'When nextOffset is null you have reached the end of the paper.',
+      schema: z.object({
+        docId: z.string().describe('The docId of the paper to read'),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .default(0)
+          .describe('Character offset to start reading from'),
+        limit: z
+          .number()
+          .int()
+          .min(500)
+          .max(12000)
+          .optional()
+          .default(MAX_FULLTEXT_CHARS)
+          .describe('Max characters to return in this chunk')
+      }),
+      func: async ({ docId, offset, limit }) => {
+        const id = docId.trim()
+        const doc = repos.documents.get(id)
+        if (!doc) {
+          return JSON.stringify({ error: 'Document not found', docId: id })
         }
-        return text
+        let text: string
+        try {
+          text = await pdfTextService.getOrExtract(id)
+        } catch {
+          return JSON.stringify({ error: 'Failed to extract text', docId: id })
+        }
+        const clampedLimit = Math.min(12000, Math.max(500, limit ?? MAX_FULLTEXT_CHARS))
+        const totalChars = text.length
+        const startOffset = offset ?? 0
+        if (startOffset >= totalChars) {
+          return JSON.stringify({
+            docId: id,
+            title: doc.title ?? doc.fileName,
+            offset: startOffset,
+            limit: clampedLimit,
+            totalChars,
+            nextOffset: null,
+            chunkIndex: Math.floor(startOffset / clampedLimit),
+            chunkCount: Math.ceil(totalChars / clampedLimit),
+            text: '',
+            message: 'offset past end'
+          })
+        }
+        const slicedText = text.slice(startOffset, startOffset + clampedLimit)
+        const nextOffset =
+          startOffset + slicedText.length < totalChars ? startOffset + slicedText.length : null
+        return JSON.stringify({
+          docId: id,
+          title: doc.title ?? doc.fileName,
+          offset: startOffset,
+          limit: clampedLimit,
+          totalChars,
+          nextOffset,
+          chunkIndex: Math.floor(startOffset / clampedLimit),
+          chunkCount: Math.ceil(totalChars / clampedLimit),
+          text: slicedText
+        })
       }
     })
 
