@@ -214,6 +214,8 @@
       "customModel": "Custom model",
       "variant": "Variant",
       "deepThinking": "Deep thinking",
+      "deepThinkingNative": "Native reasoning (model-powered)",
+      "deepThinkingPrompt": "Prompt-enhanced (compatibility mode)",
       "featureOn": "On",
       "featureOff": "Off",
       "modelSwitchHint": "Model switched — applies to new messages only.",
