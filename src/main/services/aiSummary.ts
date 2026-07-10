@@ -10,8 +10,82 @@ import { logger } from './logger'
 const MAX_CONCURRENT = 2
 const CHUNK_SIZE = 3000
 const CHUNK_OVERLAP = 200
+const MAX_RETRIES = 3
+const BASE_DELAY_MS = 1000
+
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'ECONNREFUSED',
+  'EAI_AGAIN',
+  'EPIPE',
+  'ECONNABORTED'
+])
+
+const RETRYABLE_MESSAGE_PATTERNS = [
+  /429/,
+  /rate.?limit/i,
+  /too many requests/i,
+  /service unavailable/i,
+  /bad gateway/i,
+  /gateway timeout/i,
+  /overloaded/i,
+  /temporarily unavailable/i,
+  /network error/i,
+  /fetch failed/i,
+  /socket hang up/i,
+  /connection reset/i,
+  /ETIMEDOUT/i,
+  /ECONNRESET/i
+]
 
 type SummaryJob = () => Promise<void>
+
+function isRetryableError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  const anyErr = e as unknown as Record<string, unknown>
+
+  const lcErrorCode = anyErr.lc_error_code
+  if (lcErrorCode === 'MODEL_RATE_LIMIT') return true
+  if (lcErrorCode === 'MODEL_AUTHENTICATION' || lcErrorCode === 'MODEL_NOT_FOUND') return false
+
+  if (anyErr.name === 'AbortError') return true
+
+  const status = extractStatus(anyErr)
+  if (status !== null) {
+    if (status === 429) return true
+    if (status >= 500 && status < 600) return true
+    if (status >= 400 && status < 500) return false
+  }
+
+  const code = typeof anyErr.code === 'string' ? anyErr.code : null
+  if (code && RETRYABLE_NETWORK_CODES.has(code)) return true
+
+  const msg = e.message ?? ''
+  if (RETRYABLE_MESSAGE_PATTERNS.some((p) => p.test(msg))) return true
+
+  return false
+}
+
+function extractStatus(err: Record<string, unknown>): number | null {
+  if (typeof err.status === 'number') return err.status
+  const response = err.response
+  if (response && typeof response === 'object') {
+    const r = response as Record<string, unknown>
+    if (typeof r.status === 'number') return r.status
+  }
+  const cause = err.cause
+  if (cause && typeof cause === 'object') {
+    const c = cause as Record<string, unknown>
+    if (typeof c.status === 'number') return c.status
+  }
+  return null
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 function splitText(text: string, chunkSize: number, chunkOverlap: number): string[] {
   if (text.length === 0) return []
@@ -92,6 +166,42 @@ export function createAiSummaryService(
     emit(docId)
   }
 
+  async function invokeSummary(
+    model: ChatOpenAI,
+    text: string,
+    docId: string
+  ): Promise<AiSummaryContent> {
+    const chunks = splitText(text, CHUNK_SIZE, CHUNK_OVERLAP)
+    const chunkSummaries: string[] = []
+    for (const chunk of chunks) {
+      if (destroyed) throw new Error('Summary service destroyed')
+      const res = await model.invoke(
+        `You are a research assistant. Summarize the key points of the following excerpt from an academic paper. Be concise and factual.\n\nExcerpt:\n${chunk}`
+      )
+      chunkSummaries.push(contentToText((res as { content: unknown }).content))
+    }
+
+    const combined = chunkSummaries.join('\n\n')
+
+    if (combined.trim().length === 0) {
+      return { core: '', keyPoints: [] }
+    }
+
+    const finalRes = await model.invoke(
+      `You are a research assistant. Below are summaries of sections from an academic paper. Synthesize them into a single JSON object with exactly these fields: "core" (a 2-3 sentence summary), "keyPoints" (an array of concise strings), "methods" (optional string describing methods), "contribution" (optional string describing contributions). Respond with ONLY the JSON object, no markdown fences, no commentary.\n\nSection summaries:\n${combined}`
+    )
+    const finalText = contentToText((finalRes as { content: unknown }).content)
+    let parsed: AiSummaryContent | null = null
+    try {
+      parsed = toSummaryContent(JSON.parse(stripCodeFences(finalText)))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.warn(`aiSummary:json-parse-failed id=${docId}: ${msg}`)
+      parsed = null
+    }
+    return parsed ?? { core: finalText.trim() || combined, keyPoints: [] }
+  }
+
   async function processSummary(docId: string): Promise<void> {
     const doc = repos.documents.get(docId)
     if (!doc) {
@@ -140,48 +250,40 @@ export function createAiSummaryService(
       ...(provider.maxTokens != null ? { maxTokens: provider.maxTokens } : {})
     })
 
-    try {
-      const chunks = splitText(text, CHUNK_SIZE, CHUNK_OVERLAP)
-      const chunkSummaries: string[] = []
-      for (const chunk of chunks) {
-        if (destroyed) return
-        const res = await model.invoke(
-          `You are a research assistant. Summarize the key points of the following excerpt from an academic paper. Be concise and factual.\n\nExcerpt:\n${chunk}`
-        )
-        chunkSummaries.push(contentToText((res as { content: unknown }).content))
-      }
-
-      const combined = chunkSummaries.join('\n\n')
-
-      let content: AiSummaryContent
-      if (combined.trim().length === 0) {
-        content = { core: '', keyPoints: [] }
-      } else {
-        const finalRes = await model.invoke(
-          `You are a research assistant. Below are summaries of sections from an academic paper. Synthesize them into a single JSON object with exactly these fields: "core" (a 2-3 sentence summary), "keyPoints" (an array of concise strings), "methods" (optional string describing methods), "contribution" (optional string describing contributions). Respond with ONLY the JSON object, no markdown fences, no commentary.\n\nSection summaries:\n${combined}`
-        )
-        const finalText = contentToText((finalRes as { content: unknown }).content)
-        let parsed: AiSummaryContent | null = null
-        try {
-          parsed = toSummaryContent(JSON.parse(stripCodeFences(finalText)))
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          logger.warn(`aiSummary:json-parse-failed id=${docId}: ${msg}`)
-          parsed = null
-        }
-        content = parsed ?? { core: finalText.trim() || combined, keyPoints: [] }
-      }
-
+    let content: AiSummaryContent | null = null
+    let lastError: Error | null = null
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       if (destroyed) return
+      try {
+        content = await invokeSummary(model, text, docId)
+        lastError = null
+        break
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e))
+        if (attempt === MAX_RETRIES || !isRetryableError(e)) {
+          break
+        }
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1)
+        const msg = lastError.message
+        logger.warn(
+          `aiSummary:retry attempt=${attempt}/${MAX_RETRIES} id=${docId} delay=${delay}ms: ${msg}`
+        )
+        await sleep(delay)
+      }
+    }
 
-      repos.aiSummaries.setSummary(docId, provider.model, content)
-      logger.info(`aiSummary:done id=${docId} model=${provider.model}`)
-      emit(docId)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
+    if (destroyed) return
+
+    if (lastError) {
+      const msg = lastError.message
       logger.warn(`aiSummary:failed id=${docId}: ${msg}`)
       emitError(docId, `Summary generation failed: ${msg}`)
+      return
     }
+
+    repos.aiSummaries.setSummary(docId, provider.model, content!)
+    logger.info(`aiSummary:done id=${docId} model=${provider.model}`)
+    emit(docId)
   }
 
   function processQueue(): void {

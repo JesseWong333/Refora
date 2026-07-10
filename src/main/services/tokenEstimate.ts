@@ -1,9 +1,14 @@
 const CHARS_PER_TOKEN = 4
 const ROLE_OVERHEAD_TOKENS = 4
+const CJK_CHARS_PER_TOKEN = 1
+
+const CJK_PATTERN = /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/gu
 
 export function estimateTokens(text: string): number {
   if (!text) return 0
-  return Math.ceil(text.length / CHARS_PER_TOKEN)
+  const cjk = (text.match(CJK_PATTERN) ?? []).length
+  const nonCjk = text.length - cjk
+  return Math.ceil(cjk * CJK_CHARS_PER_TOKEN + nonCjk / CHARS_PER_TOKEN)
 }
 
 export function estimateMessageTokens(content: string): number {
