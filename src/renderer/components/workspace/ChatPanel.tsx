@@ -33,17 +33,57 @@ import {
   supportsModelVariants
 } from '../../../shared/modelVariant'
 import { useWorkspaceStore } from '../../store/workspaceStore'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 const REMARK_PLUGINS = [remarkGfm]
 
+function urlTransform(url: string): string {
+  if (url.startsWith('refora://')) return url
+  return defaultUrlTransform(url)
+}
+
+export function parseReforaDocLink(href: string): { docId: string; query?: string } | null {
+  if (!href) return null
+  const match = href.match(/^refora:\/\/doc\/([^?]+)(?:\?(.*))?$/)
+  if (!match) return null
+  return {
+    docId: decodeURIComponent(match[1]),
+    query: match[2] ? decodeURIComponent(match[2]) : undefined
+  }
+}
+
+async function openCitationDoc(docId: string): Promise<void> {
+  try {
+    await api.documents.openPdf(docId)
+  } catch {
+    // silently fail for P1
+  }
+}
+
 const MARKDOWN_COMPONENTS: Components = {
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  )
+  a: ({ href, children }) => {
+    if (href) {
+      const parsed = parseReforaDocLink(href)
+      if (parsed) {
+        return (
+          <button
+            type="button"
+            className="inline-flex items-center gap-0.5 text-accent underline hover:opacity-80"
+            onClick={() => void openCitationDoc(parsed.docId)}
+            title={parsed.query ?? undefined}
+          >
+            {children}
+          </button>
+        )
+      }
+    }
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    )
+  }
 }
 
 const RECENT_MODELS_KEY = 'chatRecentModels'
@@ -670,7 +710,7 @@ export default function ChatPanel() {
                 >
                   {m.role === 'user'
                     ? m.content
-                    : <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{m.content}</ReactMarkdown>}
+                    : <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>}
                 </div>
               </div>
             ))}
@@ -680,7 +720,7 @@ export default function ChatPanel() {
             {streamingText && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted">
-                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{streamingText}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{streamingText}</ReactMarkdown>
                 </div>
               </div>
             )}

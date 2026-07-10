@@ -234,7 +234,8 @@
       "traceInput": "输入",
       "traceOutput": "输出",
       "traceExpand": "展开详情",
-      "traceCollapse": "收起详情"
+      "traceCollapse": "收起详情",
+      "citationOpenFailed": "无法打开文档"
     }
   }
 }
