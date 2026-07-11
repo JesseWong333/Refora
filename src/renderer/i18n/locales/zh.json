@@ -237,6 +237,7 @@
       "traceTool": "工具",
       "traceRun": "运行",
       "traceRunning": "进行中",
+      "traceRunningLabel": "运行中…",
       "traceDone": "完成",
       "traceError": "错误",
       "traceInput": "输入",
@@ -244,7 +245,18 @@
       "traceExpand": "展开详情",
       "traceCollapse": "收起详情",
       "tokenUsage": "Token",
-      "tokenTotal": "共 {{count}} tokens"
+      "tokenTotal": "共 {{count}} tokens",
+      "traceLlmCall": "模型思考中…",
+      "toolSearchWorkspace": "正在搜索工作空间…",
+      "toolSearchLibrary": "正在搜索文库…",
+      "toolReading": "正在阅读文档…",
+      "toolReadingChunk": "正在阅读文档…（第 {{chunk}} 段）",
+      "toolGetSummary": "正在获取摘要…",
+      "toolGetMetadata": "正在获取元数据…",
+      "toolOpenPaper": "正在打开论文…",
+      "toolGenerateReport": "正在生成报告…",
+      "toolAddDocs": "正在添加到工作空间…",
+      "toolRequestSummary": "正在请求摘要…"
     }
   }
 }

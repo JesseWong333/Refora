@@ -880,9 +880,9 @@ export function createAiAgentService(
             const toolInput = extractToolInput(data)
             const keys = [
               runKey,
-              toolName ? `tool-name:${toolName}` : null
+              runKey ? null : `tool-name:${toolName ?? 'unknown'}`
             ].filter((k): k is string => !!k)
-            if (keys.length === 0) keys.push(`tool:${Date.now()}`)
+            if (keys.length === 0) keys.push(`tool:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
             trace.start('tool', toolName, toolInput, keys)
             continue
           }
@@ -898,7 +898,7 @@ export function createAiAgentService(
             })
             const keys = [
               runKey,
-              toolName ? `tool-name:${toolName}` : null
+              runKey ? null : `tool-name:${toolName ?? 'unknown'}`
             ].filter((k): k is string => !!k)
             const finished = trace.finishByKeys(keys, 'done', toolOutput)
             if (!finished) {
@@ -921,7 +921,7 @@ export function createAiAgentService(
             })
             const keys = [
               runKey,
-              toolName ? `tool-name:${toolName}` : null
+              runKey ? null : `tool-name:${toolName ?? 'unknown'}`
             ].filter((k): k is string => !!k)
             const finished = trace.finishByKeys(keys, 'error', errMsg)
             if (!finished) {

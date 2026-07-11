@@ -59,11 +59,31 @@ function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   return ipcRenderer.invoke(channel, ...args).then((r) => unwrap<T>(r as Envelope<T>))
 }
 
-const subscriptions = new Map<unknown, { ipcListener: (...args: unknown[]) => void }>()
+const subscriptions = new Map<unknown, { channel: string; ipcListener: (...args: unknown[]) => void }>()
+
+const SINGLE_SUBSCRIBER_CHANNELS = new Set([
+  'ai:chat:token',
+  'ai:chat:reasoning',
+  'ai:chat:done',
+  'ai:chat:error',
+  'ai:chat:trace',
+  'ai:chat:titleUpdated'
+])
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): void {
+  const existing = subscriptions.get(cb)
+  if (existing) {
+    ipcRenderer.removeListener(existing.channel, existing.ipcListener)
+  } else if (SINGLE_SUBSCRIBER_CHANNELS.has(channel)) {
+    for (const [key, sub] of subscriptions) {
+      if (sub.channel === channel) {
+        ipcRenderer.removeListener(channel, sub.ipcListener)
+        subscriptions.delete(key)
+      }
+    }
+  }
   const ipcListener = (...args: unknown[]): void => cb(args[1] as T)
-  subscriptions.set(cb, { ipcListener })
+  subscriptions.set(cb, { channel, ipcListener })
   ipcRenderer.on(channel, ipcListener)
 }
 

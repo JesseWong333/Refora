@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, memo, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Plus,
@@ -12,7 +12,16 @@ import {
   Bot,
   Activity,
   MessageSquare,
-  Trash2
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Search,
+  FileText,
+  FileSearch,
+  FilePlus,
+  ClipboardList,
+  FolderOpen
 } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
@@ -38,8 +47,12 @@ import { resolveDeepThinkingMode } from '../../../shared/deepThinking'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, remarkMath]
+const REHYPE_PLUGINS = [rehypeKatex]
 
 function urlTransform(url: string): string {
   if (url.startsWith('refora://')) return url
@@ -99,7 +112,7 @@ const MARKDOWN_COMPONENTS: Components = {
 
 const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content: string }) {
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{content}</ReactMarkdown>
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{content}</ReactMarkdown>
   )
 })
 
@@ -156,94 +169,177 @@ function formatDuration(step: AgentTraceStep): string | null {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-function TraceStepRow({ step }: { step: AgentTraceStep }) {
+type TFunc = ReturnType<typeof useTranslation>['t']
+
+interface ToolLabelResult {
+  icon: string
+  text: string
+}
+
+function formatToolLabel(
+  step: AgentTraceStep,
+  t: TFunc
+): ToolLabelResult | null {
+  if (step.kind !== 'tool' || !step.name) return null
+  const name = step.name
+
+  let parsed: Record<string, unknown> | string | null = null
+  if (step.input) {
+    try {
+      parsed = JSON.parse(step.input)
+    } catch {
+      parsed = step.input
+    }
+  }
+
+  const objParam = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+
+  switch (name) {
+    case 'search_workspace_docs':
+      return { icon: 'search', text: t('workspace.chat.toolSearchWorkspace', 'Searching workspace…') }
+    case 'search_library':
+      return { icon: 'search', text: t('workspace.chat.toolSearchLibrary', 'Searching library…') }
+    case 'read_paper_fulltext': {
+      const docId = typeof objParam.docId === 'string' ? objParam.docId : ''
+      const offset = typeof objParam.offset === 'number' ? objParam.offset : 0
+      const limit = typeof objParam.limit === 'number' ? objParam.limit : 8000
+      const chunkIdx = Math.floor(offset / limit) + 1
+      if (docId) {
+        return {
+          icon: 'read',
+          text: t('workspace.chat.toolReadingChunk', {
+            chunk: chunkIdx,
+            defaultValue: 'Reading document… (chunk {{chunk}})'
+          })
+        }
+      }
+      return { icon: 'read', text: t('workspace.chat.toolReading', 'Reading document…') }
+    }
+    case 'get_paper_summary':
+      return { icon: 'summary', text: t('workspace.chat.toolGetSummary', 'Getting summary…') }
+    case 'get_paper_metadata':
+      return { icon: 'metadata', text: t('workspace.chat.toolGetMetadata', 'Fetching metadata…') }
+    case 'open_paper':
+      return { icon: 'open', text: t('workspace.chat.toolOpenPaper', 'Opening paper…') }
+    case 'generate_report':
+      return { icon: 'report', text: t('workspace.chat.toolGenerateReport', 'Generating report…') }
+    case 'add_docs_to_workspace':
+      return { icon: 'add', text: t('workspace.chat.toolAddDocs', 'Adding to workspace…') }
+    case 'request_summary':
+      return { icon: 'summary', text: t('workspace.chat.toolRequestSummary', 'Requesting summary…') }
+    default:
+      return null
+  }
+}
+
+const TOOL_ICONS: Record<string, typeof Search> = {
+  search: Search,
+  read: FileText,
+  summary: FileSearch,
+  metadata: FileSearch,
+  open: FolderOpen,
+  report: ClipboardList,
+  add: FilePlus
+}
+
+function TraceStepRow({ step, isLast }: { step: AgentTraceStep; isLast: boolean }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const hasBody = !!(step.input || step.output)
-  const kindLabel =
-    step.kind === 'tool'
-      ? t('workspace.chat.traceTool', 'Tool')
-      : step.kind === 'llm'
-        ? t('workspace.chat.traceLlm', 'Model')
-        : t('workspace.chat.traceRun', 'Run')
-  const statusLabel =
-    step.status === 'running'
-      ? t('workspace.chat.traceRunning', 'Running')
-      : step.status === 'error'
-        ? t('workspace.chat.traceError', 'Error')
-        : t('workspace.chat.traceDone', 'Done')
   const duration = formatDuration(step)
-  const Icon = step.kind === 'tool' ? Wrench : step.kind === 'llm' ? Bot : Activity
-  const statusClass =
+  const toolLabel = formatToolLabel(step, t)
+
+  const StatusIcon = step.status === 'running' ? Loader2 : step.status === 'error' ? XCircle : CheckCircle2
+  const statusColor =
     step.status === 'running'
       ? 'text-accent'
       : step.status === 'error'
         ? 'text-error'
         : 'text-muted'
+  const statusTitle =
+    step.status === 'running'
+      ? t('workspace.chat.traceRunning', 'Running')
+      : step.status === 'error'
+        ? t('workspace.chat.traceError', 'Error')
+        : t('workspace.chat.traceDone', 'Done')
+
+  const KindIcon = step.kind === 'tool'
+    ? (toolLabel ? (TOOL_ICONS[toolLabel.icon] ?? Wrench) : Wrench)
+    : step.kind === 'llm'
+      ? Bot
+      : Activity
+
+  const displayText = toolLabel
+    ? toolLabel.text
+    : step.kind === 'llm'
+      ? t('workspace.chat.traceLlmCall', 'Model thinking…')
+      : step.name ?? t('workspace.chat.traceTool', 'Tool')
 
   return (
-    <div className="rounded-lg border border-border/60 bg-background/60">
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
-        onClick={() => hasBody && setOpen((v) => !v)}
-        disabled={!hasBody}
-        aria-expanded={open}
-      >
-        {hasBody ? (
-          open ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+    <div className="trace-fade-in relative flex gap-2 pl-0.5">
+      <div className="flex flex-col items-center">
+        <StatusIcon
+          className={`h-3.5 w-3.5 shrink-0 ${statusColor} ${step.status === 'running' ? 'animate-spin' : ''}`}
+        />
+        {!isLast && <div className="mt-0.5 w-px flex-1 bg-border/50" />}
+      </div>
+      <div className={`min-w-0 flex-1 ${isLast ? 'pb-0' : 'pb-2'}`}>
+        <button
+          type="button"
+          className="flex w-full items-center gap-1.5 py-0.5 text-left"
+          onClick={() => hasBody && setOpen((v) => !v)}
+          disabled={!hasBody}
+          aria-expanded={open}
+          title={statusTitle}
+        >
+          {hasBody ? (
+            open ? (
+              <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+            ) : (
+              <ChevronRight className="h-3 w-3 shrink-0 text-muted" />
+            )
           ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-muted" />
-          )
-        ) : (
-          <span className="w-3 shrink-0" />
-        )}
-        <Icon className="h-3 w-3 shrink-0 text-muted" />
-        <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
-          <span className="text-muted">{kindLabel}</span>
-          {step.name ? (
-            <>
-              <span className="text-muted"> · </span>
-              <span className="font-medium">{step.name}</span>
-            </>
-          ) : null}
-        </span>
-        {duration && <span className="shrink-0 text-[10px] text-muted">{duration}</span>}
-        {step.kind === 'llm' && step.totalTokens != null && (
-          <span
-            className="shrink-0 text-[10px] text-muted"
-            title={t('workspace.chat.tokenUsage', 'Tokens')}
-          >
-            ↑{step.inputTokens ?? 0} ↓{step.outputTokens ?? 0}
+            <span className="w-3 shrink-0" />
+          )}
+          <KindIcon className="h-3 w-3 shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
+            <span className="font-medium">{displayText}</span>
           </span>
+          {step.kind === 'llm' && step.totalTokens != null && (
+            <span
+              className="shrink-0 text-[10px] text-muted"
+              title={t('workspace.chat.tokenUsage', 'Tokens')}
+            >
+              ↑{step.inputTokens ?? 0} ↓{step.outputTokens ?? 0}
+            </span>
+          )}
+          {duration && <span className="shrink-0 text-[10px] text-muted">{duration}</span>}
+        </button>
+        {open && hasBody && (
+          <div className="mt-1 space-y-1.5 pl-1">
+            {step.input && (
+              <div>
+                <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                  {t('workspace.chat.traceInput', 'Input')}
+                </p>
+                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[10px] text-foreground">
+                  {step.input}
+                </pre>
+              </div>
+            )}
+            {step.output && (
+              <div>
+                <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                  {t('workspace.chat.traceOutput', 'Output')}
+                </p>
+                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[10px] text-foreground">
+                  {step.output}
+                </pre>
+              </div>
+            )}
+          </div>
         )}
-        <span className={`shrink-0 text-[10px] ${statusClass}`}>{statusLabel}</span>
-      </button>
-      {open && hasBody && (
-        <div className="space-y-1.5 border-t border-border/50 px-2 py-1.5">
-          {step.input && (
-            <div>
-              <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
-                {t('workspace.chat.traceInput', 'Input')}
-              </p>
-              <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[10px] text-foreground">
-                {step.input}
-              </pre>
-            </div>
-          )}
-          {step.output && (
-            <div>
-              <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
-                {t('workspace.chat.traceOutput', 'Output')}
-              </p>
-              <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[10px] text-foreground">
-                {step.output}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -256,11 +352,36 @@ function AgentTracePanel({
   streaming: boolean
 }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const visible = steps.filter((s) => s.kind !== 'run')
   const totalTokensSum = visible.reduce((sum, s) => sum + (s.totalTokens ?? 0), 0)
   const hasTokenData = visible.some((s) => s.totalTokens != null)
+  const isRunning = visible.some((s) => s.status === 'running')
+  const hasError = visible.some((s) => s.status === 'error')
+
+  const totalDuration = useMemo(() => {
+    const runStep = steps.find((s) => s.kind === 'run')
+    if (runStep?.endedAt != null) return runStep.endedAt - runStep.startedAt
+    const ended = visible.filter((s) => s.endedAt != null)
+    if (ended.length === 0) return null
+    const minStart = Math.min(...visible.map((s) => s.startedAt))
+    const maxEnd = Math.max(...ended.map((s) => s.endedAt!))
+    return maxEnd - minStart
+  }, [steps, visible])
+
+  useEffect(() => {
+    setOpen(false)
+  }, [streaming])
+
   if (visible.length === 0 && !streaming) return null
+
+  const SummaryIcon = isRunning ? Loader2 : hasError ? XCircle : CheckCircle2
+  const summaryColor = isRunning ? 'text-accent' : hasError ? 'text-error' : 'text-muted'
+  const summaryLabel = isRunning
+    ? t('workspace.chat.traceRunningLabel', 'running…')
+    : totalDuration != null
+      ? `${(totalDuration / 1000).toFixed(1)}s`
+      : null
 
   return (
     <div className="rounded-xl border border-border bg-panel-2/80">
@@ -270,32 +391,41 @@ function AgentTracePanel({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        {open ? (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted" />
-        )}
-        <Activity className="h-3.5 w-3.5 shrink-0 text-muted" />
+        <SummaryIcon
+          className={`h-3.5 w-3.5 shrink-0 ${summaryColor} ${isRunning ? 'animate-spin' : ''}`}
+        />
         <span className="text-[11px] font-medium text-foreground">
           {t('workspace.chat.trace', 'Agent steps')}
         </span>
         <span className="text-[10px] text-muted">
           {visible.length > 0 ? visible.length : streaming ? '…' : 0}
         </span>
-        {hasTokenData && (
+        {summaryLabel && (
+          <span className="text-[10px] text-muted">· {summaryLabel}</span>
+        )}
+        {hasTokenData && !isRunning && (
           <span className="text-[10px] text-muted">
-            {t('workspace.chat.tokenTotal', { count: totalTokensSum })}
+            · {t('workspace.chat.tokenTotal', { count: totalTokensSum })}
           </span>
         )}
+        <ChevronDown
+          className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'}`}
+        />
       </button>
       {open && (
-        <div className="flex flex-col gap-1 px-2 pb-2">
+        <div className="flex flex-col gap-0 px-2.5 pb-2 pt-0.5">
           {visible.length === 0 ? (
             <p className="px-1 py-1 text-[11px] text-muted">
               {t('workspace.chat.traceEmpty', 'No tool or model steps yet.')}
             </p>
           ) : (
-            visible.map((step) => <TraceStepRow key={step.id} step={step} />)
+            visible.map((step, i) => (
+              <TraceStepRow
+                key={step.id}
+                step={step}
+                isLast={i === visible.length - 1}
+              />
+            ))
           )}
         </div>
       )}
@@ -344,6 +474,11 @@ export default function ChatPanel() {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const attachMenuRef = useRef<HTMLDivElement | null>(null)
   const hadMessagesRef = useRef(false)
+  const stickToBottomRef = useRef(true)
+  const streamingTextRef = useRef('')
+  const streamingReasoningRef = useRef('')
+  const lastTokenEventRef = useRef<{ token: string; ts: number } | null>(null)
+  const lastReasoningEventRef = useRef<{ token: string; ts: number } | null>(null)
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
 
@@ -415,10 +550,15 @@ export default function ChatPanel() {
 
   useEffect(() => {
     threadIdRef.current = activeThreadId
+    streamingTextRef.current = ''
+    streamingReasoningRef.current = ''
+    lastTokenEventRef.current = null
+    lastReasoningEventRef.current = null
     setStreamingText('')
     setStreamingReasoning('')
     setStreaming(false)
     setError(null)
+    stickToBottomRef.current = true
     if (!activeThreadId) {
       setMessages([])
       setTraceSteps([])
@@ -446,63 +586,107 @@ export default function ChatPanel() {
     }
   }, [activeThreadId])
 
+  const chatHandlersRef = useRef<{
+    onToken: (payload: ChatTokenEvent) => void
+    onReasoning: (payload: ChatReasoningEvent) => void
+    onDone: (payload: ChatDoneEvent) => void
+    onError: (payload: ChatErrorEvent) => void
+    onTrace: (payload: ChatTraceEvent) => void
+    onTitleUpdated: (payload: ChatTitleUpdatedEvent) => void
+  } | null>(null)
+
+  if (!chatHandlersRef.current) {
+    chatHandlersRef.current = {
+      onToken: (payload: ChatTokenEvent) => {
+        if (payload.threadId !== threadIdRef.current) return
+        const now = Date.now()
+        const last = lastTokenEventRef.current
+        if (last && last.token === payload.token && now - last.ts < 500) return
+        lastTokenEventRef.current = { token: payload.token, ts: now }
+        streamingTextRef.current += payload.token
+        setStreamingText(streamingTextRef.current)
+      },
+      onReasoning: (payload: ChatReasoningEvent) => {
+        if (payload.threadId !== threadIdRef.current) return
+        const now = Date.now()
+        const last = lastReasoningEventRef.current
+        if (last && last.token === payload.token && now - last.ts < 500) return
+        lastReasoningEventRef.current = { token: payload.token, ts: now }
+        streamingReasoningRef.current += payload.token
+        setStreamingReasoning(streamingReasoningRef.current)
+      },
+      onDone: (payload: ChatDoneEvent) => {
+        if (payload.threadId !== threadIdRef.current) return
+        setMessages((prev) => [
+          ...prev,
+          localMessage(payload.threadId, 'assistant', payload.finalText)
+        ])
+        streamingTextRef.current = ''
+        streamingReasoningRef.current = ''
+        lastTokenEventRef.current = null
+        lastReasoningEventRef.current = null
+        setStreamingText('')
+        setStreamingReasoning('')
+        setStreaming(false)
+      },
+      onError: (payload: ChatErrorEvent) => {
+        if (payload.threadId !== threadIdRef.current) return
+        setError(payload.message)
+        streamingTextRef.current = ''
+        streamingReasoningRef.current = ''
+        lastTokenEventRef.current = null
+        lastReasoningEventRef.current = null
+        setStreamingText('')
+        setStreamingReasoning('')
+        setStreaming(false)
+      },
+      onTrace: (payload: ChatTraceEvent) => {
+        if (payload.threadId !== threadIdRef.current) return
+        setTraceSteps((prev) => mergeTraceStep(prev, payload.step))
+      },
+      onTitleUpdated: (payload: ChatTitleUpdatedEvent) => {
+        useWorkspaceStore.setState((s) => ({
+          threads: s.threads.map((t) =>
+            t.id === payload.threadId ? { ...t, title: payload.title } : t
+          )
+        }))
+      }
+    }
+  }
+
   useEffect(() => {
-    const onToken = (payload: ChatTokenEvent) => {
-      if (payload.threadId !== threadIdRef.current) return
-      setStreamingText((prev) => prev + payload.token)
-    }
-    const onReasoning = (payload: ChatReasoningEvent) => {
-      if (payload.threadId !== threadIdRef.current) return
-      setStreamingReasoning((prev) => prev + payload.token)
-    }
-    const onDone = (payload: ChatDoneEvent) => {
-      if (payload.threadId !== threadIdRef.current) return
-      setMessages((prev) => [
-        ...prev,
-        localMessage(payload.threadId, 'assistant', payload.finalText)
-      ])
-      setStreamingText('')
-      setStreamingReasoning('')
-      setStreaming(false)
-    }
-    const onError = (payload: ChatErrorEvent) => {
-      if (payload.threadId !== threadIdRef.current) return
-      setError(payload.message)
-      setStreamingText('')
-      setStreamingReasoning('')
-      setStreaming(false)
-    }
-    const onTrace = (payload: ChatTraceEvent) => {
-      if (payload.threadId !== threadIdRef.current) return
-      setTraceSteps((prev) => mergeTraceStep(prev, payload.step))
-    }
-    const onTitleUpdated = (payload: ChatTitleUpdatedEvent) => {
-      useWorkspaceStore.setState((s) => ({
-        threads: s.threads.map((t) =>
-          t.id === payload.threadId ? { ...t, title: payload.title } : t
-        )
-      }))
-    }
-    api.events.onAiChatToken(onToken)
-    api.events.onAiChatReasoning(onReasoning)
-    api.events.onAiChatDone(onDone)
-    api.events.onAiChatError(onError)
-    api.events.onAiChatTrace(onTrace)
-    api.events.onAiChatTitleUpdated(onTitleUpdated)
+    const h = chatHandlersRef.current!
+    api.events.onAiChatToken(h.onToken)
+    api.events.onAiChatReasoning(h.onReasoning)
+    api.events.onAiChatDone(h.onDone)
+    api.events.onAiChatError(h.onError)
+    api.events.onAiChatTrace(h.onTrace)
+    api.events.onAiChatTitleUpdated(h.onTitleUpdated)
     return () => {
-      api.events.off('ai:chat:token', onToken)
-      api.events.off('ai:chat:reasoning', onReasoning)
-      api.events.off('ai:chat:done', onDone)
-      api.events.off('ai:chat:error', onError)
-      api.events.off('ai:chat:trace', onTrace)
-      api.events.off('ai:chat:titleUpdated', onTitleUpdated)
+      api.events.off('ai:chat:token', h.onToken)
+      api.events.off('ai:chat:reasoning', h.onReasoning)
+      api.events.off('ai:chat:done', h.onDone)
+      api.events.off('ai:chat:error', h.onError)
+      api.events.off('ai:chat:trace', h.onTrace)
+      api.events.off('ai:chat:titleUpdated', h.onTitleUpdated)
     }
   }, [])
 
   useEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages, streamingText, streamingReasoning, traceSteps])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+      stickToBottomRef.current = atBottom
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
 
   useEffect(() => {
     if (!modelMenuOpen) return
@@ -596,10 +780,15 @@ export default function ChatPanel() {
     setMessages((prev) => [...prev, localMessage(existingThread ?? '', 'user', text)])
     setInput('')
     setStreaming(true)
+    streamingTextRef.current = ''
+    streamingReasoningRef.current = ''
+    lastTokenEventRef.current = null
+    lastReasoningEventRef.current = null
     setStreamingText('')
     setStreamingReasoning('')
     setError(null)
     hadMessagesRef.current = true
+    stickToBottomRef.current = true
     try {
       const model = requestModel || undefined
       if (model) void pushRecentModel(model)
@@ -661,6 +850,14 @@ export default function ChatPanel() {
   const displayModelLabel = providers.length === 0
     ? t('workspace.chat.notConfigured', 'Not configured')
     : requestModel || t('workspace.chat.selectProvider', 'Select model / provider')
+
+  const showTrace = streaming || traceSteps.some((s) => s.kind !== 'run')
+  const lastUserIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') return i
+    }
+    return -1
+  })()
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
@@ -750,25 +947,36 @@ export default function ChatPanel() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[85%] break-words rounded-2xl px-3 py-2 text-xs ${
-                    m.role === 'user'
-                      ? 'whitespace-pre-wrap bg-accent text-white'
-                      : 'bg-panel-2 text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted'
-                  }`}
-                >
-                  {m.role === 'user'
-                    ? m.content
-                    : <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>}
-                </div>
-              </div>
-            ))}
-            {(streaming || traceSteps.some((s) => s.kind !== 'run')) && (
+            {messages.map((m, idx) => {
+              const showTraceHere =
+                showTrace &&
+                !streaming &&
+                idx === lastUserIdx &&
+                lastUserIdx < messages.length - 1
+              return (
+                <Fragment key={m.id}>
+                  <div
+                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[85%] break-words rounded-2xl px-3 py-2 text-xs ${
+                        m.role === 'user'
+                          ? 'whitespace-pre-wrap bg-accent text-white'
+                          : 'bg-panel-2 text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted'
+                      }`}
+                    >
+                      {m.role === 'user'
+                        ? m.content
+                        : <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>}
+                    </div>
+                  </div>
+                  {showTraceHere && (
+                    <AgentTracePanel steps={traceSteps} streaming={streaming} />
+                  )}
+                </Fragment>
+              )
+            })}
+            {showTrace && streaming && (
               <AgentTracePanel steps={traceSteps} streaming={streaming} />
             )}
             {streamingReasoning && (

@@ -237,6 +237,7 @@
       "traceTool": "Tool",
       "traceRun": "Run",
       "traceRunning": "Running",
+      "traceRunningLabel": "running…",
       "traceDone": "Done",
       "traceError": "Error",
       "traceInput": "Input",
@@ -244,7 +245,18 @@
       "traceExpand": "Show details",
       "traceCollapse": "Hide details",
       "tokenUsage": "Tokens",
-      "tokenTotal": "Total {{count}} tokens"
+      "tokenTotal": "Total {{count}} tokens",
+      "traceLlmCall": "Model thinking…",
+      "toolSearchWorkspace": "Searching workspace…",
+      "toolSearchLibrary": "Searching library…",
+      "toolReading": "Reading document…",
+      "toolReadingChunk": "Reading document… (chunk {{chunk}})",
+      "toolGetSummary": "Getting summary…",
+      "toolGetMetadata": "Fetching metadata…",
+      "toolOpenPaper": "Opening paper…",
+      "toolGenerateReport": "Generating report…",
+      "toolAddDocs": "Adding to workspace…",
+      "toolRequestSummary": "Requesting summary…"
     }
   }
 }

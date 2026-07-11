@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Maximize2, Minimize2, X } from 'lucide-react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
@@ -7,7 +7,6 @@ import Board from './Board'
 import ChatPanel from './ChatPanel'
 
 const CHAT_MIN = 180
-const CHAT_MAX = 520
 const CHAT_DEFAULT = 280
 
 export default function WorkspacePanel() {
@@ -20,9 +19,14 @@ export default function WorkspacePanel() {
 
   const [chatHeight, setChatHeight] = useState(CHAT_DEFAULT)
 
-  const handleChatResize = useCallback((delta: number) => {
-    setChatHeight((h) => Math.max(CHAT_MIN, Math.min(CHAT_MAX, h - delta)))
+  const chatMax = useMemo(() => {
+    if (typeof window === 'undefined') return 520
+    return Math.max(CHAT_MIN, window.innerHeight - 48 - 24)
   }, [])
+
+  const handleChatResize = useCallback((delta: number) => {
+    setChatHeight((h) => Math.max(CHAT_MIN, Math.min(chatMax, h - delta)))
+  }, [chatMax])
 
   const isMac = document.documentElement.dataset.platform === 'mac'
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
