@@ -584,7 +584,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.AiChatHistory]: (threadId: string): Result<ChatMessage[]> =>
       wrap(() => {
         if (!threadId) return []
-        return repos().chat.listMessages(threadId)
+        return repos().chat.listMessages(threadId).filter((m) => m.role !== 'tool')
       }),
     [IpcChannel.AiChatThreads]: (workspaceId: string): Result<ChatThread[]> =>
       wrap(() => repos().chat.listThreads(workspaceId)),
@@ -602,6 +602,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       }),
     [IpcChannel.AiChatDeleteThread]: (threadId: string): Result<void> =>
       wrap(() => {
+        const rt = deps.getRuntime()
+        rt?.aiAgentService?.cancel(threadId)
         repos().agentTraces.deleteByThread(threadId)
         repos().chat.deleteThread(threadId)
         return undefined

@@ -61,10 +61,12 @@ function setupStore(): void {
     activeWorkspaceId: 'ws-1',
     activeThreadId: 'thread-1',
     threads: [],
+    chatStreaming: false,
     fetchThreads: vi.fn().mockResolvedValue(undefined),
     deleteThread: vi.fn().mockResolvedValue(undefined),
     startNewChat: vi.fn(),
-    setActiveThreadId: vi.fn()
+    setActiveThreadId: vi.fn(),
+    setChatStreaming: vi.fn()
   })
   useDocumentStore.setState({ showToast: vi.fn() })
 }
@@ -196,5 +198,23 @@ describe('ChatPanel citation links', () => {
     await vi.waitFor(() => {
       expect(mockOpenPdf).toHaveBeenCalledWith('abc')
     })
+  })
+})
+
+describe('ChatPanel tool message filtering', () => {
+  it('does not render tool messages in the chat history', async () => {
+    const toolContent = JSON.stringify({ v: 2, name: 'search_workspace_docs', toolCallId: 'call_1', input: 'q', output: '[]' })
+    const msgs: ChatMessage[] = [
+      { id: 'm1', threadId: 't1', role: 'user', content: 'hello', createdAt: 0 },
+      { id: 'm2', threadId: 't1', role: 'tool', content: toolContent, createdAt: 1 },
+      { id: 'm3', threadId: 't1', role: 'assistant', content: 'hi there', createdAt: 2 }
+    ]
+    setupApi(msgs)
+    render(<ChatPanel />)
+
+    await screen.findByText('hello')
+    await screen.findByText('hi there')
+    expect(screen.queryByText(/search_workspace_docs/)).toBeNull()
+    expect(screen.queryByText(/toolCallId/)).toBeNull()
   })
 })

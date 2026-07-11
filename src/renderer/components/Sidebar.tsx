@@ -50,6 +50,7 @@ function SidebarItem({
   label,
   muted = false,
   active = false,
+  disabled = false,
   onClick,
   onContextMenu,
   onDragOver,
@@ -59,6 +60,7 @@ function SidebarItem({
   label: string
   muted?: boolean
   active?: boolean
+  disabled?: boolean
   onClick?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   onDragOver?: (e: React.DragEvent) => void
@@ -68,14 +70,16 @@ function SidebarItem({
     <div
       className={`sidebar-item ${
         active ? 'sidebar-item-active' : muted ? 'text-muted' : 'text-foreground'
-      }`}
-      onClick={onClick}
+      } ${disabled ? 'pointer-events-none opacity-40' : ''}`}
+      onClick={disabled ? undefined : onClick}
       onContextMenu={onContextMenu}
       onDragOver={onDragOver}
       onDrop={onDrop}
       role="button"
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled}
       onKeyDown={(e) => {
+        if (disabled) return
         if (e.key === 'Enter' && onClick) onClick()
       }}
     >
@@ -153,6 +157,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
+  const chatStreaming = useWorkspaceStore((s) => s.chatStreaming)
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
   const createWorkspace = useWorkspaceStore((s) => s.createWorkspace)
   const renameWorkspace = useWorkspaceStore((s) => s.renameWorkspace)
@@ -679,6 +684,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                       icon={<LayoutDashboard className="h-4 w-4" />}
                       label={w.name}
                       active={activeWorkspaceId === w.id}
+                      disabled={chatStreaming && activeWorkspaceId !== w.id}
                       onClick={() => setActiveWorkspace(w.id)}
                       onContextMenu={(e) => handleWsItemContext(e, w)}
                     />

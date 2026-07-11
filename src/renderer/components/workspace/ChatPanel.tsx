@@ -4,8 +4,10 @@ import {
   Plus,
   Send,
   Square,
+  Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   Paperclip,
   Sparkles,
   Wrench,
@@ -21,7 +23,10 @@ import {
   FileSearch,
   FilePlus,
   ClipboardList,
-  FolderOpen
+  FolderOpen,
+  RotateCcw,
+  X,
+  ArrowDown
 } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
@@ -77,11 +82,12 @@ export function parseReforaDocLink(href: string): { docId: string; query?: strin
   }
 }
 
-async function openCitationDoc(docId: string): Promise<void> {
+async function openCitationDoc(docId: string): Promise<boolean> {
   try {
     await api.documents.openPdf(docId)
+    return true
   } catch {
-    // silently fail for P1
+    return false
   }
 }
 
@@ -94,7 +100,10 @@ const MARKDOWN_COMPONENTS: Components = {
           <button
             type="button"
             className="inline-flex items-center gap-0.5 text-accent underline hover:opacity-80"
-            onClick={() => void openCitationDoc(parsed.docId)}
+            onClick={async () => {
+              const ok = await openCitationDoc(parsed.docId)
+              if (!ok) window.alert('Failed to open document. It may have been moved or deleted.')
+            }}
             title={parsed.query ?? undefined}
           >
             {children}
@@ -119,6 +128,10 @@ const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content
 const RECENT_MODELS_KEY = 'chatRecentModels'
 const MAX_RECENT = 8
 
+type RecentModelEntry = { model: string; providerId: string }
+
+const MAX_INPUT_LENGTH = 32000
+
 function localMessage(
   threadId: string,
   role: ChatMessage['role'],
@@ -133,22 +146,28 @@ function localMessage(
   }
 }
 
-async function loadRecentModels(): Promise<string[]> {
+async function loadRecentModels(): Promise<RecentModelEntry[]> {
   try {
     const raw = await api.settings.get<string>(RECENT_MODELS_KEY, '[]')
     const parsed = JSON.parse(typeof raw === 'string' ? raw : '[]') as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((x): x is string => typeof x === 'string').slice(0, MAX_RECENT)
+    return parsed
+      .filter((x): x is RecentModelEntry =>
+        typeof x === 'object' && x !== null &&
+        typeof (x as Record<string, unknown>).model === 'string' &&
+        typeof (x as Record<string, unknown>).providerId === 'string'
+      )
+      .slice(0, MAX_RECENT)
   } catch {
     return []
   }
 }
 
-async function pushRecentModel(model: string): Promise<void> {
+async function pushRecentModel(model: string, providerId: string): Promise<void> {
   const id = model.trim()
-  if (!id) return
+  if (!id || !providerId) return
   const prev = await loadRecentModels()
-  const next = [id, ...prev.filter((m) => m !== id)].slice(0, MAX_RECENT)
+  const next = [{ model: id, providerId }, ...prev.filter((m) => m.model !== id)].slice(0, MAX_RECENT)
   await api.settings.set(RECENT_MODELS_KEY, JSON.stringify(next))
 }
 
@@ -433,11 +452,32 @@ function AgentTracePanel({
   )
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      className="shrink-0 rounded p-1 text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+      title="Copy"
+      aria-label="Copy"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1500)
+        })
+      }}
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
+  )
+}
+
 export default function ChatPanel() {
   const { t } = useTranslation()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const activeThreadId = useWorkspaceStore((s) => s.activeThreadId)
   const setActiveThreadId = useWorkspaceStore((s) => s.setActiveThreadId)
+  const setChatStreaming = useWorkspaceStore((s) => s.setChatStreaming)
   const startNewChat = useWorkspaceStore((s) => s.startNewChat)
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -454,10 +494,12 @@ export default function ChatPanel() {
   const [deepThinking, setDeepThinking] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [providerModels, setProviderModels] = useState<ProviderModelInfo[]>([])
-  const [recentModels, setRecentModels] = useState<string[]>([])
+  const [recentModels, setRecentModels] = useState<RecentModelEntry[]>([])
   const [customModel, setCustomModel] = useState('')
   const [modelSwitchHint, setModelSwitchHint] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
@@ -471,14 +513,15 @@ export default function ChatPanel() {
 
   const threadIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const attachMenuRef = useRef<HTMLDivElement | null>(null)
   const hadMessagesRef = useRef(false)
+  const isSendingRef = useRef(false)
+  const lastSendRef = useRef<{ text: string; attachments: string[]; threadId: string | null } | null>(null)
   const stickToBottomRef = useRef(true)
   const streamingTextRef = useRef('')
   const streamingReasoningRef = useRef('')
-  const lastTokenEventRef = useRef<{ token: string; ts: number } | null>(null)
-  const lastReasoningEventRef = useRef<{ token: string; ts: number } | null>(null)
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
 
@@ -498,10 +541,13 @@ export default function ChatPanel() {
 
   const loadProviders = useCallback(async () => {
     try {
-      const [list, active, recent] = await Promise.all([
+      const [list, active, recent, savedModel, savedVariant, savedDeep] = await Promise.all([
         api.aiProviders.list(),
         api.settings.get<string>('activeProviderId', ''),
-        loadRecentModels()
+        loadRecentModels(),
+        api.settings.get<string>('chatSelectedModel', ''),
+        api.settings.get<string>('chatSelectedVariant', ''),
+        api.settings.get<boolean>('chatDeepThinking', false)
       ])
       setProviders(list)
       setRecentModels(recent)
@@ -515,6 +561,9 @@ export default function ChatPanel() {
         setSelectedModel(p.baseModel || parsed.baseModel || p.model)
         setSelectedVariant(p.variant || parsed.variant)
       }
+      if (savedModel) setSelectedModel(savedModel)
+      if (savedVariant) setSelectedVariant(savedVariant)
+      setDeepThinking(savedDeep)
     } catch (e) {
       setError(errorMessage(e, 'Failed to load providers'))
     }
@@ -550,22 +599,24 @@ export default function ChatPanel() {
 
   useEffect(() => {
     threadIdRef.current = activeThreadId
-    streamingTextRef.current = ''
-    streamingReasoningRef.current = ''
-    lastTokenEventRef.current = null
-    lastReasoningEventRef.current = null
-    setStreamingText('')
-    setStreamingReasoning('')
-    setStreaming(false)
-    setError(null)
+    if (!isSendingRef.current) {
+      streamingTextRef.current = ''
+      streamingReasoningRef.current = ''
+      setStreamingText('')
+      setStreamingReasoning('')
+      setStreaming(false)
+      setError(null)
+    }
     stickToBottomRef.current = true
     if (!activeThreadId) {
       setMessages([])
       setTraceSteps([])
       hadMessagesRef.current = false
+      setLoadingHistory(false)
       return
     }
     let cancelled = false
+    setLoadingHistory(true)
     void Promise.all([
       api.ai.chatHistory(activeThreadId),
       api.ai.chatTraces(activeThreadId)
@@ -575,11 +626,13 @@ export default function ChatPanel() {
         setMessages(history)
         setTraceSteps(traces)
         hadMessagesRef.current = history.length > 0
+        setLoadingHistory(false)
       })
       .catch(() => {
         if (cancelled) return
         setMessages([])
         setTraceSteps([])
+        setLoadingHistory(false)
       })
     return () => {
       cancelled = true
@@ -599,43 +652,35 @@ export default function ChatPanel() {
     chatHandlersRef.current = {
       onToken: (payload: ChatTokenEvent) => {
         if (payload.threadId !== threadIdRef.current) return
-        const now = Date.now()
-        const last = lastTokenEventRef.current
-        if (last && last.token === payload.token && now - last.ts < 500) return
-        lastTokenEventRef.current = { token: payload.token, ts: now }
         streamingTextRef.current += payload.token
         setStreamingText(streamingTextRef.current)
       },
       onReasoning: (payload: ChatReasoningEvent) => {
         if (payload.threadId !== threadIdRef.current) return
-        const now = Date.now()
-        const last = lastReasoningEventRef.current
-        if (last && last.token === payload.token && now - last.ts < 500) return
-        lastReasoningEventRef.current = { token: payload.token, ts: now }
         streamingReasoningRef.current += payload.token
         setStreamingReasoning(streamingReasoningRef.current)
       },
       onDone: (payload: ChatDoneEvent) => {
         if (payload.threadId !== threadIdRef.current) return
+        isSendingRef.current = false
+        lastSendRef.current = null
         setMessages((prev) => [
           ...prev,
           localMessage(payload.threadId, 'assistant', payload.finalText)
         ])
         streamingTextRef.current = ''
         streamingReasoningRef.current = ''
-        lastTokenEventRef.current = null
-        lastReasoningEventRef.current = null
         setStreamingText('')
         setStreamingReasoning('')
         setStreaming(false)
       },
       onError: (payload: ChatErrorEvent) => {
         if (payload.threadId !== threadIdRef.current) return
+        isSendingRef.current = false
+        lastSendRef.current = null
         setError(payload.message)
         streamingTextRef.current = ''
         streamingReasoningRef.current = ''
-        lastTokenEventRef.current = null
-        lastReasoningEventRef.current = null
         setStreamingText('')
         setStreamingReasoning('')
         setStreaming(false)
@@ -683,10 +728,22 @@ export default function ChatPanel() {
     const onScroll = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
       stickToBottomRef.current = atBottom
+      setShowScrollBtn(!atBottom && messages.length > 0)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [messages.length])
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [input])
+
+  useEffect(() => {
+    setChatStreaming(streaming)
+  }, [streaming, setChatStreaming])
 
   useEffect(() => {
     if (!modelMenuOpen) return
@@ -753,6 +810,8 @@ export default function ChatPanel() {
       }
       setSelectedModel(baseModel)
       setSelectedVariant(variant)
+      void api.settings.set('chatSelectedModel', baseModel)
+      void api.settings.set('chatSelectedVariant', variant)
       if (hadMessagesRef.current || messages.length > 0) {
         setModelSwitchHint(true)
         window.setTimeout(() => setModelSwitchHint(false), 3500)
@@ -762,7 +821,7 @@ export default function ChatPanel() {
       const full = composeModelId(baseModel, variant, format)
       if (full) {
         try {
-          await pushRecentModel(full)
+          await pushRecentModel(full, nextProviderId)
           setRecentModels(await loadRecentModels())
         } catch (e) {
           setError(errorMessage(e, 'Failed to update model'))
@@ -773,25 +832,26 @@ export default function ChatPanel() {
     [activeProviderId, messages.length, providers]
   )
 
-  const handleSend = useCallback(async () => {
-    if (!activeWorkspaceId || !activeProviderId || !input.trim() || streaming) return
-    const text = input.trim()
-    const existingThread = activeThreadId
+  const sendText = useCallback(async (text: string, attachments: string[], existingThread: string | null) => {
+    if (!activeWorkspaceId || !activeProviderId || !text.trim() || streaming) return
+    if (text.length > MAX_INPUT_LENGTH) {
+      setError(t('workspace.chat.inputTooLong', 'Message is too long. Please shorten it.'))
+      return
+    }
     setMessages((prev) => [...prev, localMessage(existingThread ?? '', 'user', text)])
-    setInput('')
     setStreaming(true)
+    isSendingRef.current = true
     streamingTextRef.current = ''
     streamingReasoningRef.current = ''
-    lastTokenEventRef.current = null
-    lastReasoningEventRef.current = null
     setStreamingText('')
     setStreamingReasoning('')
     setError(null)
     hadMessagesRef.current = true
     stickToBottomRef.current = true
+    lastSendRef.current = { text, attachments: [...attachments], threadId: existingThread }
     try {
       const model = requestModel || undefined
-      if (model) void pushRecentModel(model)
+      if (model) void pushRecentModel(model, activeProviderId)
       const { threadId } = await api.ai.chatSend({
         workspaceId: activeWorkspaceId,
         threadId: existingThread ?? undefined,
@@ -799,10 +859,13 @@ export default function ChatPanel() {
         providerId: activeProviderId,
         model,
         features: { deepThinking },
-        attachments: selectedAttachments.length > 0
-          ? selectedAttachments.map((docId) => ({ type: 'document' as const, docId }))
+        attachments: attachments.length > 0
+          ? attachments.map((docId) => ({ type: 'document' as const, docId }))
           : undefined
       })
+      if (lastSendRef.current) {
+        lastSendRef.current = { ...lastSendRef.current, threadId }
+      }
       if (!existingThread) {
         setActiveThreadId(threadId)
         threadIdRef.current = threadId
@@ -810,38 +873,64 @@ export default function ChatPanel() {
       void fetchThreads()
     } catch (e) {
       setError(errorMessage(e, 'Failed to send message'))
+      isSendingRef.current = false
       setStreaming(false)
       setStreamingText('')
       setStreamingReasoning('')
     }
-    setSelectedAttachments([])
-    setAttachMenuOpen(false)
   }, [
     activeWorkspaceId,
     activeProviderId,
-    input,
     streaming,
-    activeThreadId,
     setActiveThreadId,
     requestModel,
     deepThinking,
     fetchThreads,
-    selectedAttachments
+    t
   ])
+
+  const handleSend = useCallback(() => {
+    if (!input.trim() || streaming) return
+    const text = input.trim()
+    const atts = [...selectedAttachments]
+    setInput('')
+    setSelectedAttachments([])
+    setAttachMenuOpen(false)
+    void sendText(text, atts, activeThreadId)
+  }, [input, streaming, selectedAttachments, activeThreadId, sendText])
+
+  const handleRetry = useCallback(() => {
+    const last = lastSendRef.current
+    if (!last) return
+    setMessages((prev) => {
+      const idx = prev.findLastIndex((m) => m.role === 'user' && m.content === last.text && m.id.startsWith('local-'))
+      if (idx === -1) return prev
+      return prev.filter((_, i) => i !== idx)
+    })
+    void sendText(last.text, last.attachments, last.threadId)
+  }, [sendText])
 
   const handleCancel = useCallback(() => {
     if (!threadIdRef.current) return
     void api.ai.chatCancel(threadIdRef.current)
+    isSendingRef.current = false
+    setStreaming(false)
+    streamingTextRef.current = ''
+    streamingReasoningRef.current = ''
+    setStreamingText('')
+    setStreamingReasoning('')
   }, [])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       void handleSend()
     }
   }
 
-  const showEmpty = messages.length === 0 && !streamingText && !streamingReasoning
+  const displayMessages = useMemo(() => messages.filter((m) => m.role !== 'tool'), [messages])
+  const showEmpty = displayMessages.length === 0 && !streamingText && !streamingReasoning
   const canSend = !!activeWorkspaceId && !!activeProviderId && !!input.trim() && !streaming
   const variantCapable =
     supportsModelVariants(selectedModel) ||
@@ -853,14 +942,14 @@ export default function ChatPanel() {
 
   const showTrace = streaming || traceSteps.some((s) => s.kind !== 'run')
   const lastUserIdx = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') return i
+    for (let i = displayMessages.length - 1; i >= 0; i--) {
+      if (displayMessages[i].role === 'user') return i
     }
     return -1
   })()
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
         <div className="relative" ref={threadMenuRef}>
           <button
@@ -902,6 +991,7 @@ export default function ChatPanel() {
                       className="shrink-0 text-muted hover:text-error"
                       onClick={(e) => {
                         e.stopPropagation()
+                        if (!window.confirm(t('workspace.chat.confirmDelete', 'Delete this conversation?'))) return
                         void deleteThread(th.id).then(() => void fetchThreads())
                       }}
                       title={t('common.delete', 'Delete')}
@@ -931,7 +1021,11 @@ export default function ChatPanel() {
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {showEmpty ? (
+        {loadingHistory ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin text-muted" />
+          </div>
+        ) : showEmpty ? (
           <div className="flex h-full items-center justify-center text-center">
             <p className="text-xs text-muted">
               {providers.length === 0
@@ -947,12 +1041,12 @@ export default function ChatPanel() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {messages.map((m, idx) => {
+            {displayMessages.map((m, idx) => {
               const showTraceHere =
                 showTrace &&
                 !streaming &&
                 idx === lastUserIdx &&
-                lastUserIdx < messages.length - 1
+                lastUserIdx < displayMessages.length - 1
               return (
                 <Fragment key={m.id}>
                   <div
@@ -962,12 +1056,19 @@ export default function ChatPanel() {
                       className={`max-w-[85%] break-words rounded-2xl px-3 py-2 text-xs ${
                         m.role === 'user'
                           ? 'whitespace-pre-wrap bg-accent text-white'
-                          : 'bg-panel-2 text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted'
+                          : 'group bg-panel-2 text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted'
                       }`}
                     >
                       {m.role === 'user'
                         ? m.content
-                        : <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>}
+                        : (
+                          <>
+                            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>
+                            <div className="mt-1 flex justify-end">
+                              <CopyButton text={m.content} />
+                            </div>
+                          </>
+                        )}
                     </div>
                   </div>
                   {showTraceHere && (
@@ -1009,9 +1110,50 @@ export default function ChatPanel() {
         )}
       </div>
 
+      {showScrollBtn && (
+        <button
+          type="button"
+          className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-panel p-1.5 shadow-lg hover:bg-hover"
+          onClick={() => {
+            const el = scrollRef.current
+            if (el) {
+              el.scrollTop = el.scrollHeight
+              stickToBottomRef.current = true
+              setShowScrollBtn(false)
+            }
+          }}
+          aria-label={t('workspace.chat.scrollToBottom', 'Scroll to bottom')}
+          title={t('workspace.chat.scrollToBottom', 'Scroll to bottom')}
+        >
+          <ArrowDown className="h-4 w-4" />
+        </button>
+      )}
+
       {error && (
         <div className="shrink-0 px-3 pb-1">
-          <div className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">{error}</div>
+          <div className="flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+            <span className="min-w-0 flex-1 break-words">{error}</span>
+            {lastSendRef.current && !streaming && (
+              <button
+                type="button"
+                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-red-500/20"
+                onClick={() => void handleRetry()}
+                title={t('workspace.chat.retry', 'Retry')}
+                aria-label={t('workspace.chat.retry', 'Retry')}
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              className="shrink-0 rounded px-1 py-0.5 hover:bg-red-500/20"
+              onClick={() => setError(null)}
+              title={t('common.dismiss', 'Dismiss')}
+              aria-label={t('common.dismiss', 'Dismiss')}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1053,6 +1195,7 @@ export default function ChatPanel() {
             </div>
           )}
           <textarea
+            ref={textareaRef}
             className="max-h-40 min-h-[52px] w-full resize-none bg-transparent px-3 pt-3 text-sm text-foreground placeholder:text-muted focus:outline-none"
             rows={2}
             value={input}
@@ -1206,19 +1349,19 @@ export default function ChatPanel() {
                         <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
                           {t('workspace.chat.recentModels', 'Recent')}
                         </p>
-                        {recentModels.map((m) => {
-                          const parsed = parseModelId(m)
+                        {recentModels.map((entry) => {
+                          const parsed = parseModelId(entry.model)
                           return (
                             <button
-                              key={`r-${m}`}
+                              key={`r-${entry.model}`}
                               type="button"
                               role="option"
                               className="mb-0.5 flex w-full rounded-lg px-2 py-1.5 text-left text-xs text-foreground hover:bg-hover"
                               onClick={() =>
-                                void applyModel(parsed.baseModel || m, parsed.variant)
+                                void applyModel(parsed.baseModel || entry.model, parsed.variant, entry.providerId)
                               }
                             >
-                              <span className="truncate">{m}</span>
+                              <span className="truncate">{entry.model}</span>
                             </button>
                           )
                         })}
@@ -1302,7 +1445,13 @@ export default function ChatPanel() {
                     ? 'bg-accent/15 text-accent'
                     : 'text-muted hover:bg-hover hover:text-foreground'
                 } disabled:opacity-40`}
-                onClick={() => setDeepThinking((v) => !v)}
+                onClick={() => {
+                  setDeepThinking((v) => {
+                    const next = !v
+                    void api.settings.set('chatDeepThinking', next)
+                    return next
+                  })
+                }}
                 disabled={providers.length === 0 || streaming}
                 aria-pressed={deepThinking}
                 title={

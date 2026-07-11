@@ -68,8 +68,17 @@ const SYSTEM_PROMPT =
   'Citations: cite papers as markdown links [Title](refora://doc/<docId>). Prefer titles users can recognize. ' +
   'Never invent docIds; only use ids from the workspace catalog, tools, or attachments.'
 
+const workspaceContextCache = new Map<string, { context: string; docIdKey: string; ts: number }>()
+const WORKSPACE_CONTEXT_TTL_MS = 60_000
+
 function buildWorkspaceContext(repos: Repositories, workspaceId: string): string {
   const items = repos.workspaceItems.list(workspaceId).filter((i) => i.kind === 'document')
+  const docIdKey = items.map((i) => i.docId).filter((d): d is string => d !== null).sort().join(',')
+  const cached = workspaceContextCache.get(workspaceId)
+  const now = Date.now()
+  if (cached && cached.docIdKey === docIdKey && now - cached.ts < WORKSPACE_CONTEXT_TTL_MS) {
+    return cached.context
+  }
   const docs: Array<{
     docId: string
     title: string
@@ -124,7 +133,9 @@ function buildWorkspaceContext(repos: Repositories, workspaceId: string): string
     `Workspace paper catalog (${total} document${total === 1 ? '' : 's'}` +
     (omitted > 0 ? `, showing first ${total - omitted}; use search_workspace_docs for the rest` : '') +
     '):'
-  return `${header}\n${body}`
+  const result = `${header}\n${body}`
+  workspaceContextCache.set(workspaceId, { context: result, docIdKey, ts: now })
+  return result
 }
 
 function parseSourceDocIds(raw: string): string[] {
@@ -572,8 +583,14 @@ export function createAiAgentService(
       description:
         'Open a paper PDF in the system default viewer by its docId. Use when the user wants to view or read a paper.',
       func: async (docId: string) => {
+        const id = docId.trim()
+        const wsItems = repos.workspaceItems.list(req.workspaceId).filter((i) => i.kind === 'document')
+        const wsDocIds = new Set(wsItems.map((i) => i.docId).filter((d): d is string => d !== null))
+        if (!wsDocIds.has(id)) {
+          return 'Document is not in the current workspace. Use search_workspace_docs to find papers in this workspace.'
+        }
         try {
-          const doc = await openPdf(repos, getWin(), docId.trim())
+          const doc = await openPdf(repos, getWin(), id)
           return `Opened: ${doc.title ?? doc.fileName}`
         } catch (e) {
           return `Failed to open: ${e instanceof Error ? e.message : String(e)}`

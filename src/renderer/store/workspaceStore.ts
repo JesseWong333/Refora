@@ -17,6 +17,7 @@ interface WorkspaceState {
   activeThreadId: string | null
   panelOpen: boolean
   fullscreen: boolean
+  chatStreaming: boolean
   items: WorkspaceItem[]
   reports: AiReport[]
   threads: ChatThread[]
@@ -29,6 +30,7 @@ interface WorkspaceState {
   deleteWorkspace: (id: string) => Promise<void>
   setActiveWorkspace: (id: string) => void
   setActiveThreadId: (id: string | null) => void
+  setChatStreaming: (streaming: boolean) => void
   deleteThread: (threadId: string) => Promise<void>
   fetchThreads: () => Promise<void>
   startNewChat: () => void
@@ -58,6 +60,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   activeThreadId: null,
   panelOpen: false,
   fullscreen: false,
+  chatStreaming: false,
   items: [],
   reports: [],
   threads: [],
@@ -161,6 +164,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   setActiveWorkspace: (id: string) => {
+    if (get().chatStreaming) return
     set({ activeWorkspaceId: id, panelOpen: true })
     void get().fetchItems()
     void get().fetchReports()
@@ -175,6 +179,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveThreadId: (id: string | null) => {
     set({ activeThreadId: id })
+  },
+
+  setChatStreaming: (streaming: boolean) => {
+    set({ chatStreaming: streaming })
   },
 
   deleteThread: async (threadId: string) => {
