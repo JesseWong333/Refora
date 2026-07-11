@@ -1,6 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage } from '@langchain/core/messages'
 import type { AiProvider } from '../../shared/ipc-types'
+import { resolveDeepThinkingMode } from '../../shared/deepThinking'
 import { logger } from './logger'
 
 export async function generateThreadTitle(
@@ -10,12 +11,13 @@ export async function generateThreadTitle(
   userMessage: string
 ): Promise<string | null> {
   try {
+    const isReasoningModel = resolveDeepThinkingMode(modelId) === 'native'
     const llm = new ChatOpenAI({
       model: modelId,
       configuration: { baseURL: provider.baseUrl },
       apiKey,
       streaming: false,
-      maxTokens: 30,
+      maxTokens: isReasoningModel ? 512 : 30,
       temperature: 0.3
     })
     const prompt =
@@ -24,8 +26,38 @@ export async function generateThreadTitle(
       'Reply with ONLY the title, nothing else.\n\n' +
       `User message: ${userMessage.slice(0, 500)}`
     const result = await llm.invoke([new HumanMessage(prompt)])
-    const title = typeof result.content === 'string' ? result.content.trim() : ''
-    const cleaned = title.replace(/^['"]+|['"]+$/g, '').replace(/\.$/, '').trim()
+    const content = result.content
+    let title: string
+    if (typeof content === 'string') {
+      title = content
+    } else if (isReasoningModel) {
+      let text = ''
+      for (const part of content) {
+        const p = part as Record<string, unknown>
+        if (p.type === 'text' && typeof p.text === 'string') {
+          text = p.text
+          break
+        }
+      }
+      if (!text) {
+        const reasoningContent = result.additional_kwargs?.reasoning_content
+        if (typeof reasoningContent === 'string') {
+          const lines = reasoningContent
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+          text = lines[lines.length - 1] ?? ''
+        }
+      }
+      title = text
+    } else {
+      title = ''
+    }
+    const cleaned = title
+      .trim()
+      .replace(/^['"]+|['"]+$/g, '')
+      .replace(/\.$/, '')
+      .trim()
     if (!cleaned || cleaned.length > 100) return null
     return cleaned
   } catch (e) {

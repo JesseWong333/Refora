@@ -1,7 +1,8 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Maximize2, Minimize2, X } from 'lucide-react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
+import { api } from '../../ipc'
 import ResizeDivider from '../ResizeDivider'
 import Board from './Board'
 import ChatPanel from './ChatPanel'
@@ -23,6 +24,19 @@ export default function WorkspacePanel() {
     if (typeof window === 'undefined') return 520
     return Math.max(CHAT_MIN, window.innerHeight - 48 - 24)
   }, [])
+
+  useEffect(() => {
+    void api.settings.get<number>('workspaceChatHeight', CHAT_DEFAULT).then((h) => {
+      setChatHeight(Math.max(CHAT_MIN, Math.min(chatMax, h)))
+    })
+  }, [chatMax])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void api.settings.set('workspaceChatHeight', chatHeight)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [chatHeight])
 
   const handleChatResize = useCallback((delta: number) => {
     setChatHeight((h) => Math.max(CHAT_MIN, Math.min(chatMax, h - delta)))

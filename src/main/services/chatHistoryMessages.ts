@@ -102,6 +102,25 @@ export function historyToMessages(rows: ChatMessage[]): BaseMessage[] {
 }
 
 export function sanitizeToolCallPairs(messages: BaseMessage[]): void {
+  const knownToolCallIds = new Set<string>()
+  for (const msg of messages) {
+    if (msg instanceof AIMessage) {
+      const calls = msg.tool_calls
+      if (Array.isArray(calls)) {
+        for (const c of calls) {
+          if (c.id) knownToolCallIds.add(c.id)
+        }
+      }
+    }
+  }
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg instanceof ToolMessage && msg.tool_call_id && !knownToolCallIds.has(msg.tool_call_id)) {
+      messages.splice(i, 1)
+    }
+  }
+
   const satisfiedIds = new Set<string>()
   for (const msg of messages) {
     if (msg instanceof ToolMessage && msg.tool_call_id) {

@@ -49,5 +49,11 @@ export function truncateHistoryByTokens(
     kept.unshift(msg)
   }
 
-  return kept.length > 0 ? kept : (minMessages > 0 ? capped.slice(-minMessages) : [])
+  const result = kept.length > 0 ? kept : (minMessages > 0 ? capped.slice(-minMessages) : [])
+
+  let startIdx = 0
+  while (startIdx < result.length && result[startIdx].role === 'tool') {
+    startIdx++
+  }
+  return result.slice(startIdx)
 }

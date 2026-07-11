@@ -17,6 +17,13 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(global as unknown as Record<string, unknown>).ResizeObserver = ResizeObserverMock
+
 const noop = async () => undefined
 
 ;(window as Record<string, unknown>).api = {

@@ -256,7 +256,8 @@
       "toolOpenPaper": "正在打开论文…",
       "toolGenerateReport": "正在生成报告…",
       "toolAddDocs": "正在添加到工作空间…",
-      "toolRequestSummary": "正在请求摘要…"
+      "toolRequestSummary": "正在请求摘要…",
+      "regenerate": "重新生成"
     }
   }
 }

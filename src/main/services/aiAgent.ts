@@ -60,7 +60,7 @@ const SYSTEM_PROMPT =
   'When the user asks for a report, survey, or comparison, call generate_report to pin a structured report to the board. ' +
   'Use search_library for full-text search across the entire library, not just the workspace. ' +
   'When the user wants papers added to this workspace, first use search_library to find them, then call add_docs_to_workspace with the docIds. ' +
-  'If a paper has hasSummary=false and you need a condensed overview, call request_summary to queue async generation, or read_paper_fulltext for immediate text. ' +
+  'When the user asks for a summary or overview, use read_paper_fulltext to read the paper and summarize it yourself. Only call request_summary to pre-generate a cached summary for future use - it returns immediately without the actual summary. ' +
   'When the user message includes [Attached papers], prioritize those docIds in your analysis. ' +
   'If the workspace catalog is empty, suggest using search_library and add_docs_to_workspace rather than asking the user to add papers manually. ' +
   'Reference papers by their docId. ' +
@@ -73,12 +73,6 @@ const WORKSPACE_CONTEXT_TTL_MS = 60_000
 
 function buildWorkspaceContext(repos: Repositories, workspaceId: string): string {
   const items = repos.workspaceItems.list(workspaceId).filter((i) => i.kind === 'document')
-  const docIdKey = items.map((i) => i.docId).filter((d): d is string => d !== null).sort().join(',')
-  const cached = workspaceContextCache.get(workspaceId)
-  const now = Date.now()
-  if (cached && cached.docIdKey === docIdKey && now - cached.ts < WORKSPACE_CONTEXT_TTL_MS) {
-    return cached.context
-  }
   const docs: Array<{
     docId: string
     title: string
@@ -98,6 +92,12 @@ function buildWorkspaceContext(repos: Repositories, workspaceId: string): string
       year: doc.year,
       hasSummary: !!(summary && summary.content)
     })
+  }
+  const summaryKey = docs.map((d) => d.docId + ':' + (d.hasSummary ? '1' : '0')).join(',')
+  const cached = workspaceContextCache.get(workspaceId)
+  const now = Date.now()
+  if (cached && cached.docIdKey === summaryKey && now - cached.ts < WORKSPACE_CONTEXT_TTL_MS) {
+    return cached.context
   }
 
   if (docs.length === 0) {
@@ -134,7 +134,7 @@ function buildWorkspaceContext(repos: Repositories, workspaceId: string): string
     (omitted > 0 ? `, showing first ${total - omitted}; use search_workspace_docs for the rest` : '') +
     '):'
   const result = `${header}\n${body}`
-  workspaceContextCache.set(workspaceId, { context: result, docIdKey, ts: now })
+  workspaceContextCache.set(workspaceId, { context: result, docIdKey: summaryKey, ts: now })
   return result
 }
 
@@ -296,13 +296,14 @@ export function createAiAgentService(
 
   const activeRuns = new Map<string, AbortController>()
 
-  function buildTools(req: ChatSendRequest, providerModel: string) {
+  function buildTools(req: ChatSendRequest, providerModel: string, signal: AbortSignal) {
     const searchWorkspaceDocs = new DynamicTool({
       name: 'search_workspace_docs',
       description:
         'Search documents in the current workspace by title, authors, abstract, or keywords (full-text). ' +
         'Returns JSON [{docId, title, authors, year, hasSummary}]. Pass an empty string to list all workspace documents.',
       func: async (query: string): Promise<string> => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const items = repos.workspaceItems
           .list(req.workspaceId)
           .filter((i) => i.kind === 'document')
@@ -365,6 +366,7 @@ export function createAiAgentService(
           .describe('Max characters to return in this chunk')
       }),
       func: async ({ docId, offset, limit }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const id = docId.trim()
         const doc = repos.documents.get(id)
         if (!doc) {
@@ -372,7 +374,9 @@ export function createAiAgentService(
         }
         let text: string
         try {
+          if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
           text = await pdfTextService.getOrExtract(id)
+          if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         } catch {
           return JSON.stringify({ error: 'Failed to extract text', docId: id })
         }
@@ -415,6 +419,7 @@ export function createAiAgentService(
       description:
         'Get the cached AI summary of a paper by its docId. Returns a JSON summary object, or a notice that no summary is available yet.',
       func: async (docId: string) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const summary = repos.aiSummaries.getSummary(docId.trim())
         if (!summary || !summary.content) return 'No summary available yet.'
         const content: AiSummaryContent = summary.content
@@ -436,6 +441,7 @@ export function createAiAgentService(
           .describe('Comma-separated list or JSON array string of source docIds')
       }),
       func: async ({ title, contentMd, sourceDocIds }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const ids = parseSourceDocIds(sourceDocIds)
         const report = repos.aiReports.create({
           workspaceId: req.workspaceId,
@@ -463,6 +469,7 @@ export function createAiAgentService(
           .describe('Comma-separated list or JSON array string of docIds to add')
       }),
       func: async ({ docIds }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const ids = parseSourceDocIds(docIds)
         if (ids.length === 0) {
           return JSON.stringify({
@@ -513,13 +520,14 @@ export function createAiAgentService(
     const requestSummary = new DynamicStructuredTool({
       name: 'request_summary',
       description:
-        'Request an AI summary for a paper. If a summary already exists, returns it immediately. ' +
-        'If not, queues summary generation (async) and returns status queued. ' +
-        'Do NOT wait for the summary in the same turn - use get_paper_summary in a subsequent turn.',
+        'Queues background AI summary generation for a paper to cache it for future use. ' +
+        'Does NOT return a summary when none exists - it returns status queued immediately. ' +
+        'For an immediate summary, use read_paper_fulltext to read the paper and summarize it yourself.',
       schema: z.object({
         docId: z.string().describe('The docId of the paper to summarize')
       }),
       func: async ({ docId }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const doc = repos.documents.get(docId.trim())
         if (!doc) {
           return JSON.stringify({ status: 'error', message: 'Document not found.' })
@@ -540,6 +548,7 @@ export function createAiAgentService(
         'Returns a JSON array of objects [{docId, title, authors, year}]. ' +
         'Use this when the user asks about papers that may not be in the current workspace.',
       func: async (query: string) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const q = query.trim()
         if (!q) return '[]'
         const results = repos.documents.search(q).slice(0, 20)
@@ -559,6 +568,7 @@ export function createAiAgentService(
       description:
         'Get full metadata of a paper by its docId. Returns a JSON object with title, authors, year, venue, abstract, keywords, doi, url, and other fields.',
       func: async (docId: string) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const doc = repos.documents.get(docId.trim())
         if (!doc) return 'Document not found.'
         return JSON.stringify({
@@ -583,6 +593,7 @@ export function createAiAgentService(
       description:
         'Open a paper PDF in the system default viewer by its docId. Use when the user wants to view or read a paper.',
       func: async (docId: string) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const id = docId.trim()
         const wsItems = repos.workspaceItems.list(req.workspaceId).filter((i) => i.kind === 'document')
         const wsDocIds = new Set(wsItems.map((i) => i.docId).filter((d): d is string => d !== null))
@@ -773,7 +784,7 @@ export function createAiAgentService(
       const modelKwargs: Record<string, unknown> = {}
       if (thinkingMode === 'native') {
         const baseUrlLower = provider.baseUrl.toLowerCase()
-        if (/openrouter|together|siliconflow|dashscope|bigmodel|volcengine/i.test(baseUrlLower)) {
+        if (/openrouter|together|siliconflow|dashscope|bigmodel|volcengine|deepseek|moonshot|zhipu|01\.ai|yi/i.test(baseUrlLower) || /thinking|reasoning/i.test(baseUrlLower)) {
           modelKwargs.enable_thinking = true
         }
       }
@@ -792,7 +803,7 @@ export function createAiAgentService(
         ...(Object.keys(modelKwargs).length > 0 ? { modelKwargs } : {})
       })
 
-      const tools = buildTools(req, modelId)
+      const tools = buildTools(req, modelId, controller.signal)
       const agent = createReactAgent({ llm, tools })
 
       const allHistory = repos.chat.listMessages(threadId)
@@ -996,6 +1007,12 @@ export function createAiAgentService(
         activeLlmId = null
       }
 
+      const wasSuperseded = activeRuns.get(threadId) !== controller
+      if (wasSuperseded) {
+        trace.finish(runStep.id, 'done', null)
+        return
+      }
+
       if (!finalText) finalText = 'No response generated.'
 
       for (const tc of collectedToolCalls) {
@@ -1052,10 +1069,17 @@ export function createAiAgentService(
     for (const controller of activeRuns.values()) {
       controller.abort()
     }
-    activeRuns.clear()
   }
 
-  return { run, cancel, destroy }
+  function clearWorkspaceCache(workspaceId?: string): void {
+    if (workspaceId) {
+      workspaceContextCache.delete(workspaceId)
+    } else {
+      workspaceContextCache.clear()
+    }
+  }
+
+  return { run, cancel, destroy, clearWorkspaceCache }
 }
 
 export type AiAgentService = ReturnType<typeof createAiAgentService>

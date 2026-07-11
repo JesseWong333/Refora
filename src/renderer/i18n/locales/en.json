@@ -245,7 +245,7 @@
       "traceExpand": "Show details",
       "traceCollapse": "Hide details",
       "tokenUsage": "Tokens",
-      "tokenTotal": "Total {{count}} tokens",
+      "tokenTotal": "Total: {{count}} tokens",
       "traceLlmCall": "Model thinking…",
       "toolSearchWorkspace": "Searching workspace…",
       "toolSearchLibrary": "Searching library…",
@@ -256,7 +256,8 @@
       "toolOpenPaper": "Opening paper…",
       "toolGenerateReport": "Generating report…",
       "toolAddDocs": "Adding to workspace…",
-      "toolRequestSummary": "Requesting summary…"
+      "toolRequestSummary": "Requesting summary…",
+      "regenerate": "Regenerate"
     }
   }
 }

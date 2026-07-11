@@ -174,7 +174,7 @@ async function pushRecentModel(model: string, providerId: string): Promise<void>
 function mergeTraceStep(prev: AgentTraceStep[], step: AgentTraceStep): AgentTraceStep[] {
   const idx = prev.findIndex((s) => s.id === step.id)
   if (idx === -1) {
-    return [...prev, step].sort((a, b) => a.startedAt - b.startedAt || a.seq - b.seq)
+    return [...prev, step].sort((a, b) => a.seq - b.seq)
   }
   const next = prev.slice()
   next[idx] = step
@@ -388,10 +388,6 @@ function AgentTracePanel({
     return maxEnd - minStart
   }, [steps, visible])
 
-  useEffect(() => {
-    setOpen(false)
-  }, [streaming])
-
   if (visible.length === 0 && !streaming) return null
 
   const SummaryIcon = isRunning ? Loader2 : hasError ? XCircle : CheckCircle2
@@ -424,7 +420,7 @@ function AgentTracePanel({
         )}
         {hasTokenData && !isRunning && (
           <span className="text-[10px] text-muted">
-            · {t('workspace.chat.tokenTotal', { count: totalTokensSum })}
+            · {t('workspace.chat.tokenTotal', { count: totalTokensSum, defaultValue: 'Total: {{count}} tokens' })}
           </span>
         )}
         <ChevronDown
@@ -499,6 +495,7 @@ export default function ChatPanel() {
   const [modelSwitchHint, setModelSwitchHint] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const [loadingHistory, setLoadingHistory] = useState(false)
 
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
@@ -516,12 +513,15 @@ export default function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const attachMenuRef = useRef<HTMLDivElement | null>(null)
+  const inputAreaRef = useRef<HTMLDivElement | null>(null)
   const hadMessagesRef = useRef(false)
   const isSendingRef = useRef(false)
   const lastSendRef = useRef<{ text: string; attachments: string[]; threadId: string | null } | null>(null)
   const stickToBottomRef = useRef(true)
   const streamingTextRef = useRef('')
   const streamingReasoningRef = useRef('')
+  const cancelledRef = useRef(false)
+  const rafIdRef = useRef<number | null>(null)
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
 
@@ -607,6 +607,7 @@ export default function ChatPanel() {
       setStreaming(false)
       setError(null)
     }
+    setSelectedAttachments([])
     stickToBottomRef.current = true
     if (!activeThreadId) {
       setMessages([])
@@ -616,7 +617,7 @@ export default function ChatPanel() {
       return
     }
     let cancelled = false
-    setLoadingHistory(true)
+    if (!isSendingRef.current) setLoadingHistory(true)
     void Promise.all([
       api.ai.chatHistory(activeThreadId),
       api.ai.chatTraces(activeThreadId)
@@ -639,6 +640,15 @@ export default function ChatPanel() {
     }
   }, [activeThreadId])
 
+  const scheduleStreamingFlush = useCallback(() => {
+    if (rafIdRef.current != null) return
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null
+      setStreamingText(streamingTextRef.current)
+      setStreamingReasoning(streamingReasoningRef.current)
+    })
+  }, [])
+
   const chatHandlersRef = useRef<{
     onToken: (payload: ChatTokenEvent) => void
     onReasoning: (payload: ChatReasoningEvent) => void
@@ -653,15 +663,41 @@ export default function ChatPanel() {
       onToken: (payload: ChatTokenEvent) => {
         if (payload.threadId !== threadIdRef.current) return
         streamingTextRef.current += payload.token
-        setStreamingText(streamingTextRef.current)
+        scheduleStreamingFlush()
       },
       onReasoning: (payload: ChatReasoningEvent) => {
         if (payload.threadId !== threadIdRef.current) return
         streamingReasoningRef.current += payload.token
-        setStreamingReasoning(streamingReasoningRef.current)
+        scheduleStreamingFlush()
       },
       onDone: (payload: ChatDoneEvent) => {
         if (payload.threadId !== threadIdRef.current) return
+        const isCancellationMsg =
+          payload.finalText.includes('[Response cancelled by user]') ||
+          payload.finalText.includes('[Response interrupted')
+        if (isCancellationMsg && cancelledRef.current) {
+          cancelledRef.current = false
+          if (isSendingRef.current) {
+            return
+          }
+          if (rafIdRef.current != null) {
+            cancelAnimationFrame(rafIdRef.current)
+            rafIdRef.current = null
+          }
+          isSendingRef.current = false
+          lastSendRef.current = null
+          streamingTextRef.current = ''
+          streamingReasoningRef.current = ''
+          setStreamingText('')
+          setStreamingReasoning('')
+          setStreaming(false)
+          return
+        }
+        cancelledRef.current = false
+        if (rafIdRef.current != null) {
+          cancelAnimationFrame(rafIdRef.current)
+          rafIdRef.current = null
+        }
         isSendingRef.current = false
         lastSendRef.current = null
         setMessages((prev) => [
@@ -676,6 +712,10 @@ export default function ChatPanel() {
       },
       onError: (payload: ChatErrorEvent) => {
         if (payload.threadId !== threadIdRef.current) return
+        if (rafIdRef.current != null) {
+          cancelAnimationFrame(rafIdRef.current)
+          rafIdRef.current = null
+        }
         isSendingRef.current = false
         lastSendRef.current = null
         setError(payload.message)
@@ -718,6 +758,12 @@ export default function ChatPanel() {
   }, [])
 
   useEffect(() => {
+    return () => {
+      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
     const el = scrollRef.current
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages, streamingText, streamingReasoning, traceSteps])
@@ -740,6 +786,30 @@ export default function ChatPanel() {
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`
   }, [input])
+
+  useEffect(() => {
+    const onShortcut = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') {
+        const el = textareaRef.current
+        if (!streaming && el) {
+          e.preventDefault()
+          el.focus()
+        }
+      }
+    }
+    window.addEventListener('keydown', onShortcut)
+    return () => window.removeEventListener('keydown', onShortcut)
+  }, [streaming])
+
+  useEffect(() => {
+    const el = inputAreaRef.current
+    if (!el) return
+    const update = () => setInputAreaHeight(el.offsetHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     setChatStreaming(streaming)
@@ -833,7 +903,9 @@ export default function ChatPanel() {
   )
 
   const sendText = useCallback(async (text: string, attachments: string[], existingThread: string | null) => {
+    if (isSendingRef.current) return
     if (!activeWorkspaceId || !activeProviderId || !text.trim() || streaming) return
+    cancelledRef.current = false
     if (text.length > MAX_INPUT_LENGTH) {
       setError(t('workspace.chat.inputTooLong', 'Message is too long. Please shorten it.'))
       return
@@ -903,7 +975,7 @@ export default function ChatPanel() {
     const last = lastSendRef.current
     if (!last) return
     setMessages((prev) => {
-      const idx = prev.findLastIndex((m) => m.role === 'user' && m.content === last.text && m.id.startsWith('local-'))
+      const idx = prev.findLastIndex((m) => m.role === 'user' && m.content === last.text)
       if (idx === -1) return prev
       return prev.filter((_, i) => i !== idx)
     })
@@ -913,6 +985,11 @@ export default function ChatPanel() {
   const handleCancel = useCallback(() => {
     if (!threadIdRef.current) return
     void api.ai.chatCancel(threadIdRef.current)
+    cancelledRef.current = true
+    if (rafIdRef.current != null) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
     isSendingRef.current = false
     setStreaming(false)
     streamingTextRef.current = ''
@@ -932,6 +1009,8 @@ export default function ChatPanel() {
   const displayMessages = useMemo(() => messages.filter((m) => m.role !== 'tool'), [messages])
   const showEmpty = displayMessages.length === 0 && !streamingText && !streamingReasoning
   const canSend = !!activeWorkspaceId && !!activeProviderId && !!input.trim() && !streaming
+  const customModelTrimmed = customModel.trim()
+  const customModelInvalid = !customModelTrimmed || /\s/.test(customModelTrimmed)
   const variantCapable =
     supportsModelVariants(selectedModel) ||
     providerModels.some((m) => m.id === selectedModel && m.supportsVariants)
@@ -940,13 +1019,85 @@ export default function ChatPanel() {
     ? t('workspace.chat.notConfigured', 'Not configured')
     : requestModel || t('workspace.chat.selectProvider', 'Select model / provider')
 
-  const showTrace = streaming || traceSteps.some((s) => s.kind !== 'run')
-  const lastUserIdx = (() => {
+  const runTraceGroups = useMemo(() => {
+    const sorted = [...traceSteps].sort((a, b) => a.seq - b.seq)
+    const order: string[] = []
+    const map = new Map<string, AgentTraceStep[]>()
+    for (const s of sorted) {
+      if (!map.has(s.runId)) {
+        map.set(s.runId, [])
+        order.push(s.runId)
+      }
+      map.get(s.runId)!.push(s)
+    }
+    return { order, map }
+  }, [traceSteps])
+
+  const assistantRunForIdx = useMemo(() => {
+    const result: (string | null)[] = new Array(displayMessages.length).fill(null)
+    let assistantCount = 0
+    for (let i = 0; i < displayMessages.length; i++) {
+      if (displayMessages[i].role === 'assistant') {
+        result[i] = runTraceGroups.order[assistantCount] ?? null
+        assistantCount++
+      }
+    }
+    return result
+  }, [displayMessages, runTraceGroups])
+
+  const streamingSteps = useMemo(() => {
+    const assigned = new Set<string>()
+    for (const rid of assistantRunForIdx) {
+      if (rid) assigned.add(rid)
+    }
+    return traceSteps.filter((s) => !assigned.has(s.runId))
+  }, [traceSteps, assistantRunForIdx])
+
+  const lastAssistantIdx = (() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
-      if (displayMessages[i].role === 'user') return i
+      if (displayMessages[i].role === 'assistant') return i
     }
     return -1
   })()
+
+  const handleRegenerate = useCallback(() => {
+    let text = ''
+    let attachments: string[] = []
+    let threadId = activeThreadId
+    if (lastSendRef.current) {
+      text = lastSendRef.current.text
+      attachments = lastSendRef.current.attachments
+      threadId = lastSendRef.current.threadId ?? activeThreadId
+    } else {
+      for (let i = displayMessages.length - 1; i >= 0; i--) {
+        if (displayMessages[i].role === 'user') {
+          text = displayMessages[i].content
+          break
+        }
+      }
+    }
+    if (!text.trim()) return
+    const runSteps = traceSteps
+      .filter((s) => s.kind === 'run')
+      .slice()
+      .sort((a, b) => a.seq - b.seq)
+    const lastRunId = runSteps.length > 0 ? runSteps[runSteps.length - 1].runId : null
+    setMessages((prev) => {
+      let lastUserIdx = -1
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].role === 'user') {
+          lastUserIdx = i
+          break
+        }
+      }
+      if (lastUserIdx === -1) return prev
+      return prev.slice(0, lastUserIdx)
+    })
+    if (lastRunId) {
+      setTraceSteps((prev) => prev.filter((s) => s.runId !== lastRunId))
+    }
+    void sendText(text, attachments, threadId)
+  }, [displayMessages, activeThreadId, traceSteps, sendText])
 
   return (
     <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
@@ -1042,11 +1193,15 @@ export default function ChatPanel() {
         ) : (
           <div className="flex flex-col gap-3">
             {displayMessages.map((m, idx) => {
-              const showTraceHere =
-                showTrace &&
-                !streaming &&
-                idx === lastUserIdx &&
-                lastUserIdx < displayMessages.length - 1
+              const runId = assistantRunForIdx[idx]
+              const runSteps = runId ? (runTraceGroups.map.get(runId) ?? []) : []
+              const showTraceHere = runSteps.length > 0
+              const isCancelled =
+                m.role === 'assistant' &&
+                (m.content.includes('[Response cancelled by user]') ||
+                  m.content.includes('[Response interrupted'))
+              const showRegenerate =
+                m.role === 'assistant' && idx === lastAssistantIdx && !streaming
               return (
                 <Fragment key={m.id}>
                   <div
@@ -1063,22 +1218,37 @@ export default function ChatPanel() {
                         ? m.content
                         : (
                           <>
-                            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>
-                            <div className="mt-1 flex justify-end">
+                            {isCancelled ? (
+                              <span className="italic text-muted">{m.content}</span>
+                            ) : (
+                              <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>
+                            )}
+                            <div className="mt-1 flex justify-end gap-0.5">
                               <CopyButton text={m.content} />
+                              {showRegenerate && (
+                                <button
+                                  type="button"
+                                  className="shrink-0 rounded p-1 text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                                  onClick={() => void handleRegenerate()}
+                                  title={t('workspace.chat.regenerate', 'Regenerate')}
+                                  aria-label={t('workspace.chat.regenerate', 'Regenerate')}
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
+                              )}
                             </div>
                           </>
                         )}
                     </div>
                   </div>
                   {showTraceHere && (
-                    <AgentTracePanel steps={traceSteps} streaming={streaming} />
+                    <AgentTracePanel steps={runSteps} streaming={false} />
                   )}
                 </Fragment>
               )
             })}
-            {showTrace && streaming && (
-              <AgentTracePanel steps={traceSteps} streaming={streaming} />
+            {streaming && (
+              <AgentTracePanel steps={streamingSteps} streaming={streaming} />
             )}
             {streamingReasoning && (
               <div className="flex justify-start">
@@ -1113,7 +1283,8 @@ export default function ChatPanel() {
       {showScrollBtn && (
         <button
           type="button"
-          className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-panel p-1.5 shadow-lg hover:bg-hover"
+          className="absolute left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-panel p-1.5 shadow-lg hover:bg-hover"
+          style={{ bottom: inputAreaHeight > 0 ? inputAreaHeight + 8 : 80 }}
           onClick={() => {
             const el = scrollRef.current
             if (el) {
@@ -1168,7 +1339,7 @@ export default function ChatPanel() {
         </div>
       )}
 
-      <div className="shrink-0 p-3">
+      <div ref={inputAreaRef} className="shrink-0 p-3">
         <div className="flex flex-col rounded-2xl border border-border bg-panel-2 shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
           {selectedAttachments.length > 0 && (
             <div className="flex flex-wrap gap-1 px-2 pt-1">
@@ -1208,6 +1379,18 @@ export default function ChatPanel() {
             disabled={providers.length === 0}
             aria-label={t('workspace.chat.inputPlaceholder', 'Send a message…')}
           />
+          {input.length > MAX_INPUT_LENGTH * 0.8 && (
+            <div className="flex justify-end px-3 pt-0.5">
+              <span
+                className={`text-[10px] ${
+                  input.length > MAX_INPUT_LENGTH ? 'text-error' : 'text-muted'
+                }`}
+              >
+                {Math.max(0, MAX_INPUT_LENGTH - input.length)}{' '}
+                {t('workspace.chat.charsRemaining', 'chars left')}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 pt-1">
             <div className="relative shrink-0" ref={attachMenuRef}>
@@ -1330,15 +1513,19 @@ export default function ChatPanel() {
                             key={m.id}
                             type="button"
                             role="option"
+                            aria-selected={m.id === selectedModel}
                             className="mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-hover"
                             onClick={() => void applyModel(m.id, '')}
                           >
-                            <span className="truncate text-xs text-foreground">{m.id}</span>
-                            {m.supportsVariants && (
-                              <span className="shrink-0 text-[10px] text-accent">
-                                {t('settings.aiProviders.hasVariants', 'variants')}
-                              </span>
-                            )}
+                            <span className="min-w-0 flex-1 truncate text-xs text-foreground">{m.id}</span>
+                            <span className="flex shrink-0 items-center gap-1">
+                              {m.supportsVariants && (
+                                <span className="text-[10px] text-accent">
+                                  {t('settings.aiProviders.hasVariants', 'variants')}
+                                </span>
+                              )}
+                              {m.id === selectedModel && <Check className="h-3 w-3 text-accent" />}
+                            </span>
                           </button>
                         ))}
                       </>
@@ -1351,17 +1538,21 @@ export default function ChatPanel() {
                         </p>
                         {recentModels.map((entry) => {
                           const parsed = parseModelId(entry.model)
+                          const providerName = providers.find((p) => p.id === entry.providerId)?.name
                           return (
                             <button
                               key={`r-${entry.model}`}
                               type="button"
                               role="option"
-                              className="mb-0.5 flex w-full rounded-lg px-2 py-1.5 text-left text-xs text-foreground hover:bg-hover"
+                              className="mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left text-xs text-foreground hover:bg-hover"
                               onClick={() =>
                                 void applyModel(parsed.baseModel || entry.model, parsed.variant, entry.providerId)
                               }
                             >
                               <span className="truncate">{entry.model}</span>
+                              {providerName && (
+                                <span className="truncate text-[10px] text-muted">{providerName}</span>
+                              )}
                             </button>
                           )
                         })}
@@ -1378,9 +1569,9 @@ export default function ChatPanel() {
                         onChange={(e) => setCustomModel(e.target.value)}
                         placeholder="model-id"
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && customModel.trim()) {
+                          if (e.key === 'Enter' && !customModelInvalid) {
                             e.preventDefault()
-                            const parsed = parseModelId(customModel.trim())
+                            const parsed = parseModelId(customModelTrimmed)
                             void applyModel(parsed.baseModel, parsed.variant)
                             setCustomModel('')
                           }
@@ -1389,9 +1580,9 @@ export default function ChatPanel() {
                       <button
                         type="button"
                         className="rounded-md bg-accent px-2 py-1 text-[11px] text-white disabled:opacity-40"
-                        disabled={!customModel.trim()}
+                        disabled={customModelInvalid}
                         onClick={() => {
-                          const parsed = parseModelId(customModel.trim())
+                          const parsed = parseModelId(customModelTrimmed)
                           void applyModel(parsed.baseModel, parsed.variant)
                           setCustomModel('')
                         }}
@@ -1399,6 +1590,11 @@ export default function ChatPanel() {
                         {t('common.add', 'Add')}
                       </button>
                     </div>
+                    {customModel && customModelInvalid && (
+                      <p className="px-1 pt-1 text-[10px] text-muted">
+                        {t('workspace.chat.customModelHint', 'Model ID cannot contain spaces.')}
+                      </p>
+                    )}
 
                     {variantCapable && (
                       <>
