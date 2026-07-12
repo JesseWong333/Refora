@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
-import { Modal, Button, Input, Select } from '@lobehub/ui'
+import { Modal, Button, Select } from '@lobehub/ui'
 import { Loader2 } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
