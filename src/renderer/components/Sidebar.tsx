@@ -21,7 +21,7 @@ import {
   Loader2,
   LayoutDashboard
 } from 'lucide-react'
-import { Button, Input, showContextMenu } from '@lobehub/ui'
+import { Input, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import type { InputRef } from 'antd/es/input'
 import { useDocumentStore } from '../store/documentStore'
@@ -29,6 +29,7 @@ import { useWorkspaceStore } from '../store/workspaceStore'
 import { useTheme } from '../hooks/useTheme'
 import type { ListMode, Category, Workspace } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
+import { Button as UiButton } from './ui'
 import { api } from '../ipc'
 
 const DOC_MIME = 'application/x-refora-docids'
@@ -525,28 +526,37 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           className="sidebar-floating-toolbar no-drag"
           style={{ left: `${toolbarLeft}px` }}
         >
-          <button
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={onToggleCollapse}
             title={t('settings.sidebarCollapsed')}
             aria-label={t('settings.sidebarCollapsed')}
           >
-            <PanelLeftOpen className="h-4 w-4" />
-          </button>
+            <PanelLeftOpen className="h-3.5 w-3.5" />
+          </UiButton>
           <div className="toolbar-sep" aria-hidden="true" />
-          <button
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={handleAddFiles}
             title={t('topbar.addFile')}
             aria-label={t('topbar.addFile')}
           >
-            <FilePlus className="h-4 w-4" />
-          </button>
-          <button
+            <FilePlus className="h-3.5 w-3.5" />
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={handleAddFolder}
             title={t('topbar.addFolder')}
             aria-label={t('topbar.addFolder')}
           >
-            <FolderPlus className="h-4 w-4" />
-          </button>
+            <FolderPlus className="h-3.5 w-3.5" />
+          </UiButton>
         </div>
         <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
       </>
@@ -558,31 +568,37 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       {/* Header: drag region with action buttons on the right */}
       <div className={`drag-region flex h-12 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
         <div className="ml-auto flex items-center no-drag">
-          <button
-            className="sidebar-header-btn"
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={handleAddFiles}
             title={t('topbar.addFile')}
             aria-label={t('topbar.addFile')}
           >
             <FilePlus className="h-4 w-4" />
-          </button>
-          <button
-            className="sidebar-header-btn"
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={handleAddFolder}
             title={t('topbar.addFolder')}
             aria-label={t('topbar.addFolder')}
           >
             <FolderPlus className="h-4 w-4" />
-          </button>
+          </UiButton>
           <div className="mx-1 h-3.5 w-px bg-border" aria-hidden="true" />
-          <button
-            className="sidebar-header-btn"
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={onToggleCollapse}
             title={t('settings.sidebarCollapsed')}
             aria-label={t('settings.sidebarCollapsed')}
           >
             <PanelLeftClose className="h-4 w-4" />
-          </button>
+          </UiButton>
         </div>
       </div>
 
@@ -630,16 +646,17 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           title={t('sidebar.workspaces')}
           onContextMenu={handleWsSectionContext}
           action={
-            <Button
-              type="text"
-              size="small"
-              className="no-drag -mr-1 p-0.5 text-muted transition-colors duration-150 hover:text-foreground"
+            <UiButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              className="no-drag -mr-1 text-muted transition-colors duration-150 hover:text-foreground"
               onClick={startWsCreate}
               title={t('sidebar.createWorkspace')}
               aria-label={t('sidebar.createWorkspace')}
             >
               <Plus className="h-3.5 w-3.5" />
-            </Button>
+            </UiButton>
           }
         >
           {wsCreating && (
@@ -698,16 +715,17 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           title={t('sidebar.categories')}
           onContextMenu={handleSectionContext}
           action={
-            <Button
-              type="text"
-              size="small"
-              className="no-drag -mr-1 p-0.5 text-muted transition-colors duration-150 hover:text-foreground"
+            <UiButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              className="no-drag -mr-1 text-muted transition-colors duration-150 hover:text-foreground"
               onClick={startCreate}
               title={t('sidebar.createCategory')}
               aria-label={t('sidebar.createCategory')}
             >
               <Plus className="h-3.5 w-3.5" />
-            </Button>
+            </UiButton>
           }
         >
           {creatingNew && (
@@ -787,16 +805,14 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           active={false}
         />
         <div className="mt-1 px-1">
-          <Button
-            type="text"
-            size="small"
+          <button
             className="sidebar-item flex w-full items-center gap-2 px-2.5 text-xs text-foreground"
             onClick={cycleTheme}
             title={themeTitle}
           >
             <ThemeIcon className="h-4 w-4 flex-shrink-0 opacity-70" />
             <span className="truncate">{themeTitle}</span>
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -807,16 +823,17 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               {t('sidebar.deleteCategoryConfirm', { name: deleteConfirm.name })}
             </p>
             <div className="mt-5 flex justify-end gap-2">
-              <Button onClick={() => setDeleteConfirm(null)}>
+              <UiButton variant="secondary" size="md" onClick={() => setDeleteConfirm(null)}>
                 {t('common.cancel')}
-              </Button>
-              <Button
-                danger
+              </UiButton>
+              <UiButton
+                variant="danger"
+                size="md"
+                icon={<Trash2 className="h-3.5 w-3.5" />}
                 onClick={confirmDeleteCategory}
               >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                 {t('common.delete')}
-              </Button>
+              </UiButton>
             </div>
           </div>
         </div>
@@ -829,16 +846,17 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               {t('sidebar.deleteWorkspaceConfirm', { name: wsDeleteConfirm.name })}
             </p>
             <div className="mt-5 flex justify-end gap-2">
-              <Button onClick={() => setWsDeleteConfirm(null)}>
+              <UiButton variant="secondary" size="md" onClick={() => setWsDeleteConfirm(null)}>
                 {t('common.cancel')}
-              </Button>
-              <Button
-                danger
+              </UiButton>
+              <UiButton
+                variant="danger"
+                size="md"
+                icon={<Trash2 className="h-3.5 w-3.5" />}
                 onClick={confirmDeleteWorkspace}
               >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                 {t('common.delete')}
-              </Button>
+              </UiButton>
             </div>
           </div>
         </div>

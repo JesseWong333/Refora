@@ -160,6 +160,7 @@
     line-height: 1.5;
   }
 
+  /** @deprecated Use <Button variant="ghost" size="md"> from components/ui instead. */
   .toolbar-btn {
     @apply inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground hover:bg-hover active:bg-active disabled:opacity-40 disabled:cursor-default;
     -webkit-app-region: no-drag;
@@ -171,6 +172,7 @@
     outline-offset: 1px;
   }
 
+  /** @deprecated Use <Button variant="ghost" size="md" className="text-error"> instead. */
   .toolbar-btn-danger {
     @apply toolbar-btn text-error hover:bg-hover;
   }
@@ -344,27 +346,6 @@
     pointer-events: auto;
   }
 
-  .sidebar-floating-toolbar button {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-muted);
-    cursor: pointer;
-    transition: background-color 0.12s ease;
-  }
-  .sidebar-floating-toolbar button:hover {
-    background-color: var(--color-hover);
-  }
-  .sidebar-floating-toolbar button svg {
-    width: 14px;
-    height: 14px;
-  }
   .sidebar-floating-toolbar .toolbar-sep {
     width: 1px;
     height: 16px;
@@ -372,7 +353,7 @@
     background-color: var(--color-border);
   }
 
-  /* Expanded sidebar header icon buttons */
+  /** @deprecated Use <Button variant="ghost" size="sm" iconOnly> from components/ui instead. */
   .sidebar-header-btn {
     width: 26px;
     height: 26px;

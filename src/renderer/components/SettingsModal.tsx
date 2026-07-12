@@ -6,6 +6,7 @@ import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
 import { errorMessage } from '../../shared/ipc-types'
+import { Button as UiButton } from './ui'
 import type { AiProvider, ModelVariantFormat, ProviderModelInfo } from '../../shared/ipc-types'
 import {
   COMMON_VARIANTS,
@@ -442,15 +443,15 @@ function AiProvidersSection() {
               <label className="text-label text-muted">
                 {t('settings.aiProviders.baseModel', 'Base model')}
               </label>
-              <button
-                type="button"
-                className="text-label text-accent hover:underline"
+              <UiButton
+                variant="link"
+                size="sm"
                 onClick={() => setManualModel((v) => !v)}
               >
                 {manualModel
                   ? t('settings.aiProviders.useList', 'Use model list')
                   : t('settings.aiProviders.manualModel', 'Enter manually')}
-              </button>
+              </UiButton>
             </div>
             {manualModel || availableModels.length === 0 ? (
               <Input

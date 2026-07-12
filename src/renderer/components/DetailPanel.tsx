@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { RefreshCw, ArrowLeftRight, X, Trash2, FolderOpen, FileText } from 'lucide-react'
+import { Button } from './ui'
 
 function autoResize(el: HTMLTextAreaElement) {
   el.style.height = 'auto'
@@ -162,13 +163,16 @@ function InlineField({
           </div>
         )}
         {hasRemoteDiff && !editing && (
-          <button
-            className="flex-shrink-0 text-accent transition-colors duration-150 hover:text-accent-hover"
+          <Button
+            variant="link"
+            size="sm"
+            iconOnly
+            className="flex-sh-0"
             title={t('detail.applyRemote') ?? 'Apply remote value'}
             onClick={applyRemote}
           >
             <ArrowLeftRight className="h-4 w-4" />
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -423,12 +427,13 @@ function SingleDetail({ doc }: { doc: Document }) {
   return (
     <div className="flex flex-col gap-4 px-5 py-4">
       <div className="flex items-center justify-between">
-        <button
-          className="flex items-center gap-1.5 text-xs text-accent transition-colors duration-150 hover:text-accent-hover disabled:opacity-50"
+        <Button
+          variant="link"
+          size="sm"
+          icon={<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />}
           onClick={handleRefresh}
           disabled={refreshing}
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           <span>{t('detail.refreshMetadata')}</span>
           {refreshing && (
             <span className="text-caption font-normal normal-case text-muted">
@@ -445,7 +450,7 @@ function SingleDetail({ doc }: { doc: Document }) {
               {t('detail.refreshFailed')}
             </span>
           )}
-        </button>
+        </Button>
       </div>
 
       {EDITABLE_FIELDS.filter((f) => f.field !== 'note').map(({ field, labelKey }) => (
@@ -474,20 +479,22 @@ function SingleDetail({ doc }: { doc: Document }) {
           </span>
           {!doc.fileMissing && (
             <div className="flex items-center gap-2">
-              <button
-                className="flex items-center gap-1 text-xs text-accent transition-colors duration-150 hover:text-accent-hover"
+              <Button
+                variant="link"
+                size="sm"
+                icon={<FileText className="h-3.5 w-3.5" />}
                 onClick={handleOpenPdf}
               >
-                <FileText className="h-3.5 w-3.5" />
-                <span>{t('common.openFile')}</span>
-              </button>
-              <button
-                className="flex items-center gap-1 text-xs text-accent transition-colors duration-150 hover:text-accent-hover"
+                {t('common.openFile')}
+              </Button>
+              <Button
+                variant="link"
+                size="sm"
+                icon={<FolderOpen className="h-3.5 w-3.5" />}
                 onClick={() => openInFinder(doc.id)}
               >
-                <FolderOpen className="h-3.5 w-3.5" />
-                <span>{t('common.showInFolder')}</span>
-              </button>
+                {t('common.showInFolder')}
+              </Button>
             </div>
           )}
         </div>
@@ -496,24 +503,28 @@ function SingleDetail({ doc }: { doc: Document }) {
             {formatFilePath(doc.filePath)}
           </span>
           {doc.fileMissing && (
-            <button
-              className="text-xs text-warning hover:underline flex-shrink-0"
+            <Button
+              variant="link"
+              size="sm"
+              className="flex-shrink-0 text-warning"
               onClick={handleRelocate}
             >
               {t('detail.relocate')}
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
       {isMoved && (
         <div className="flex flex-col gap-1">
-          <button
-            className="text-xs text-accent transition-colors duration-150 hover:text-accent-hover self-start"
+          <Button
+            variant="link"
+            size="sm"
+            className="self-start"
             onClick={handleRestore}
           >
             {t('detail.restoreOriginal')}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -521,13 +532,15 @@ function SingleDetail({ doc }: { doc: Document }) {
 
       <CategoryChips docId={doc.id} docCategories={doc.categories} />
 
-      <button
-        className="flex items-center gap-1.5 self-start text-xs text-error transition-opacity duration-150 hover:opacity-80"
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start text-error"
+        icon={<Trash2 className="h-3.5 w-3.5" />}
         onClick={() => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm'))}
       >
-        <Trash2 className="h-3.5 w-3.5" />
-        <span>{t('common.delete')}</span>
-      </button>
+        {t('common.delete')}
+      </Button>
     </div>
   )
 }
@@ -556,8 +569,11 @@ function BulkBar({
         {t('common.multiSelected', { count })}
       </div>
       <div className="flex flex-col gap-2">
-        <button
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-error transition-colors duration-150 hover:bg-hover"
+        <Button
+          variant="ghost"
+          size="md"
+          className="self-start text-error"
+          icon={<Trash2 className="h-4 w-4" />}
           onClick={() =>
             requestDeleteConfirm(
               selectedIds,
@@ -567,9 +583,8 @@ function BulkBar({
             )
           }
         >
-          <Trash2 className="h-4 w-4" />
-          <span>{t('common.delete')} ({count})</span>
-        </button>
+          {t('common.delete')} ({count})
+        </Button>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted">{t('sidebar.categories')}</span>
           <select
@@ -587,20 +602,24 @@ function BulkBar({
             ))}
           </select>
         </div>
-        <button
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground transition-colors duration-150 hover:bg-hover"
+        <Button
+          variant="ghost"
+          size="md"
+          className="self-start"
+          icon={<RefreshCw className="h-4 w-4" />}
           onClick={() => bulkRefreshMetadata(selectedIds)}
         >
-          <RefreshCw className="h-4 w-4" />
-          <span>{t('detail.refreshMetadata')} ({count})</span>
-        </button>
-        <button
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground transition-colors duration-150 hover:bg-hover"
+          {t('detail.refreshMetadata')} ({count})
+        </Button>
+        <Button
+          variant="ghost"
+          size="md"
+          className="self-start"
+          icon={<FileText className="h-4 w-4" />}
           onClick={() => void api.export.toBibtex(selectedIds)}
         >
-          <FileText className="h-4 w-4" />
-          <span>{t('common.exportBibtexTitle')} ({count})</span>
-        </button>
+          {t('common.exportBibtexTitle')} ({count})
+        </Button>
       </div>
     </div>
   )
@@ -619,14 +638,17 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
     return (
     <div className="relative flex shrink-0 flex-col bg-panel">
         <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
-          <button
-            className="toolbar-btn p-1 no-drag"
+          <Button
+            variant="ghost"
+            size="md"
+            iconOnly
+            className="no-drag"
             onClick={onClose}
             title={t('common.close')}
             aria-label={t('common.close')}
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
         <BulkBar count={selectedIds.length} selectedIds={selectedIds} />
         {toastMessage && (
@@ -644,14 +666,17 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
     return (
       <div className="relative flex shrink-0 flex-col bg-panel">
         <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
-          <button
-            className="toolbar-btn p-1 no-drag"
+          <Button
+            variant="ghost"
+            size="md"
+            iconOnly
+            className="no-drag"
             onClick={onClose}
             title={t('common.close')}
             aria-label={t('common.close')}
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
         <div className="flex flex-1 items-center justify-center px-4 py-16 text-xs text-muted">
           {t('common.selectDocHint')}
@@ -670,14 +695,17 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   return (
     <div className="relative flex shrink-0 flex-col bg-panel">
       <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
-        <button
-          className="toolbar-btn p-1 no-drag"
+        <Button
+          variant="ghost"
+          size="md"
+          iconOnly
+          className="no-drag"
           onClick={onClose}
           title={t('common.close')}
           aria-label={t('common.close')}
         >
           <X className="h-4 w-4" />
-        </button>
+        </Button>
       </div>
       <SingleDetail doc={focusedDoc} />
       {toastMessage && (

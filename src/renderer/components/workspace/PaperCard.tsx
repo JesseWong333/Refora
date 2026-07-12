@@ -4,6 +4,7 @@ import { Modal, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { Sparkles, FileText, Trash2, Loader2, BookOpen, AlertCircle, RotateCw } from 'lucide-react'
 import { motion } from 'motion/react'
+import { Button } from '../ui'
 import type { AiSummary, Document } from '../../../shared/ipc-types'
 
 interface PaperCardProps {
@@ -215,10 +216,9 @@ export default function PaperCard({
               </section>
             )}
             <div className="flex justify-end pt-2">
-              <button className="toolbar-btn" onClick={onOpenPdf}>
-                <FileText className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="md" icon={<FileText className="h-3.5 w-3.5" />} onClick={onOpenPdf}>
                 {t('workspace.openPdf')}
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
@@ -232,10 +232,9 @@ export default function PaperCard({
               <p className="text-sm text-muted">{t('workspace.summarizeHint')}</p>
             )}
             <div className="flex justify-end">
-              <button className="toolbar-btn" onClick={onSummarize}>
-                <Sparkles className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="md" icon={<Sparkles className="h-3.5 w-3.5" />} onClick={onSummarize}>
                 {summaryError ? t('workspace.retry') : t('workspace.aiSummary')}
-              </button>
+              </Button>
             </div>
           </div>
         )}

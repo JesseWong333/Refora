@@ -56,6 +56,7 @@ import {
 import { resolveDeepThinkingMode } from '../../../shared/deepThinking'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useDocumentStore } from '../../store/documentStore'
+import { Button as UiButton } from '../ui'
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -1203,16 +1204,17 @@ export default function ChatPanel() {
     <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
         <div className="relative" ref={threadMenuRef}>
-          <button
-            type="button"
-            className="sidebar-header-btn"
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={() => setThreadMenuOpen((v) => !v)}
             title={t('workspace.chat.threadHistory', 'Thread history')}
             aria-label={t('workspace.chat.threadHistory', 'Thread history')}
             disabled={streaming}
           >
             <MessageSquare className="h-4 w-4" />
-          </button>
+          </UiButton>
           {threadMenuOpen && (
             <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
               {threads.length === 0 ? (
@@ -1317,16 +1319,17 @@ export default function ChatPanel() {
         <span className="truncate text-xs font-medium text-muted">
           {t('workspace.chat.title', 'Chat')}
         </span>
-        <button
-          type="button"
-          className="sidebar-header-btn"
+        <UiButton
+          variant="ghost"
+          size="sm"
+          iconOnly
           onClick={startNewChat}
           title={t('workspace.chat.newChat', 'New chat')}
           aria-label={t('workspace.chat.newChat', 'New chat')}
           disabled={streaming}
         >
           <Plus className="h-4 w-4" />
-        </button>
+        </UiButton>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -1355,15 +1358,15 @@ export default function ChatPanel() {
                     {t('workspace.chat.noProvider', 'No AI provider configured. Add one in Settings.')}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-opacity duration-150 hover:opacity-90"
+                <UiButton
+                  variant="primary"
+                  size="md"
                   onClick={() => {
                     window.dispatchEvent(new CustomEvent('refora:open-settings'))
                   }}
                 >
                   {t('topbar.settings', 'Settings')}
-                </button>
+                </UiButton>
               </>
             ) : (
               <>
@@ -1612,9 +1615,11 @@ export default function ChatPanel() {
           <div className="flex flex-col gap-1 px-2 pb-2 pt-1">
             <div className="flex items-center gap-1">
             <div className="relative shrink-0" ref={attachMenuRef}>
-              <button
-                type="button"
-                className={`sidebar-header-btn shrink-0 ${selectedAttachments.length > 0 ? 'text-accent' : ''}`}
+              <UiButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                className={`shrink-0 ${selectedAttachments.length > 0 ? 'text-accent' : ''}`}
                 onClick={() => setAttachMenuOpen((v) => !v)}
                 disabled={!activeWorkspaceId || streaming}
                 title={t('workspace.chat.attachPapers', 'Attach papers')}
@@ -1624,7 +1629,7 @@ export default function ChatPanel() {
                 {selectedAttachments.length > 0 && (
                   <span className="ml-0.5 text-caption font-medium">{selectedAttachments.length}</span>
                 )}
-              </button>
+              </UiButton>
               {attachMenuOpen && (
                 <div className="absolute bottom-full left-0 z-50 mb-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
                   {workspaceDocs.length === 0 ? (
@@ -1846,9 +1851,9 @@ export default function ChatPanel() {
                           }
                         }}
                       />
-                      <button
-                        type="button"
-                        className="rounded-md bg-accent px-2 py-1 text-label text-white disabled:opacity-40"
+                      <UiButton
+                        variant="primary"
+                        size="sm"
                         disabled={customModelInvalid}
                         onClick={() => {
                           const parsed = parseModelId(customModelTrimmed)
@@ -1857,7 +1862,7 @@ export default function ChatPanel() {
                         }}
                       >
                         {t('common.add', 'Add')}
-                      </button>
+                      </UiButton>
                     </div>
                     {customModel && customModelInvalid && (
                       <p className="px-1 pt-1 text-caption text-muted">
@@ -1939,26 +1944,30 @@ export default function ChatPanel() {
               </button>
 
               {streaming ? (
-                <button
-                  type="button"
+                <UiButton
+                  variant="danger"
+                  size="sm"
+                  iconOnly
+                  className="shrink-0"
                   onClick={handleCancel}
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-error p-1.5 text-white transition-colors duration-150 hover:bg-error/90"
                   aria-label={t('workspace.chat.stop', 'Stop')}
                   title={t('workspace.chat.stop', 'Stop')}
                 >
                   <Square className="h-3.5 w-3.5" />
-                </button>
+                </UiButton>
               ) : (
-                <button
-                  type="button"
+                <UiButton
+                  variant="primary"
+                  size="sm"
+                  iconOnly
+                  className="shrink-0"
                   onClick={() => void handleSend()}
                   disabled={!canSend}
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-accent p-1.5 text-white disabled:opacity-40"
                   aria-label={t('workspace.chat.send', 'Send')}
                   title={t('workspace.chat.send', 'Send')}
                 >
                   <Send className="h-3.5 w-3.5" />
-                </button>
+                </UiButton>
               )}
             </div>
             </div>
@@ -1973,24 +1982,24 @@ export default function ChatPanel() {
               {t('workspace.chat.confirmDeleteThread', { name: confirmDeleteThread.title, defaultValue: 'Delete "{{name}}"?' })}
             </p>
             <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                className="toolbar-btn"
+              <UiButton
+                variant="ghost"
+                size="md"
                 onClick={() => setConfirmDeleteThread(null)}
               >
                 {t('common.cancel', 'Cancel')}
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-white transition-opacity duration-150 hover:opacity-90"
+              </UiButton>
+              <UiButton
+                variant="danger"
+                size="md"
+                icon={<Trash2 className="h-3.5 w-3.5" />}
                 onClick={() => {
                   void deleteThread(confirmDeleteThread.id).then(() => void fetchThreads())
                   setConfirmDeleteThread(null)
                 }}
               >
-                <Trash2 className="h-3.5 w-3.5" />
                 {t('common.delete', 'Delete')}
-              </button>
+              </UiButton>
             </div>
           </div>
         </div>
