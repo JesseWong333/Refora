@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FilePlus } from 'lucide-react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
+import { useDocumentStore } from '../../store/documentStore'
 import { api } from '../../ipc'
 import { EmptyState } from '../ui'
+import { errorMessage } from '../../../shared/ipc-types'
 import type { AiSummary, Document, SummaryErrorEvent } from '../../../shared/ipc-types'
 import PaperCard from './PaperCard'
 import ReportCard from './ReportCard'
@@ -82,7 +84,7 @@ export default function Board() {
             return next
           })
         } catch (e) {
-          console.warn('Board: failed to load doc/summary', e)
+          useDocumentStore.getState().showToast(errorMessage(e, 'Failed to load document summary'))
           setSummaryErrors((prev) => {
             const next = new Map(prev)
             next.set(docId, 'Failed to load document')
@@ -191,7 +193,7 @@ export default function Board() {
         return parsed.filter((v): v is string => typeof v === 'string' && v.length > 0)
       }
     } catch (e) {
-      console.warn('Board: failed to parse doc ids', e)
+      useDocumentStore.getState().showToast(errorMessage(e, 'Failed to parse document IDs'))
     }
     return raw
       .split(',')
@@ -209,7 +211,7 @@ export default function Board() {
       await addDocs(ids)
       await fetchItems()
     } catch (e) {
-      console.warn('Board: failed to handle drop', e)
+      useDocumentStore.getState().showToast(errorMessage(e, 'Failed to add documents to board'))
       setSummaryErrors((prev) => {
         const next = new Map(prev)
         next.set('__drop__', 'Failed to add documents to board')

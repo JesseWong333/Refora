@@ -351,14 +351,14 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
         if (p && p.toLowerCase().endsWith('.pdf')) {
           paths.push(p)
         }
-      } catch {
-        void 0
+      } catch (e) {
+        useDocumentStore.getState().showToast(errorMessage(e, 'Failed to read file path'))
       }
     }
     if (paths.length > 0) {
       try {
         await api.import.addFiles(paths)
-      } catch { void 0 }
+      } catch (e) { useDocumentStore.getState().showToast(errorMessage(e, 'Failed to import files')) }
       void fetchDocuments()
     }
   }, [fetchDocuments])

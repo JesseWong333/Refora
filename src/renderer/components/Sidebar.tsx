@@ -27,6 +27,7 @@ import { useDocumentStore } from '../store/documentStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { useConfirmStore } from '../store/confirmStore'
 import { useTheme } from '../hooks/useTheme'
+import { errorMessage } from '../../shared/ipc-types'
 import type { ListMode, Category, Workspace } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
 import { Button as UiButton, Input as UiInput } from './ui'
@@ -129,14 +130,14 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const handleAddFiles = useCallback(async () => {
     try {
       await api.import.addFiles([])
-    } catch { void 0 }
+    } catch (e) { useDocumentStore.getState().showToast(errorMessage(e, 'Failed to import files')) }
     void fetchDocuments()
   }, [fetchDocuments])
 
   const handleAddFolder = useCallback(async () => {
     try {
       await api.import.addFolder('')
-    } catch { void 0 }
+    } catch (e) { useDocumentStore.getState().showToast(errorMessage(e, 'Failed to import folder')) }
     void fetchDocuments()
   }, [fetchDocuments])
   const focusedDocId = useDocumentStore((s) => s.focusedDocId)
@@ -340,8 +341,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             await api.documents.bulkCategorize(ids, catId)
           }
           void fetchCategories()
-        } catch {
-          void 0
+        } catch (e) {
+          useDocumentStore.getState().showToast(errorMessage(e, 'Failed to assign category'))
         }
         return
       }
@@ -356,8 +357,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             if (p && p.toLowerCase().endsWith('.pdf')) {
               paths.push(p)
             }
-          } catch {
-            void 0
+          } catch (e) {
+            useDocumentStore.getState().showToast(errorMessage(e, 'Failed to read file path'))
           }
         }
         if (paths.length === 0) return
@@ -374,8 +375,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           for (const id of addedIds) {
             await api.categories.assign(id, catId)
           }
-        } catch {
-          void 0
+        } catch (e) {
+          useDocumentStore.getState().showToast(errorMessage(e, 'Failed to import files to category'))
         }
         setPendingCatImports((prev) => {
           const next = new Set(prev)
