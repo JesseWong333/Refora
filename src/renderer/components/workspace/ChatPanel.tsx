@@ -401,6 +401,21 @@ function AgentTracePanel({
   const isRunning = visible.some((s) => s.status === 'running')
   const hasError = visible.some((s) => s.status === 'error')
 
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const lastStepRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (streaming && visible.length > 0) {
+      setOpen(true)
+    }
+  }, [streaming, visible.length])
+
+  useEffect(() => {
+    if (open && lastStepRef.current) {
+      lastStepRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [open, visible.length, isRunning])
+
   const totalDuration = useMemo(() => {
     const runStep = steps.find((s) => s.kind === 'run')
     if (runStep?.endedAt != null) return runStep.endedAt - runStep.startedAt
@@ -463,19 +478,20 @@ function AgentTracePanel({
         />
       </button>
       {open && (
-        <div className="flex flex-col gap-0 px-2.5 pb-2 pt-0.5">
+        <div ref={contentRef} className="flex flex-col gap-0 px-2.5 pb-2 pt-0.5">
           {visible.length === 0 ? (
             <p className="px-1 py-1 text-xs text-muted">
               {t('workspace.chat.traceEmpty', 'No tool or model steps yet.')}
             </p>
           ) : (
             visible.map((step, i) => (
-              <TraceStepRow
-                key={step.id}
-                step={step}
-                isLast={i === visible.length - 1}
-                forceOpen={expandAll ?? undefined}
-              />
+              <div key={step.id} ref={i === visible.length - 1 ? lastStepRef : undefined}>
+                <TraceStepRow
+                  step={step}
+                  isLast={i === visible.length - 1}
+                  forceOpen={expandAll ?? undefined}
+                />
+              </div>
             ))
           )}
         </div>
