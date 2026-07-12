@@ -14,6 +14,7 @@ export default {
         accent: 'var(--color-accent)',
         'accent-hover': 'var(--color-accent-hover)',
         warning: 'var(--color-warning)',
+        success: 'var(--color-success)',
         error: 'var(--color-error)',
         hover: 'var(--color-hover)',
         active: 'var(--color-active)',
