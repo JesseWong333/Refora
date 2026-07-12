@@ -57,19 +57,8 @@ import { useDocumentStore } from '../../store/documentStore'
 import { useConfirmStore } from '../../store/confirmStore'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { Button as UiButton, Input as UiInput } from '../ui'
-import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-
-const REMARK_PLUGINS = [remarkGfm, remarkMath]
-const REHYPE_PLUGINS = [rehypeKatex]
-
-function urlTransform(url: string): string {
-  if (url.startsWith('refora://')) return url
-  return defaultUrlTransform(url)
-}
+import ReactMarkdown from 'react-markdown'
+import { REMARK_PLUGINS, REHYPE_PLUGINS, createMarkdownComponents, urlTransform } from '../../utils/markdown'
 
 function safeDecode(s: string): string {
   try {
@@ -98,7 +87,7 @@ async function openCitationDoc(docId: string): Promise<boolean> {
   }
 }
 
-const MARKDOWN_COMPONENTS: Components = {
+const MARKDOWN_COMPONENTS = createMarkdownComponents({
   a: ({ href, children }) => {
     if (href) {
       const parsed = parseReforaDocLink(href)
@@ -124,7 +113,7 @@ const MARKDOWN_COMPONENTS: Components = {
       </a>
     )
   }
-}
+})
 
 const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content: string }) {
   return (

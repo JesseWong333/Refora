@@ -5,25 +5,11 @@ import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { FileBarChart, Trash2, Pencil, Download } from 'lucide-react'
 import { motion, MotionConfig } from 'motion/react'
-import ReactMarkdown, { type Components } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
+import ReactMarkdown from 'react-markdown'
+import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
 import { formatDate } from '../../utils/format'
 import { Input as UiInput, Textarea as UiTextarea, cardClassName } from '../ui'
 import type { AiReport } from '../../../shared/ipc-types'
-
-const REMARK_PLUGINS = [remarkGfm, remarkMath]
-const REHYPE_PLUGINS = [rehypeKatex]
-
-const MARKDOWN_COMPONENTS: Components = {
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  )
-}
 
 interface ReportCardProps {
   report: AiReport
