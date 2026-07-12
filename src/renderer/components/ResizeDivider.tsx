@@ -97,11 +97,11 @@ export default function ResizeDivider({
 
   const accentClass = isVertical
     ? isGap
-      ? 'pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-accent opacity-0 group-hover:opacity-100'
-      : 'pointer-events-none absolute inset-y-0 left-0 w-px bg-accent opacity-0 group-hover:opacity-100'
+      ? 'pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-accent opacity-0 transition-opacity group-hover:opacity-100'
+      : 'pointer-events-none absolute inset-y-0 left-0 w-px bg-accent opacity-0 transition-opacity group-hover:opacity-100'
     : isGap
-      ? 'pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-accent opacity-0 group-hover:opacity-100'
-      : 'pointer-events-none absolute inset-x-0 top-0 h-px bg-accent opacity-0 group-hover:opacity-100'
+      ? 'pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-accent opacity-0 transition-opacity group-hover:opacity-100'
+      : 'pointer-events-none absolute inset-x-0 top-0 h-px bg-accent opacity-0 transition-opacity group-hover:opacity-100'
 
   return (
     <div className={containerClass} style={gapStyle} onMouseDown={handleMouseDown}>

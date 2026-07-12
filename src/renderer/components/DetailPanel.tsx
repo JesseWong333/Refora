@@ -119,7 +119,7 @@ function InlineField({
           </span>
         )}
         {status === 'saved' && (
-          <span className="text-[10px] font-normal normal-case text-accent">
+          <span className="text-[10px] font-normal normal-case text-success">
             {t('common.saved')}
           </span>
         )}
@@ -163,7 +163,7 @@ function InlineField({
         )}
         {hasRemoteDiff && !editing && (
           <button
-            className="flex-shrink-0 text-accent hover:text-accent-hover"
+            className="flex-shrink-0 text-accent transition-colors duration-150 hover:text-accent-hover"
             title={t('detail.applyRemote') ?? 'Apply remote value'}
             onClick={applyRemote}
           >
@@ -226,7 +226,7 @@ function NoteField({
           </span>
         )}
         {status === 'saved' && (
-          <span className="text-[10px] font-normal normal-case text-accent">
+          <span className="text-[10px] font-normal normal-case text-success">
             {t('common.saved')}
           </span>
         )}
@@ -302,7 +302,7 @@ function CategoryChips({
           >
             {c.name}
             <button
-              className="ml-0.5 text-muted hover:text-error"
+              className="ml-0.5 text-muted transition-colors duration-150 hover:text-error"
               onClick={() => unassign(c.id)}
               title={t('common.remove') ?? 'Remove'}
             >
@@ -332,7 +332,7 @@ function CategoryChips({
           </select>
         ) : (
           <button
-            className="text-xs text-accent hover:text-accent-hover"
+            className="text-xs text-accent transition-colors duration-150 hover:text-accent-hover"
             onClick={() => setShowPicker(true)}
           >
             +
@@ -424,7 +424,7 @@ function SingleDetail({ doc }: { doc: Document }) {
     <div className="flex flex-col gap-4 px-5 py-4">
       <div className="flex items-center justify-between">
         <button
-          className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs text-accent transition-colors duration-150 hover:text-accent-hover disabled:opacity-50"
           onClick={handleRefresh}
           disabled={refreshing}
         >
@@ -436,7 +436,7 @@ function SingleDetail({ doc }: { doc: Document }) {
             </span>
           )}
           {refreshResult === 'success' && (
-            <span className="text-[10px] font-normal normal-case text-accent">
+            <span className="text-[10px] font-normal normal-case text-success">
               {t('detail.refreshSuccess')}
             </span>
           )}
@@ -475,14 +475,14 @@ function SingleDetail({ doc }: { doc: Document }) {
           {!doc.fileMissing && (
             <div className="flex items-center gap-2">
               <button
-                className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover"
+                className="flex items-center gap-1 text-xs text-accent transition-colors duration-150 hover:text-accent-hover"
                 onClick={handleOpenPdf}
               >
                 <FileText className="h-3.5 w-3.5" />
                 <span>{t('common.openFile')}</span>
               </button>
               <button
-                className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover"
+                className="flex items-center gap-1 text-xs text-accent transition-colors duration-150 hover:text-accent-hover"
                 onClick={() => openInFinder(doc.id)}
               >
                 <FolderOpen className="h-3.5 w-3.5" />
@@ -509,7 +509,7 @@ function SingleDetail({ doc }: { doc: Document }) {
       {isMoved && (
         <div className="flex flex-col gap-1">
           <button
-            className="text-xs text-accent hover:text-accent-hover self-start"
+            className="text-xs text-accent transition-colors duration-150 hover:text-accent-hover self-start"
             onClick={handleRestore}
           >
             {t('detail.restoreOriginal')}
@@ -522,7 +522,7 @@ function SingleDetail({ doc }: { doc: Document }) {
       <CategoryChips docId={doc.id} docCategories={doc.categories} />
 
       <button
-        className="flex items-center gap-1.5 self-start text-xs text-error hover:opacity-80"
+        className="flex items-center gap-1.5 self-start text-xs text-error transition-opacity duration-150 hover:opacity-80"
         onClick={() => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm'))}
       >
         <Trash2 className="h-3.5 w-3.5" />
@@ -557,7 +557,7 @@ function BulkBar({
       </div>
       <div className="flex flex-col gap-2">
         <button
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-error hover:bg-hover"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-error transition-colors duration-150 hover:bg-hover"
           onClick={() =>
             requestDeleteConfirm(
               selectedIds,
@@ -588,14 +588,14 @@ function BulkBar({
           </select>
         </div>
         <button
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground hover:bg-hover"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground transition-colors duration-150 hover:bg-hover"
           onClick={() => bulkRefreshMetadata(selectedIds)}
         >
           <RefreshCw className="h-4 w-4" />
           <span>{t('detail.refreshMetadata')} ({count})</span>
         </button>
         <button
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground hover:bg-hover"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-foreground transition-colors duration-150 hover:bg-hover"
           onClick={() => void api.export.toBibtex(selectedIds)}
         >
           <FileText className="h-4 w-4" />

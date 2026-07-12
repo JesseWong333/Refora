@@ -99,7 +99,7 @@ const MARKDOWN_COMPONENTS: Components = {
         return (
           <button
             type="button"
-            className="inline-flex items-center gap-0.5 text-accent underline hover:opacity-80"
+            className="inline-flex items-center gap-0.5 text-accent underline transition-opacity duration-150 hover:opacity-80"
             onClick={async () => {
               const ok = await openCitationDoc(parsed.docId)
               if (!ok) window.alert('Failed to open document. It may have been moved or deleted.')
@@ -1123,7 +1123,7 @@ export default function ChatPanel() {
                 threads.map((th) => (
                   <div
                     key={th.id}
-                    className={`flex items-center gap-1 px-2 py-1.5 text-[11px] hover:bg-hover ${
+                    className={`flex items-center gap-1 px-2 py-1.5 text-[11px] transition-colors duration-150 hover:bg-hover ${
                       th.id === activeThreadId ? 'bg-active text-foreground' : 'text-muted'
                     }`}
                   >
@@ -1139,7 +1139,7 @@ export default function ChatPanel() {
                     </button>
                     <button
                       type="button"
-                      className="shrink-0 text-muted hover:text-error"
+                      className="shrink-0 text-muted transition-colors duration-150 hover:text-error"
                       onClick={(e) => {
                         e.stopPropagation()
                         if (!window.confirm(t('workspace.chat.confirmDelete', 'Delete this conversation?'))) return
@@ -1283,7 +1283,7 @@ export default function ChatPanel() {
       {showScrollBtn && (
         <button
           type="button"
-          className="absolute left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-panel p-1.5 shadow-lg hover:bg-hover"
+          className="absolute left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-panel p-1.5 shadow-lg transition-colors duration-150 hover:bg-hover"
           style={{ bottom: inputAreaHeight > 0 ? inputAreaHeight + 8 : 80 }}
           onClick={() => {
             const el = scrollRef.current
@@ -1302,12 +1302,12 @@ export default function ChatPanel() {
 
       {error && (
         <div className="shrink-0 px-3 pb-1">
-          <div className="flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+          <div className="flex items-center gap-2 rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">
             <span className="min-w-0 flex-1 break-words">{error}</span>
             {lastSendRef.current && !streaming && (
               <button
                 type="button"
-                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-red-500/20"
+                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors duration-150 hover:bg-error/20"
                 onClick={() => void handleRetry()}
                 title={t('workspace.chat.retry', 'Retry')}
                 aria-label={t('workspace.chat.retry', 'Retry')}
@@ -1317,7 +1317,7 @@ export default function ChatPanel() {
             )}
             <button
               type="button"
-              className="shrink-0 rounded px-1 py-0.5 hover:bg-red-500/20"
+              className="shrink-0 rounded px-1 py-0.5 transition-colors duration-150 hover:bg-error/20"
               onClick={() => setError(null)}
               title={t('common.dismiss', 'Dismiss')}
               aria-label={t('common.dismiss', 'Dismiss')}
@@ -1353,7 +1353,7 @@ export default function ChatPanel() {
                     <span className="max-w-[120px] truncate">{doc?.title ?? docId.slice(0, 8)}</span>
                     <button
                       type="button"
-                      className="text-muted hover:text-error"
+                      className="text-muted transition-colors duration-150 hover:text-error"
                       onClick={() =>
                         setSelectedAttachments((prev) => prev.filter((id) => id !== docId))
                       }
@@ -1421,7 +1421,7 @@ export default function ChatPanel() {
                         return (
                           <label
                             key={doc.docId}
-                            className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-hover ${maxReached ? 'opacity-40' : ''}`}
+                            className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors duration-150 hover:bg-hover ${maxReached ? 'opacity-40' : ''}`}
                           >
                             <input
                               type="checkbox"
@@ -1458,7 +1458,7 @@ export default function ChatPanel() {
               <div className="relative" ref={menuRef}>
                 <button
                   type="button"
-                  className="inline-flex max-w-[160px] items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-foreground hover:bg-hover disabled:opacity-40"
+                  className="inline-flex max-w-[160px] items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
                   onClick={() => setModelMenuOpen((v) => !v)}
                   disabled={providers.length === 0 || streaming}
                   aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
@@ -1483,7 +1483,7 @@ export default function ChatPanel() {
                         type="button"
                         role="option"
                         aria-selected={p.id === activeProviderId}
-                        className={`mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left hover:bg-hover ${
+                        className={`mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover ${
                           p.id === activeProviderId ? 'bg-active' : ''
                         }`}
                         onClick={() => {
@@ -1514,7 +1514,7 @@ export default function ChatPanel() {
                             type="button"
                             role="option"
                             aria-selected={m.id === selectedModel}
-                            className="mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-hover"
+                            className="mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover"
                             onClick={() => void applyModel(m.id, '')}
                           >
                             <span className="min-w-0 flex-1 truncate text-xs text-foreground">{m.id}</span>
@@ -1544,7 +1544,7 @@ export default function ChatPanel() {
                               key={`r-${entry.model}`}
                               type="button"
                               role="option"
-                              className="mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left text-xs text-foreground hover:bg-hover"
+                              className="mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-hover"
                               onClick={() =>
                                 void applyModel(parsed.baseModel || entry.model, parsed.variant, entry.providerId)
                               }
@@ -1639,7 +1639,7 @@ export default function ChatPanel() {
                 className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] ${
                   deepThinking
                     ? 'bg-accent/15 text-accent'
-                    : 'text-muted hover:bg-hover hover:text-foreground'
+                    : 'text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground'
                 } disabled:opacity-40`}
                 onClick={() => {
                   setDeepThinking((v) => {
@@ -1675,7 +1675,7 @@ export default function ChatPanel() {
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-error p-1.5 text-white hover:bg-error/90"
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-error p-1.5 text-white transition-colors duration-150 hover:bg-error/90"
                   aria-label={t('workspace.chat.stop', 'Stop')}
                   title={t('workspace.chat.stop', 'Stop')}
                 >

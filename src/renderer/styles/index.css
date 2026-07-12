@@ -5,16 +5,18 @@
 @layer base {
   :root,
   [data-theme='dark'] {
-    --color-background: #1a1a1c;
+    --color-background: #141416;
     --color-foreground: #d4d4d4;
-    --color-muted: #858585;
-    --color-panel: #252526;
-    --color-panel-2: #2d2d2d;
-    --color-border: #3c3c3c;
-    --color-accent: #0e639c;
-    --color-accent-hover: #1f6fb2;
+    --color-muted: #9a9a9a;
+    --color-panel: #1e1e20;
+    --color-panel-2: #28282a;
+    --color-border: #3a3a3c;
+    --color-accent: #1f7ae0;
+    --color-accent-hover: #3a8de8;
     --color-warning: #cca700;
-    --color-error: #f48771;
+    --color-error: #ff6b5b;
+    --color-success: #4ade80;
+    --color-success-hover: #22c55e;
     --color-hover: #2a2d2e;
     --color-active: #37373d;
     --color-overlay: rgba(0, 0, 0, 0.5);
@@ -51,6 +53,8 @@
     --color-accent-hover: #0062cc;
     --color-warning: #ff9f0a;
     --color-error: #ff3b30;
+    --color-success: #34c759;
+    --color-success-hover: #28a745;
     --color-hover: rgba(0, 0, 0, 0.05);
     --color-active: rgba(0, 0, 0, 0.08);
     --color-overlay: rgba(0, 0, 0, 0.3);
@@ -74,6 +78,8 @@
       --color-accent-hover: #0062cc;
       --color-warning: #ff9f0a;
       --color-error: #ff3b30;
+      --color-success: #34c759;
+      --color-success-hover: #28a745;
       --color-hover: rgba(0, 0, 0, 0.05);
       --color-active: rgba(0, 0, 0, 0.08);
       --color-overlay: rgba(0, 0, 0, 0.3);
@@ -104,10 +110,6 @@
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  * {
-    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  }
-
   /* Modern thin scrollbars */
   ::-webkit-scrollbar {
     width: 10px;
@@ -135,6 +137,7 @@
   .toolbar-btn {
     @apply inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground hover:bg-hover active:bg-active disabled:opacity-40 disabled:cursor-default;
     -webkit-app-region: no-drag;
+    transition: background-color 0.15s ease;
   }
 
   .toolbar-btn-danger {
@@ -144,6 +147,7 @@
   .search-input {
     @apply h-8 rounded-lg border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
     -webkit-app-region: no-drag;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   /* Document list search box — override lobehub Input defaults so the field
@@ -156,6 +160,7 @@
     background-color: var(--color-panel) !important;
     color: var(--color-foreground) !important;
     -webkit-app-region: no-drag;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .doc-search-input:where([class*='ant-input'])::placeholder {
     color: var(--color-muted) !important;
@@ -171,6 +176,7 @@
 
   .field-input {
     @apply w-full rounded-lg border border-transparent bg-background px-3 py-1.5 text-sm text-foreground hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .dialog-overlay {
@@ -275,6 +281,7 @@
   .sidebar-item {
     @apply flex cursor-pointer items-center gap-2 truncate rounded-lg px-2.5 py-2 text-xs hover:bg-hover;
     min-height: 34px;
+    transition: background-color 0.15s ease;
   }
 
   .sidebar-item-active {

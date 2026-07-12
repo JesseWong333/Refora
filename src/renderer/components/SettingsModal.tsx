@@ -341,7 +341,7 @@ function AiProvidersSection() {
                 <button
                   key={tpl.name}
                   type="button"
-                  className="rounded-md border border-border bg-panel-2 px-2 py-1 text-[11px] text-muted hover:border-accent hover:text-foreground"
+                  className="rounded-md border border-border bg-panel-2 px-2 py-1 text-[11px] text-muted transition-colors duration-150 hover:border-accent hover:text-foreground"
                   onClick={() => {
                     const parsed = parseModelId(tpl.model)
                     setForm({
@@ -403,11 +403,11 @@ function AiProvidersSection() {
               <span
                 className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${
                   keyStatus === 'ok'
-                    ? 'bg-green-500'
+                    ? 'bg-success'
                     : keyStatus === 'fail'
-                      ? 'bg-red-500'
+                      ? 'bg-error'
                       : keyStatus === 'checking'
-                        ? 'bg-yellow-500'
+                        ? 'bg-warning'
                         : 'bg-border'
                 }`}
                 title={
@@ -485,7 +485,7 @@ function AiProvidersSection() {
                       <button
                         key={m.id}
                         type="button"
-                        className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-hover ${
+                        className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] transition-colors duration-150 hover:bg-hover ${
                           form.baseModel === m.id ? 'bg-active text-foreground' : 'text-muted'
                         }`}
                         onClick={() =>
@@ -667,7 +667,7 @@ function AiProvidersSection() {
         })}
 
       {error && (
-        <div className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">{error}</div>
+        <div className="rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">{error}</div>
       )}
     </div>
   )
@@ -854,7 +854,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       </div>
 
       {error && (
-        <div className="mt-4 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+        <div className="mt-4 rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">
           {error}
         </div>
       )}

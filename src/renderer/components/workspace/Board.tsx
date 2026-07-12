@@ -241,7 +241,7 @@ export default function Board() {
       onDrop={(e) => void handleDrop(e)}
     >
       {summaryErrors.get('__drop__') && (
-        <div className="mb-2 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+        <div className="mb-2 rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">
           {summaryErrors.get('__drop__')}
         </div>
       )}

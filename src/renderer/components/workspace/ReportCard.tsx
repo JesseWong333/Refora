@@ -172,7 +172,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
         }
       >
         {confirmDelete && (
-          <div className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-error">
+          <div className="mb-3 rounded-lg bg-error/10 px-3 py-2 text-sm text-error">
             {t('workspace.reportDeleteConfirm')}
           </div>
         )}

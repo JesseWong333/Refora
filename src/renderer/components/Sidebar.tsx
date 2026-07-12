@@ -633,7 +633,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             <Button
               type="text"
               size="small"
-              className="no-drag -mr-1 p-0.5 text-muted hover:text-foreground"
+              className="no-drag -mr-1 p-0.5 text-muted transition-colors duration-150 hover:text-foreground"
               onClick={startWsCreate}
               title={t('sidebar.createWorkspace')}
               aria-label={t('sidebar.createWorkspace')}
@@ -701,7 +701,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             <Button
               type="text"
               size="small"
-              className="no-drag -mr-1 p-0.5 text-muted hover:text-foreground"
+              className="no-drag -mr-1 p-0.5 text-muted transition-colors duration-150 hover:text-foreground"
               onClick={startCreate}
               title={t('sidebar.createCategory')}
               aria-label={t('sidebar.createCategory')}

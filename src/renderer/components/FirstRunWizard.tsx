@@ -46,7 +46,7 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
         </p>
         <div className="flex w-full flex-col gap-2">
           <button
-            className="w-full rounded-lg bg-accent px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="w-full rounded-lg bg-accent px-4 py-2.5 text-xs font-medium text-white transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
             onClick={handleChooseLibrary}
             disabled={picking || scanning}
           >
@@ -56,7 +56,7 @@ export default function FirstRunWizard({ onDone }: FirstRunWizardProps) {
           </button>
         </div>
         {error && (
-          <div className="w-full rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-error">
+          <div className="w-full rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">
             {error}
           </div>
         )}

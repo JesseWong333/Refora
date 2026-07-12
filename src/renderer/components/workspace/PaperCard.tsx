@@ -102,7 +102,7 @@ export default function PaperCard({
             </div>
           ) : summaryError ? (
             <div className="space-y-1.5">
-              <div className="flex items-start gap-1.5 rounded-lg bg-red-500/10 px-2 py-1.5 text-error">
+              <div className="flex items-start gap-1.5 rounded-lg bg-error/10 px-2 py-1.5 text-error">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span className="line-clamp-3">{summaryError}</span>
               </div>
@@ -112,7 +112,7 @@ export default function PaperCard({
                   e.stopPropagation()
                   onSummarize()
                 }}
-                className="inline-flex items-center gap-1 text-muted hover:text-foreground"
+                className="inline-flex items-center gap-1 text-muted transition-colors duration-150 hover:text-foreground"
               >
                 <RotateCw className="h-3 w-3" />
                 {t('workspace.retry')}
@@ -194,7 +194,7 @@ export default function PaperCard({
         ) : (
           <div className="space-y-4">
             {summaryError ? (
-              <div className="flex items-start gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-error">
+              <div className="flex items-start gap-1.5 rounded-lg bg-error/10 px-3 py-2 text-sm text-error">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{summaryError}</span>
               </div>

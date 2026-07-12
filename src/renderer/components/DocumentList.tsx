@@ -101,7 +101,7 @@ function ColumnHeader({
         </span>
       )}
       <div
-        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-accent"
+        className="absolute right-0 top-0 h-full w-1 cursor-col-resize transition-colors duration-150 hover:bg-accent"
         onMouseDown={handleResizeStart}
       />
     </div>
@@ -489,7 +489,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                   onContextMenu={(e) => handleRowContextMenu(doc, e)}
                 >
                   <div
-                    className={`flex items-center px-3 text-xs cursor-pointer ${
+                    className={`flex items-center px-3 text-xs cursor-pointer transition-colors duration-150 ${
                       isSelected ? 'bg-active' : 'hover:bg-hover'
                     }`}
                     style={{ height: ROW_HEIGHT }}
@@ -514,7 +514,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                         </span>
                       ) : (
                         <button
-                          className="flex items-center justify-center text-accent hover:text-accent-hover cursor-pointer"
+                          className="flex items-center justify-center text-accent transition-colors duration-150 hover:text-accent-hover cursor-pointer"
                           title={t('detail.open')}
                           aria-label={t('detail.open')}
                           onClick={(e) => {
