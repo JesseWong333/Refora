@@ -257,7 +257,8 @@
       "toolGenerateReport": "Generating report…",
       "toolAddDocs": "Adding to workspace…",
       "toolRequestSummary": "Requesting summary…",
-      "regenerate": "Regenerate"
+      "regenerate": "Regenerate",
+      "exportChat": "Export conversation"
     }
   }
 }

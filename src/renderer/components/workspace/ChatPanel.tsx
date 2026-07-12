@@ -8,7 +8,9 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Download,
   Paperclip,
+  Pencil,
   Sparkles,
   Wrench,
   Bot,
@@ -26,7 +28,9 @@ import {
   FolderOpen,
   RotateCcw,
   X,
-  ArrowDown
+  ArrowDown,
+  ThumbsUp,
+  ThumbsDown
 } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
@@ -454,7 +458,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      className="shrink-0 rounded p-1 text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+      className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
       title="Copy"
       aria-label="Copy"
       onClick={() => {
@@ -498,6 +502,7 @@ export default function ChatPanel() {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
 
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
@@ -507,9 +512,12 @@ export default function ChatPanel() {
   const threads = useWorkspaceStore((s) => s.threads)
   const fetchThreads = useWorkspaceStore((s) => s.fetchThreads)
   const deleteThread = useWorkspaceStore((s) => s.deleteThread)
+  const renameThread = useWorkspaceStore((s) => s.renameThread)
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
   const [confirmDeleteThread, setConfirmDeleteThread] = useState<{ id: string; title: string } | null>(null)
   const threadMenuRef = useRef<HTMLDivElement | null>(null)
+  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
 
   const threadIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -1032,6 +1040,36 @@ export default function ChatPanel() {
     setStreamingReasoning('')
   }, [])
 
+  const exportThread = useCallback(async (threadId: string) => {
+    if (!threadId) return
+    try {
+      const history = await api.ai.chatHistory(threadId)
+      const thread = threads.find((t) => t.id === threadId)
+      const title = thread?.title?.trim() || `thread-${threadId.slice(0, 8)}`
+      const date = new Date().toISOString().slice(0, 10)
+      const lines: string[] = [`# ${title}`, '']
+      for (const msg of history) {
+        if (msg.role === 'user') {
+          lines.push('## User', '')
+        } else if (msg.role === 'assistant') {
+          lines.push('## Assistant', '')
+        } else {
+          continue
+        }
+        lines.push(msg.content, '')
+      }
+      const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${title.replace(/[^\w\u4e00-\u9fff\s-]/g, '').trim() || 'conversation'}-${date}.md`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Failed to export conversation')
+    }
+  }, [threads])
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1161,30 +1199,89 @@ export default function ChatPanel() {
                       th.id === activeThreadId ? 'bg-active text-foreground' : 'text-muted'
                     }`}
                   >
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 truncate text-left"
-                      onClick={() => {
-                        setActiveThreadId(th.id)
-                        setThreadMenuOpen(false)
-                      }}
-                    >
-                      {th.title?.trim() || `${t('workspace.chat.thread', 'Thread')} ${th.id.slice(0, 8)}`}
-                    </button>
-                    <button
-                      type="button"
-                      className="shrink-0 text-muted transition-colors duration-150 hover:text-error"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setConfirmDeleteThread({ id: th.id, title: th.title?.trim() || `${t('workspace.chat.thread', 'Thread')} ${th.id.slice(0, 8)}` })
-                      }}
-                      title={t('common.delete', 'Delete')}
-                      aria-label={t('common.delete', 'Delete')}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
+                    {renamingThreadId === th.id ? (
+                      <input
+                        type="text"
+                        className="min-w-0 flex-1 rounded border border-accent bg-background px-1.5 py-0.5 text-[11px] text-foreground focus:outline-none"
+                        value={renameDraft}
+                        autoFocus
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            if (renameDraft.trim()) {
+                              void renameThread(th.id, renameDraft.trim())
+                            }
+                            setRenamingThreadId(null)
+                          }
+                          if (e.key === 'Escape') {
+                            e.preventDefault()
+                            setRenamingThreadId(null)
+                          }
+                        }}
+                        onBlur={() => {
+                          if (renameDraft.trim() && renameDraft.trim() !== th.title) {
+                            void renameThread(th.id, renameDraft.trim())
+                          }
+                          setRenamingThreadId(null)
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate text-left"
+                        onClick={() => {
+                          setActiveThreadId(th.id)
+                          setThreadMenuOpen(false)
+                        }}
+                      >
+                        {th.title?.trim() || `${t('workspace.chat.thread', 'Thread')} ${th.id.slice(0, 8)}`}
+                      </button>
+                    )}
+                    {renamingThreadId !== th.id && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-muted transition-colors duration-150 hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setRenamingThreadId(th.id)
+                          setRenameDraft(th.title?.trim() || '')
+                        }}
+                        title={t('common.rename', 'Rename')}
+                        aria-label={t('common.rename', 'Rename')}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                    {renamingThreadId !== th.id && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-muted transition-colors duration-150 hover:text-error"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setConfirmDeleteThread({ id: th.id, title: th.title?.trim() || `${t('workspace.chat.thread', 'Thread')} ${th.id.slice(0, 8)}` })
+                        }}
+                        title={t('common.delete', 'Delete')}
+                        aria-label={t('common.delete', 'Delete')}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                 ))
+              )}
+              {threads.length > 0 && activeThreadId && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-1.5 border-t border-border px-2 py-1.5 text-[11px] text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground"
+                  onClick={() => {
+                    void exportThread(activeThreadId)
+                    setThreadMenuOpen(false)
+                  }}
+                >
+                  <Download className="h-3 w-3" />
+                  {t('workspace.chat.exportChat', 'Export conversation')}
+                </button>
               )}
             </div>
           )}
@@ -1301,15 +1398,39 @@ export default function ChatPanel() {
                             <div className="mt-1 flex justify-end gap-0.5">
                               <CopyButton text={m.content} />
                               {showRegenerate && (
-                                <button
-                                  type="button"
-                                  className="shrink-0 rounded p-1 text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-                                  onClick={() => void handleRegenerate()}
-                                  title={t('workspace.chat.regenerate', 'Regenerate')}
-                                  aria-label={t('workspace.chat.regenerate', 'Regenerate')}
-                                >
-                                  <RotateCcw className="h-3 w-3" />
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    className={`shrink-0 rounded p-1 transition-opacity hover:opacity-100 ${
+                                      feedback === 'up' ? 'text-success opacity-100' : 'text-muted opacity-40'
+                                    }`}
+                                    onClick={() => setFeedback((f) => f === 'up' ? null : 'up')}
+                                    title={t('workspace.chat.feedbackUp', 'Good response')}
+                                    aria-label={t('workspace.chat.feedbackUp', 'Good response')}
+                                  >
+                                    <ThumbsUp className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`shrink-0 rounded p-1 transition-opacity hover:opacity-100 ${
+                                      feedback === 'down' ? 'text-error opacity-100' : 'text-muted opacity-40'
+                                    }`}
+                                    onClick={() => setFeedback((f) => f === 'down' ? null : 'down')}
+                                    title={t('workspace.chat.feedbackDown', 'Poor response')}
+                                    aria-label={t('workspace.chat.feedbackDown', 'Poor response')}
+                                  >
+                                    <ThumbsDown className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
+                                    onClick={() => void handleRegenerate()}
+                                    title={t('workspace.chat.regenerate', 'Regenerate')}
+                                    aria-label={t('workspace.chat.regenerate', 'Regenerate')}
+                                  >
+                                    <RotateCcw className="h-3 w-3" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </>

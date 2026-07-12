@@ -108,7 +108,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className="card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden border-l-2 border-l-accent p-3 transition-colors hover:border-accent"
+        className="group/card card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden border-l-2 border-l-accent p-3 transition-colors hover:border-accent"
         onClick={() => setExpanded(true)}
         onContextMenu={handleContextMenu}
       >
@@ -117,6 +117,35 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
           <div className="min-w-0 flex-1">
             <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{report.title}</h3>
             <p className="mt-0.5 text-xs text-muted">{formatDate(report.createdAt)}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/card:opacity-100">
+            <button
+              type="button"
+              className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
+              onClick={(e) => { e.stopPropagation(); setExpanded(true); enterEditMode() }}
+              title={t('workspace.reportEdit')}
+              aria-label={t('workspace.reportEdit')}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
+              onClick={(e) => { e.stopPropagation(); handleExportMarkdown() }}
+              title={t('workspace.reportExportMd')}
+              aria-label={t('workspace.reportExportMd')}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="rounded p-1 text-muted transition-colors duration-150 hover:text-error"
+              onClick={(e) => { e.stopPropagation(); setExpanded(true); setConfirmDelete(true) }}
+              title={t('workspace.reportDelete')}
+              aria-label={t('workspace.reportDelete')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0">

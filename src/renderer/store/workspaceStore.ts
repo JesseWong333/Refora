@@ -32,6 +32,7 @@ interface WorkspaceState {
   setActiveThreadId: (id: string | null) => void
   setChatStreaming: (streaming: boolean) => void
   deleteThread: (threadId: string) => Promise<void>
+  renameThread: (threadId: string, title: string) => Promise<void>
   fetchThreads: () => Promise<void>
   startNewChat: () => void
   openPanel: () => void
@@ -193,6 +194,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }
     } catch (e) {
       toast(errorMessage(e, 'Failed to delete thread'))
+    }
+  },
+
+  renameThread: async (threadId: string, title: string) => {
+    const prev = get().threads
+    set((s) => ({
+      threads: s.threads.map((t) => (t.id === threadId ? { ...t, title } : t))
+    }))
+    try {
+      await api.ai.renameThread(threadId, title)
+    } catch (e) {
+      set({ threads: prev })
+      toast(errorMessage(e, 'Failed to rename thread'))
     }
   },
 
