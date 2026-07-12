@@ -1358,17 +1358,251 @@ export default function ChatPanel() {
         >
           {activeThreadTitle}
         </button>
-        <UiButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={startNewChat}
-          title={t('workspace.chat.newChat', 'New chat')}
-          aria-label={t('workspace.chat.newChat', 'New chat')}
-          disabled={streaming}
-        >
-          <Plus className="h-4 w-4" />
-        </UiButton>
+        <div className="flex items-center gap-1">
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              className="inline-flex max-w-[120px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
+              onClick={() => setModelMenuOpen((v) => !v)}
+              disabled={providers.length === 0 || streaming}
+              aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
+              aria-expanded={modelMenuOpen}
+              aria-haspopup="listbox"
+            >
+              <span className="truncate font-medium">{displayModelLabel}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+            </button>
+
+            {modelMenuOpen && (
+              <div
+                className="absolute top-full right-0 z-50 mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
+                role="listbox"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]'))
+                  const currentIndex = buttons.findIndex((b) => b === document.activeElement)
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    const next = buttons[Math.min(currentIndex + 1, buttons.length - 1)] ?? buttons[0]
+                    next?.focus()
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    const prev = buttons[Math.max(currentIndex - 1, 0)] ?? buttons[0]
+                    prev?.focus()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setModelMenuOpen(false)
+                  }
+                }}
+              >
+                <p className="px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
+                  {t('workspace.chat.providerModels', 'Provider models')}
+                </p>
+                {providers.map((p) => (
+                  <button
+                    key={`p-${p.id}`}
+                    type="button"
+                    role="option"
+                    aria-selected={p.id === activeProviderId}
+                    className={`mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover ${
+                      p.id === activeProviderId ? 'bg-active' : ''
+                    }`}
+                    onClick={() => {
+                      const parsed = parseModelId(p.model)
+                      void applyModel(
+                        p.baseModel || parsed.baseModel || p.model,
+                        p.variant || parsed.variant,
+                        p.id
+                      )
+                    }}
+                  >
+                    <span className="truncate text-xs font-medium text-foreground">
+                      {p.name}
+                    </span>
+                    <span className="truncate text-caption text-muted">{p.model}</span>
+                  </button>
+                ))}
+
+                {providerModels.length > 0 && (
+                  <>
+                    <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
+                      {t('workspace.chat.availableModels', 'Available models')}
+                      {loadingModels ? '…' : ''}
+                    </p>
+                    {providerModels.slice(0, 40).map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        role="option"
+                        aria-selected={m.id === selectedModel}
+                        className="mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover"
+                        onClick={() => void applyModel(m.id, '')}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-xs text-foreground">{m.id}</span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          {m.supportsVariants && (
+                            <span className="text-caption text-accent">
+                              {t('settings.aiProviders.hasVariants', 'variants')}
+                            </span>
+                          )}
+                          {m.id === selectedModel && <Check className="h-3 w-3 text-accent" />}
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {recentModels.length > 0 && (
+                  <>
+                    <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
+                      {t('workspace.chat.recentModels', 'Recent')}
+                    </p>
+                    {recentModels.map((entry) => {
+                      const parsed = parseModelId(entry.model)
+                      const providerName = providers.find((p) => p.id === entry.providerId)?.name
+                      return (
+                        <button
+                          key={`r-${entry.model}`}
+                          type="button"
+                          role="option"
+                          className="mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-hover"
+                          onClick={() =>
+                            void applyModel(parsed.baseModel || entry.model, parsed.variant, entry.providerId)
+                          }
+                        >
+                          <span className="truncate">{entry.model}</span>
+                          {providerName && (
+                            <span className="truncate text-caption text-muted">{providerName}</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+
+                <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
+                  {t('workspace.chat.customModel', 'Custom model')}
+                </p>
+                <div className="flex gap-1 px-1">
+                  <UiInput
+                    variant="outlined"
+                    inputSize="sm"
+                    className="min-w-0 flex-1"
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
+                    placeholder="model-id"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !customModelInvalid) {
+                        e.preventDefault()
+                        const parsed = parseModelId(customModelTrimmed)
+                        void applyModel(parsed.baseModel, parsed.variant)
+                        setCustomModel('')
+                      }
+                    }}
+                  />
+                  <UiButton
+                    variant="primary"
+                    size="sm"
+                    disabled={customModelInvalid}
+                    onClick={() => {
+                      const parsed = parseModelId(customModelTrimmed)
+                      void applyModel(parsed.baseModel, parsed.variant)
+                      setCustomModel('')
+                    }}
+                  >
+                    {t('common.add', 'Add')}
+                  </UiButton>
+                </div>
+                {customModel && customModelInvalid && (
+                  <p className="px-1 pt-1 text-caption text-muted">
+                    {t('workspace.chat.customModelHint', 'Model ID cannot contain spaces.')}
+                  </p>
+                )}
+
+                {variantCapable && (
+                  <>
+                    <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
+                      {t('workspace.chat.variant', 'Variant')}
+                    </p>
+                    <div className="flex flex-wrap gap-1 px-1 pb-1">
+                      <button
+                        type="button"
+                        className={`rounded-md border px-2 py-0.5 text-caption ${
+                          !selectedVariant
+                            ? 'border-accent bg-accent/10 text-accent'
+                            : 'border-border text-muted'
+                        }`}
+                        onClick={() => void applyModel(selectedModel, '')}
+                      >
+                        {t('settings.aiProviders.variantNone', 'None (base only)')}
+                      </button>
+                      {COMMON_VARIANTS.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          className={`rounded-md border px-2 py-0.5 text-caption ${
+                            selectedVariant === v
+                              ? 'border-accent bg-accent/10 text-accent'
+                              : 'border-border text-muted'
+                          }`}
+                          onClick={() => void applyModel(selectedModel, v)}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-label ${
+              deepThinking
+                ? 'bg-accent text-white'
+                : 'text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground'
+            } disabled:opacity-40`}
+            onClick={() => {
+              setDeepThinking((v) => {
+                const next = !v
+                void api.settings.set('chatDeepThinking', next)
+                return next
+              })
+            }}
+            disabled={providers.length === 0 || streaming}
+            aria-pressed={deepThinking}
+            title={
+              deepThinking && thinkingMode === 'native'
+                ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
+                : deepThinking && thinkingMode === 'prompt'
+                  ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
+                  : t('workspace.chat.deepThinking', 'Deep thinking')
+            }
+            aria-label={
+              deepThinking && thinkingMode === 'native'
+                ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
+                : deepThinking && thinkingMode === 'prompt'
+                  ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
+                  : t('workspace.chat.deepThinking', 'Deep thinking')
+            }
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+          </button>
+
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={startNewChat}
+            title={t('workspace.chat.newChat', 'New chat')}
+            aria-label={t('workspace.chat.newChat', 'New chat')}
+            disabled={streaming}
+          >
+            <Plus className="h-4 w-4" />
+          </UiButton>
+        </div>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -1636,23 +1870,34 @@ export default function ChatPanel() {
               })}
             </div>
           )}
-          <textarea
-            ref={textareaRef}
-            className="max-h-40 min-h-[52px] w-full resize-none bg-transparent px-3 pt-3 text-sm text-foreground placeholder:text-muted focus:outline-none"
-            rows={2}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={t(
-              'workspace.chat.inputPlaceholder',
-              'Send a message… (Enter to send, Shift+Enter for newline)'
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              className="max-h-40 min-h-[52px] w-full resize-none bg-transparent px-3 pt-3 text-sm text-foreground placeholder:text-muted focus:outline-none"
+              rows={2}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={t(
+                'workspace.chat.inputPlaceholder',
+                'Send a message… (Enter to send, Shift+Enter for newline)'
+              )}
+              disabled={providers.length === 0}
+              aria-label={t('workspace.chat.inputPlaceholder', 'Send a message…')}
+            />
+            {input.length > MAX_INPUT_LENGTH * 0.8 && (
+              <span
+                className={`pointer-events-none absolute bottom-2 right-3 text-caption ${
+                  input.length > MAX_INPUT_LENGTH ? 'text-error' : 'text-muted'
+                }`}
+              >
+                {Math.max(0, MAX_INPUT_LENGTH - input.length)}{' '}
+                {t('workspace.chat.charsRemaining', 'chars left')}
+              </span>
             )}
-            disabled={providers.length === 0}
-            aria-label={t('workspace.chat.inputPlaceholder', 'Send a message…')}
-          />
+          </div>
 
-          <div className="flex flex-col gap-1 px-2 pb-2 pt-1">
-            <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 px-2 pb-2 pt-1">
             <div className="relative shrink-0" ref={attachMenuRef}>
               <UiButton
                 variant="ghost"
@@ -1738,252 +1983,7 @@ export default function ChatPanel() {
                 </div>
               )}
             </div>
-            {input.length > MAX_INPUT_LENGTH * 0.8 && (
-              <span
-                className={`ml-auto text-caption ${
-                  input.length > MAX_INPUT_LENGTH ? 'text-error' : 'text-muted'
-                }`}
-              >
-                {Math.max(0, MAX_INPUT_LENGTH - input.length)}{' '}
-                {t('workspace.chat.charsRemaining', 'chars left')}
-              </span>
-            )}
-            </div>
-
-            <div className="flex items-center gap-1">
-              <div className="relative" ref={menuRef}>
-                <button
-                  type="button"
-                  className="inline-flex max-w-[160px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
-                  onClick={() => setModelMenuOpen((v) => !v)}
-                  disabled={providers.length === 0 || streaming}
-                  aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
-                  aria-expanded={modelMenuOpen}
-                  aria-haspopup="listbox"
-                >
-                  <span className="truncate font-medium">{displayModelLabel}</span>
-                  <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
-                </button>
-
-                {modelMenuOpen && (
-                  <div
-                    className="absolute top-full right-0 z-50 mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
-                    role="listbox"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]'))
-                      const currentIndex = buttons.findIndex((b) => b === document.activeElement)
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault()
-                        const next = buttons[Math.min(currentIndex + 1, buttons.length - 1)] ?? buttons[0]
-                        next?.focus()
-                      } else if (e.key === 'ArrowUp') {
-                        e.preventDefault()
-                        const prev = buttons[Math.max(currentIndex - 1, 0)] ?? buttons[0]
-                        prev?.focus()
-                      } else if (e.key === 'Escape') {
-                        e.preventDefault()
-                        setModelMenuOpen(false)
-                      }
-                    }}
-                  >
-                    <p className="px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-                      {t('workspace.chat.providerModels', 'Provider models')}
-                    </p>
-                    {providers.map((p) => (
-                      <button
-                        key={`p-${p.id}`}
-                        type="button"
-                        role="option"
-                        aria-selected={p.id === activeProviderId}
-                        className={`mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover ${
-                          p.id === activeProviderId ? 'bg-active' : ''
-                        }`}
-                        onClick={() => {
-                          const parsed = parseModelId(p.model)
-                          void applyModel(
-                            p.baseModel || parsed.baseModel || p.model,
-                            p.variant || parsed.variant,
-                            p.id
-                          )
-                        }}
-                      >
-                        <span className="truncate text-xs font-medium text-foreground">
-                          {p.name}
-                        </span>
-                        <span className="truncate text-caption text-muted">{p.model}</span>
-                      </button>
-                    ))}
-
-                    {providerModels.length > 0 && (
-                      <>
-                        <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-                          {t('workspace.chat.availableModels', 'Available models')}
-                          {loadingModels ? '…' : ''}
-                        </p>
-                        {providerModels.slice(0, 40).map((m) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            role="option"
-                            aria-selected={m.id === selectedModel}
-                            className="mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover"
-                            onClick={() => void applyModel(m.id, '')}
-                          >
-                            <span className="min-w-0 flex-1 truncate text-xs text-foreground">{m.id}</span>
-                            <span className="flex shrink-0 items-center gap-1">
-                              {m.supportsVariants && (
-                                <span className="text-caption text-accent">
-                                  {t('settings.aiProviders.hasVariants', 'variants')}
-                                </span>
-                              )}
-                              {m.id === selectedModel && <Check className="h-3 w-3 text-accent" />}
-                            </span>
-                          </button>
-                        ))}
-                      </>
-                    )}
-
-                    {recentModels.length > 0 && (
-                      <>
-                        <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-                          {t('workspace.chat.recentModels', 'Recent')}
-                        </p>
-                        {recentModels.map((entry) => {
-                          const parsed = parseModelId(entry.model)
-                          const providerName = providers.find((p) => p.id === entry.providerId)?.name
-                          return (
-                            <button
-                              key={`r-${entry.model}`}
-                              type="button"
-                              role="option"
-                              className="mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-hover"
-                              onClick={() =>
-                                void applyModel(parsed.baseModel || entry.model, parsed.variant, entry.providerId)
-                              }
-                            >
-                              <span className="truncate">{entry.model}</span>
-                              {providerName && (
-                                <span className="truncate text-caption text-muted">{providerName}</span>
-                              )}
-                            </button>
-                          )
-                        })}
-                      </>
-                    )}
-
-                    <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-                      {t('workspace.chat.customModel', 'Custom model')}
-                    </p>
-                    <div className="flex gap-1 px-1">
-                      <UiInput
-                        variant="outlined"
-                        inputSize="sm"
-                        className="min-w-0 flex-1"
-                        value={customModel}
-                        onChange={(e) => setCustomModel(e.target.value)}
-                        placeholder="model-id"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !customModelInvalid) {
-                            e.preventDefault()
-                            const parsed = parseModelId(customModelTrimmed)
-                            void applyModel(parsed.baseModel, parsed.variant)
-                            setCustomModel('')
-                          }
-                        }}
-                      />
-                      <UiButton
-                        variant="primary"
-                        size="sm"
-                        disabled={customModelInvalid}
-                        onClick={() => {
-                          const parsed = parseModelId(customModelTrimmed)
-                          void applyModel(parsed.baseModel, parsed.variant)
-                          setCustomModel('')
-                        }}
-                      >
-                        {t('common.add', 'Add')}
-                      </UiButton>
-                    </div>
-                    {customModel && customModelInvalid && (
-                      <p className="px-1 pt-1 text-caption text-muted">
-                        {t('workspace.chat.customModelHint', 'Model ID cannot contain spaces.')}
-                      </p>
-                    )}
-
-                    {variantCapable && (
-                      <>
-                        <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-                          {t('workspace.chat.variant', 'Variant')}
-                        </p>
-                        <div className="flex flex-wrap gap-1 px-1 pb-1">
-                          <button
-                            type="button"
-                            className={`rounded-md border px-2 py-0.5 text-caption ${
-                              !selectedVariant
-                                ? 'border-accent bg-accent/10 text-accent'
-                                : 'border-border text-muted'
-                            }`}
-                            onClick={() => void applyModel(selectedModel, '')}
-                          >
-                            {t('settings.aiProviders.variantNone', 'None (base only)')}
-                          </button>
-                          {COMMON_VARIANTS.map((v) => (
-                            <button
-                              key={v}
-                              type="button"
-                              className={`rounded-md border px-2 py-0.5 text-caption ${
-                                selectedVariant === v
-                                  ? 'border-accent bg-accent/10 text-accent'
-                                  : 'border-border text-muted'
-                              }`}
-                              onClick={() => void applyModel(selectedModel, v)}
-                            >
-                              {v}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="ml-auto flex items-center gap-1">
-              <button
-                type="button"
-                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-label ${
-                  deepThinking
-                    ? 'bg-accent text-white'
-                    : 'text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground'
-                } disabled:opacity-40`}
-                onClick={() => {
-                  setDeepThinking((v) => {
-                    const next = !v
-                    void api.settings.set('chatDeepThinking', next)
-                    return next
-                  })
-                }}
-                disabled={providers.length === 0 || streaming}
-                aria-pressed={deepThinking}
-                title={
-                  deepThinking && thinkingMode === 'native'
-                    ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
-                    : deepThinking && thinkingMode === 'prompt'
-                      ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
-                      : t('workspace.chat.deepThinking', 'Deep thinking')
-                }
-                aria-label={
-                  deepThinking && thinkingMode === 'native'
-                    ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
-                    : deepThinking && thinkingMode === 'prompt'
-                      ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
-                      : t('workspace.chat.deepThinking', 'Deep thinking')
-                }
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-              </button>
-
+            <div className="ml-auto flex items-center gap-1">
               {streaming ? (
                 <UiButton
                   variant="danger"
@@ -2010,7 +2010,6 @@ export default function ChatPanel() {
                   <Send className="h-3.5 w-3.5" />
                 </UiButton>
               )}
-            </div>
             </div>
           </div>
         </div>
