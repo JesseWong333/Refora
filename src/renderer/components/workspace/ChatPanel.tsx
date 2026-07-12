@@ -57,6 +57,7 @@ import { resolveDeepThinkingMode } from '../../../shared/deepThinking'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useDocumentStore } from '../../store/documentStore'
 import { useConfirmStore } from '../../store/confirmStore'
+import { useClickOutside } from '../../hooks/useClickOutside'
 import { Button as UiButton, Input as UiInput } from '../ui'
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -858,42 +859,15 @@ export default function ChatPanel() {
     setChatStreaming(streaming)
   }, [streaming, setChatStreaming])
 
-  useEffect(() => {
-    if (!modelMenuOpen) return
-    const onDoc = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) {
-        setModelMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [modelMenuOpen])
+  useClickOutside(menuRef, () => setModelMenuOpen(false), modelMenuOpen)
 
   useEffect(() => {
     void fetchThreads()
   }, [activeWorkspaceId, fetchThreads])
 
-  useEffect(() => {
-    if (!threadMenuOpen) return
-    const onDoc = (e: MouseEvent) => {
-      if (!threadMenuRef.current?.contains(e.target as Node)) {
-        setThreadMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [threadMenuOpen])
+  useClickOutside(threadMenuRef, () => setThreadMenuOpen(false), threadMenuOpen)
 
-  useEffect(() => {
-    if (!attachMenuOpen) return
-    const onDoc = (e: MouseEvent) => {
-      if (!attachMenuRef.current?.contains(e.target as Node)) {
-        setAttachMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [attachMenuOpen])
+  useClickOutside(attachMenuRef, () => setAttachMenuOpen(false), attachMenuOpen)
 
   useEffect(() => {
     if (!attachMenuOpen || !activeWorkspaceId) return
@@ -914,16 +888,7 @@ export default function ChatPanel() {
     })()
   }, [attachMenuOpen, activeWorkspaceId])
 
-  useEffect(() => {
-    if (!workspaceScopeOpen) return
-    const onDoc = (e: MouseEvent) => {
-      if (!workspaceScopeRef.current?.contains(e.target as Node)) {
-        setWorkspaceScopeOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [workspaceScopeOpen])
+  useClickOutside(workspaceScopeRef, () => setWorkspaceScopeOpen(false), workspaceScopeOpen)
 
   useEffect(() => {
     if (!workspaceScopeOpen || !activeWorkspaceId || workspaceDocs.length > 0) return
