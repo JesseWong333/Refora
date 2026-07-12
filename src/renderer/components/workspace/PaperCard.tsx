@@ -4,7 +4,7 @@ import { Modal, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { Sparkles, FileText, Trash2, Loader2, BookOpen, AlertCircle, RotateCw } from 'lucide-react'
 import { motion } from 'motion/react'
-import { Button } from '../ui'
+import { Button, Badge, cardClassName } from '../ui'
 import type { AiSummary, Document } from '../../../shared/ipc-types'
 
 interface PaperCardProps {
@@ -15,12 +15,6 @@ interface PaperCardProps {
   onSummarize: () => void
   onOpenPdf: () => void
   onRemove: () => void
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded bg-panel-2 px-1.5 py-0.5 text-caption text-muted">{children}</span>
-  )
 }
 
 export default function PaperCard({
@@ -75,7 +69,7 @@ export default function PaperCard({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className="group/card card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3 transition-colors hover:border-accent"
+        className={cardClassName('default', true, 'group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
         onClick={() => setModalOpen(true)}
         onContextMenu={handleContextMenu}
       >
@@ -120,8 +114,8 @@ export default function PaperCard({
 
         {(doc?.year || doc?.venue) && (
           <div className="flex shrink-0 flex-wrap gap-1">
-            {doc?.year && <Badge>{doc.year}</Badge>}
-            {doc?.venue && <Badge>{doc.venue}</Badge>}
+            {doc?.year && <Badge variant="default" size="md">{doc.year}</Badge>}
+            {doc?.venue && <Badge variant="default" size="md">{doc.venue}</Badge>}
           </div>
         )}
 

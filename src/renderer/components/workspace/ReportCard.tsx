@@ -11,7 +11,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { formatDate } from '../../utils/format'
-import { Input as UiInput, Textarea as UiTextarea } from '../ui'
+import { Input as UiInput, Textarea as UiTextarea, cardClassName } from '../ui'
 import type { AiReport } from '../../../shared/ipc-types'
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath]
@@ -109,7 +109,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className="group/card card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden border-l-2 border-l-accent p-3 transition-colors hover:border-accent"
+        className={cardClassName('default', true, 'group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
         onClick={() => setExpanded(true)}
         onContextMenu={handleContextMenu}
       >

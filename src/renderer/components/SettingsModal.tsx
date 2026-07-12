@@ -6,7 +6,7 @@ import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
 import { errorMessage } from '../../shared/ipc-types'
-import { Button as UiButton, Input as UiInput } from './ui'
+import { Button as UiButton, Input as UiInput, Badge } from './ui'
 import type { AiProvider, ModelVariantFormat, ProviderModelInfo } from '../../shared/ipc-types'
 import {
   COMMON_VARIANTS,
@@ -500,9 +500,9 @@ function AiProvidersSection() {
                             <span className="text-caption text-muted">{m.providerName}</span>
                           )}
                           {m.supportsVariants && (
-                            <span className="rounded bg-accent/15 px-1 py-0.5 text-caption text-accent">
+                            <Badge variant="accent" size="sm" subtle>
                               {t('settings.aiProviders.hasVariants', 'variants')}
-                            </span>
+                            </Badge>
                           )}
                         </span>
                       </button>
@@ -609,15 +609,15 @@ function AiProvidersSection() {
                   <div className="flex items-center gap-2">
                     <span className="truncate text-xs text-foreground">{p.name}</span>
                     {isActive && (
-                      <span className="rounded bg-accent px-1.5 py-0.5 text-caption text-white">
+                      <Badge variant="accent" size="sm">
                         {t('settings.aiProviders.active', 'Active')}
-                      </span>
+                      </Badge>
                     )}
-                    <span className="rounded border border-border px-1.5 py-0.5 text-caption text-muted">
+                    <Badge variant="default" size="sm" className="border border-border">
                       {p.hasKey
                         ? t('settings.aiProviders.hasKey', 'Key set')
                         : t('settings.aiProviders.noKey', 'No key')}
-                    </span>
+                    </Badge>
                   </div>
                   <div className="truncate text-label text-muted">
                     {p.model} · {p.baseUrl}
