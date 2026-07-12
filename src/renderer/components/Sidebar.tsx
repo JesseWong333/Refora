@@ -21,15 +21,14 @@ import {
   Loader2,
   LayoutDashboard
 } from 'lucide-react'
-import { Input, showContextMenu } from '@lobehub/ui'
+import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import type { InputRef } from 'antd/es/input'
 import { useDocumentStore } from '../store/documentStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { useTheme } from '../hooks/useTheme'
 import type { ListMode, Category, Workspace } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
-import { Button as UiButton } from './ui'
+import { Button as UiButton, Input as UiInput } from './ui'
 import { api } from '../ipc'
 
 const DOC_MIME = 'application/x-refora-docids'
@@ -146,8 +145,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const [creatingNew, setCreatingNew] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
-  const newInputRef = useRef<InputRef>(null)
-  const renameInputRef = useRef<InputRef>(null)
+  const newInputRef = useRef<HTMLInputElement>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
   const submittingRef = useRef(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -168,8 +167,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const [wsRenamingId, setWsRenamingId] = useState<string | null>(null)
   const [wsDraftName, setWsDraftName] = useState('')
   const [wsDeleteConfirm, setWsDeleteConfirm] = useState<Workspace | null>(null)
-  const wsNewInputRef = useRef<InputRef>(null)
-  const wsRenameInputRef = useRef<InputRef>(null)
+  const wsNewInputRef = useRef<HTMLInputElement>(null)
+  const wsRenameInputRef = useRef<HTMLInputElement>(null)
   const wsSubmittingRef = useRef(false)
 
   const isMac = document.documentElement.dataset.platform === 'mac'
@@ -660,10 +659,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           }
         >
           {wsCreating && (
-            <Input
+            <UiInput
               ref={wsNewInputRef}
+              variant="outlined"
+              inputSize="sm"
               className="no-drag mb-1"
-              size="small"
               placeholder={t('sidebar.workspaceName')}
               value={wsDraftName}
               onChange={(e) => setWsDraftName(e.target.value)}
@@ -684,10 +684,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               return (
                 <div key={w.id} className="relative">
                   {isRenaming ? (
-                    <Input
+                    <UiInput
                       ref={wsRenameInputRef}
+                      variant="outlined"
+                      inputSize="sm"
                       className="no-drag"
-                      size="small"
                       value={wsDraftName}
                       onChange={(e) => setWsDraftName(e.target.value)}
                       onKeyDown={(e) => {
@@ -729,10 +730,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           }
         >
           {creatingNew && (
-            <Input
+            <UiInput
               ref={newInputRef}
+              variant="outlined"
+              inputSize="sm"
               className="no-drag mb-1"
-              size="small"
               placeholder={t('sidebar.categoryName')}
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
@@ -754,10 +756,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               return (
                 <div key={c.id} className="relative">
                   {isRenaming ? (
-                    <Input
+                    <UiInput
                       ref={renameInputRef}
+                      variant="outlined"
+                      inputSize="sm"
                       className="no-drag"
-                      size="small"
                       value={draftName}
                       onChange={(e) => setDraftName(e.target.value)}
                       onKeyDown={(e) => {

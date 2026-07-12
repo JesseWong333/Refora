@@ -11,6 +11,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { formatDate } from '../../utils/format'
+import { Input as UiInput, Textarea as UiTextarea } from '../ui'
 import type { AiReport } from '../../../shared/ipc-types'
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath]
@@ -209,16 +210,19 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted">{t('workspace.reportTitleLabel')}</label>
-              <input
-                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-accent focus:outline-none"
+              <UiInput
+                variant="outlined"
+                inputSize="md"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
               />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted">{t('workspace.reportContentLabel')}</label>
-              <textarea
-                className="min-h-[300px] resize-y w-full rounded-md border border-border bg-background p-2 text-sm text-foreground focus:border-accent focus:outline-none font-mono"
+              <UiTextarea
+                variant="outlined"
+                textareaSize="md"
+                className="min-h-[300px] resize-y font-mono"
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
               />

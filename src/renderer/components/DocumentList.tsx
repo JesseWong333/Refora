@@ -2,11 +2,12 @@ import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRef, useState, useCallback } from 'react'
 import { ChevronUp, ChevronDown, Star, AlertTriangle, Zap, Check, FileText, FolderOpen, Copy, RefreshCw, Trash2, Search, FolderTree, Plus } from 'lucide-react'
-import { Input, showContextMenu } from '@lobehub/ui'
+import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
 import { formatDate, formatFilePath } from '../utils/format'
+import { Input as UiInput } from './ui'
 import type { Document, ColumnId, SortField, ListColumn, Category } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 
@@ -426,8 +427,10 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
         )}
         <div className="mx-auto flex items-center gap-[10px] no-drag">
           <Search className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
-          <Input
-            className="doc-search-input w-[280px] no-drag"
+          <UiInput
+            variant="outlined"
+            inputSize="md"
+            className="w-[280px] no-drag"
             placeholder={t('topbar.search')}
             value={searchQuery}
             onChange={(e) => performSearch(e.target.value)}

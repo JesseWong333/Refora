@@ -1,12 +1,12 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Modal, Button, Input, Select } from '@lobehub/ui'
+import { Modal, Button, Select } from '@lobehub/ui'
 import { Loader2 } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
 import { errorMessage } from '../../shared/ipc-types'
-import { Button as UiButton } from './ui'
+import { Button as UiButton, Input as UiInput } from './ui'
 import type { AiProvider, ModelVariantFormat, ProviderModelInfo } from '../../shared/ipc-types'
 import {
   COMMON_VARIANTS,
@@ -364,22 +364,20 @@ function AiProvidersSection() {
             <label className="text-label text-muted">
               {t('settings.aiProviders.name', 'Name')}
             </label>
-            <Input
-              value={form.name}
+            <UiInput variant="outlined"               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="OpenAI"
-              size="small"
+              inputSize="sm"
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-label text-muted">
               {t('settings.aiProviders.baseUrl', 'Base URL')}
             </label>
-            <Input
-              value={form.baseUrl}
+            <UiInput variant="outlined"               value={form.baseUrl}
               onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
               placeholder="https://api.openai.com/v1"
-              size="small"
+              inputSize="sm"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -392,13 +390,12 @@ function AiProvidersSection() {
               )}
             </label>
             <div className="flex items-center gap-2">
-              <Input
-                type="password"
+              <UiInput variant="outlined"                 type="password"
                 value={form.apiKey}
                 onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
                 onBlur={onApiKeyBlur}
                 placeholder={form.id ? '' : 'sk-...'}
-                size="small"
+                inputSize="sm"
                 className="flex-1"
               />
               <span
@@ -454,22 +451,20 @@ function AiProvidersSection() {
               </UiButton>
             </div>
             {manualModel || availableModels.length === 0 ? (
-              <Input
-                value={form.baseModel}
+              <UiInput variant="outlined"                 value={form.baseModel}
                 onChange={(e) => setForm({ ...form, baseModel: e.target.value })}
                 placeholder="gpt-4o-mini"
-                size="small"
+                inputSize="sm"
               />
             ) : (
               <>
-                <Input
-                  value={modelFilter}
+                <UiInput variant="outlined"                   value={modelFilter}
                   onChange={(e) => setModelFilter(e.target.value)}
                   placeholder={t(
                     'settings.aiProviders.searchModels',
                     'Search models…'
                   )}
-                  size="small"
+                  inputSize="sm"
                 />
                 <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-panel-2">
                   {loadingModels ? (
@@ -557,11 +552,10 @@ function AiProvidersSection() {
               <label className="text-label text-muted">
                 {t('settings.aiProviders.temperature', 'Temperature (0-2)')}
               </label>
-              <Input
-                value={form.temperature}
+              <UiInput variant="outlined"                 value={form.temperature}
                 onChange={(e) => setForm({ ...form, temperature: e.target.value })}
                 placeholder="0.7"
-                size="small"
+                inputSize="sm"
                 type="number"
                 min="0"
                 max="2"
@@ -572,11 +566,10 @@ function AiProvidersSection() {
               <label className="text-label text-muted">
                 {t('settings.aiProviders.maxTokens', 'Max tokens')}
               </label>
-              <Input
-                value={form.maxTokens}
+              <UiInput variant="outlined"                 value={form.maxTokens}
                 onChange={(e) => setForm({ ...form, maxTokens: e.target.value })}
                 placeholder="4096"
-                size="small"
+                inputSize="sm"
                 type="number"
                 min="1"
               />
@@ -795,25 +788,23 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs text-muted">{t('settings.proxy')}</label>
-          <Input
-            value={proxyUrl}
+          <UiInput variant="outlined"             value={proxyUrl}
             onChange={(e) => setProxyUrl(e.target.value)}
             onBlur={saveProxy}
             onPressEnter={saveProxy}
             placeholder="http://proxy:8080"
-            size="small"
+            inputSize="sm"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs text-muted">{t('settings.crossrefMailto')}</label>
-          <Input
-            value={crossrefMailto}
+          <UiInput variant="outlined"             value={crossrefMailto}
             onChange={(e) => setCrossrefMailto(e.target.value)}
             onBlur={saveMailto}
             onPressEnter={saveMailto}
             placeholder="user@example.com"
-            size="small"
+            inputSize="sm"
           />
         </div>
 

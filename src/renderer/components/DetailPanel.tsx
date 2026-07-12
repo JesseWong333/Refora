@@ -2,11 +2,8 @@ import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { RefreshCw, ArrowLeftRight, X, Trash2, FolderOpen, FileText } from 'lucide-react'
 import { Button } from './ui'
+import { Textarea } from './ui'
 
-function autoResize(el: HTMLTextAreaElement) {
-  el.style.height = 'auto'
-  el.style.height = el.scrollHeight + 'px'
-}
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
 import { formatDate, formatFilePath } from '../utils/format'
@@ -63,7 +60,6 @@ function InlineField({
   useEffect(() => {
     if (editing && textareaRef.current) {
       textareaRef.current.focus()
-      autoResize(textareaRef.current)
     }
   }, [editing])
 
@@ -127,14 +123,16 @@ function InlineField({
       </span>
       <div className="flex items-center gap-1">
         {editing ? (
-          <textarea
+          <Textarea
             ref={textareaRef}
-            className="field-input flex-1 min-h-[2.5rem] resize-none text-sm"
+            variant="filled"
+            textareaSize="md"
+            autoResize
+            className="flex-1 min-h-[2.5rem] resize-none"
             value={text}
             rows={1}
             onChange={(e) => {
               setText(e.target.value)
-              autoResize(e.target)
             }}
             onBlur={save}
             onKeyDown={(e) => {
@@ -151,7 +149,7 @@ function InlineField({
           />
         ) : (
           <div
-            className="field-input cursor-text text-sm"
+            className="w-full rounded-lg border border-transparent bg-background px-3 py-1.5 text-sm text-foreground transition-colors duration-150 hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent cursor-text"
             onClick={() => setEditing(true)}
             role="button"
             tabIndex={0}
@@ -235,8 +233,10 @@ function NoteField({
           </span>
         )}
       </span>
-      <textarea
-        className="field-input min-h-[96px] resize-y text-sm"
+      <Textarea
+        variant="filled"
+        textareaSize="md"
+        className="min-h-[96px] resize-y"
         value={text}
         onChange={handleChange}
         onBlur={() => {

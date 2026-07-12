@@ -56,7 +56,7 @@ import {
 import { resolveDeepThinkingMode } from '../../../shared/deepThinking'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useDocumentStore } from '../../store/documentStore'
-import { Button as UiButton } from '../ui'
+import { Button as UiButton, Input as UiInput } from '../ui'
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -1230,9 +1230,10 @@ export default function ChatPanel() {
                     }`}
                   >
                     {renamingThreadId === th.id ? (
-                      <input
-                        type="text"
-                        className="min-w-0 flex-1 rounded border border-accent bg-background px-1.5 py-0.5 text-label text-foreground focus:outline-none"
+                      <UiInput
+                        variant="outlined"
+                        inputSize="sm"
+                        className="min-w-0 flex-1 border-accent"
                         value={renameDraft}
                         autoFocus
                         onChange={(e) => setRenameDraft(e.target.value)}
@@ -1837,8 +1838,10 @@ export default function ChatPanel() {
                       {t('workspace.chat.customModel', 'Custom model')}
                     </p>
                     <div className="flex gap-1 px-1">
-                      <input
-                        className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:border-accent focus:outline-none"
+                      <UiInput
+                        variant="outlined"
+                        inputSize="sm"
+                        className="min-w-0 flex-1"
                         value={customModel}
                         onChange={(e) => setCustomModel(e.target.value)}
                         placeholder="model-id"

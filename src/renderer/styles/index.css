@@ -177,36 +177,14 @@
     @apply toolbar-btn text-error hover:bg-hover;
   }
 
+  /** @deprecated Use <Input variant="outlined"> from components/ui instead. */
   .search-input {
     @apply h-8 rounded-lg border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
     -webkit-app-region: no-drag;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  /* Document list search box — override lobehub Input defaults so the field
-     stays clearly visible in light mode. The lobehub Input `outlined` variant
-     uses the antd `colorBorderSecondary` token (very faint #e5e5ea in light),
-     which blends into the light toolbar background. We force the app's own
-     border/fill tokens which are tuned per theme. */
-  .doc-search-input:where([class*='ant-input']) {
-    border-color: var(--color-border) !important;
-    background-color: var(--color-panel) !important;
-    color: var(--color-foreground) !important;
-    -webkit-app-region: no-drag;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  }
-  .doc-search-input:where([class*='ant-input'])::placeholder {
-    color: var(--color-muted) !important;
-  }
-  .doc-search-input:where([class*='ant-input']):hover {
-    border-color: var(--color-accent) !important;
-  }
-  .doc-search-input:where([class*='ant-input']):focus,
-  .doc-search-input:where([class*='ant-input']):focus-within {
-    border-color: var(--color-accent) !important;
-    box-shadow: 0 0 0 1px var(--color-accent) !important;
-  }
-
+  /** @deprecated Use <Textarea variant="filled"> from components/ui instead. */
   .field-input {
     @apply w-full rounded-lg border border-transparent bg-background px-3 py-1.5 text-sm text-foreground hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
