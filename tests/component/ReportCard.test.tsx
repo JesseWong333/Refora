@@ -41,7 +41,8 @@ vi.mock('motion/react', () => ({
     div: ({ children, ...props }: { children: React.ReactNode } & Record<string, unknown>) => (
       <div {...props}>{children}</div>
     )
-  }
+  },
+  MotionConfig: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }))
 
 const ReportCardModule = await import('../../src/renderer/components/workspace/ReportCard')

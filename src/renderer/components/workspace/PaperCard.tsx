@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { Sparkles, FileText, Trash2, Loader2, BookOpen, AlertCircle, RotateCw } from 'lucide-react'
-import { motion } from 'motion/react'
+import { motion, MotionConfig } from 'motion/react'
 import { Button, Badge, cardClassName } from '../ui'
 import type { AiSummary, Document } from '../../../shared/ipc-types'
 
@@ -65,6 +65,7 @@ export default function PaperCard({
 
   return (
     <>
+      <MotionConfig reducedMotion="user">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -162,6 +163,7 @@ export default function PaperCard({
           )}
         </div>
       </motion.div>
+      </MotionConfig>
 
       <Modal
         open={modalOpen}

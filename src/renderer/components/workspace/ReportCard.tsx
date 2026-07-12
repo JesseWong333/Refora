@@ -4,7 +4,7 @@ import { Modal, Button } from '@lobehub/ui'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { FileBarChart, Trash2, Pencil, Download } from 'lucide-react'
-import { motion } from 'motion/react'
+import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -105,6 +105,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
 
   return (
     <>
+      <MotionConfig reducedMotion="user">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -155,6 +156,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
           </div>
         </div>
       </motion.div>
+      </MotionConfig>
 
       <Modal
         open={expanded}
