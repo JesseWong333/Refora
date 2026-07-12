@@ -103,7 +103,7 @@ function SidebarSection({
   return (
     <div className="mb-4">
       <div
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted cursor-context-menu"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-label font-semibold uppercase tracking-wide text-muted cursor-context-menu"
         onContextMenu={onContextMenu}
       >
         <span className="flex-1">{title}</span>
@@ -588,7 +588,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
       {/* Import progress */}
       {importProgress && (
-        <div className="mx-2 mb-1 flex items-center gap-2 text-[11px] text-muted">
+        <div className="mx-2 mb-1 flex items-center gap-2 text-label text-muted">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel-2">
             <div
               className="h-full rounded-full bg-accent transition-all duration-200"
@@ -605,7 +605,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
       {/* Background metadata refresh indicator */}
       {!importProgress && pendingMetadataCount > 0 && (
-        <div className="mx-2 mb-1 flex items-center gap-2 text-[11px] text-muted">
+        <div className="mx-2 mb-1 flex items-center gap-2 text-label text-muted">
           <Loader2 className="h-3 w-3 animate-spin text-accent" />
           <span className="whitespace-nowrap">
             {t('topbar.refreshingMetadata', { count: pendingMetadataCount })}
@@ -658,7 +658,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             />
           )}
           {workspaces.length === 0 && !wsCreating ? (
-            <div className="px-2 py-1 text-[11px] italic text-muted">
+            <div className="px-2 py-1 text-label italic text-muted">
               {t('sidebar.emptyWorkspaces')}
             </div>
           ) : (
@@ -726,7 +726,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             />
           )}
           {categories.length === 0 && !creatingNew ? (
-            <div className="px-2 py-1 text-[11px] italic text-muted">
+            <div className="px-2 py-1 text-label italic text-muted">
               {t('sidebar.emptyCategories')}
             </div>
           ) : (
