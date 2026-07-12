@@ -18,6 +18,9 @@ export type SettingKey =
   | 'chatSelectedVariant'
   | 'chatDeepThinking'
   | 'workspaceChatHeight'
+  | 'sidebarWidth'
+  | 'detailWidth'
+  | 'workspaceWidth'
 
 export const SETTING_KEYS: readonly SettingKey[] = [
   'libraryFolderPath',
@@ -34,7 +37,10 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'chatSelectedModel',
   'chatSelectedVariant',
   'chatDeepThinking',
-  'workspaceChatHeight'
+  'workspaceChatHeight',
+  'sidebarWidth',
+  'detailWidth',
+  'workspaceWidth'
 ]
 
 function sqlLiteral(value: unknown): string {
@@ -58,7 +64,10 @@ export function defaultSettings(language: 'zh' | 'en'): Array<[SettingKey, unkno
     ['chatSelectedModel', ''],
     ['chatSelectedVariant', ''],
     ['chatDeepThinking', false],
-    ['workspaceChatHeight', 280]
+    ['workspaceChatHeight', 280],
+    ['sidebarWidth', 224],
+    ['detailWidth', 384],
+    ['workspaceWidth', 480]
   ]
 }
 

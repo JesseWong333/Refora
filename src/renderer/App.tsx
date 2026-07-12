@@ -24,6 +24,9 @@ const DETAIL_MAX = 640
 const WORKSPACE_MIN = 360
 const WORKSPACE_MAX = 900
 const DOC_LIST_MIN = 280
+const SIDEBAR_DEFAULT = 224
+const DETAIL_DEFAULT = 384
+const WORKSPACE_DEFAULT = 480
 
 interface AppProps {
   listColumnState: ListColumnState | null
@@ -43,9 +46,9 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed)
   const [showWizard, setShowWizard] = useState(firstRun)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(224)
-  const [detailWidth, setDetailWidth] = useState(384)
-  const [workspaceWidth, setWorkspaceWidth] = useState(480)
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
+  const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT)
+  const [workspaceWidth, setWorkspaceWidth] = useState(WORKSPACE_DEFAULT)
   const { mode: themeMode, resolvedTheme } = useTheme()
   useAppShortcuts()
 
@@ -110,6 +113,39 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
       store.destroy()
     }
   }, [])
+
+  useEffect(() => {
+    void Promise.all([
+      api.settings.get<number>('sidebarWidth', SIDEBAR_DEFAULT),
+      api.settings.get<number>('detailWidth', DETAIL_DEFAULT),
+      api.settings.get<number>('workspaceWidth', WORKSPACE_DEFAULT),
+    ]).then(([s, d, w]) => {
+      setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, s)))
+      setDetailWidth(Math.max(DETAIL_MIN, Math.min(DETAIL_MAX, d)))
+      setWorkspaceWidth(Math.max(WORKSPACE_MIN, Math.min(WORKSPACE_MAX, w)))
+    })
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void api.settings.set('sidebarWidth', sidebarWidth)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void api.settings.set('detailWidth', detailWidth)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [detailWidth])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void api.settings.set('workspaceWidth', workspaceWidth)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [workspaceWidth])
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed((v) => {
