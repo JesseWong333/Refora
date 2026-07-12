@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import clsx from 'clsx'
 import { ThemeProvider, ContextMenuHost } from '@lobehub/ui'
 import { theme as antdTheme } from 'antd'
@@ -12,6 +12,7 @@ import FirstRunWizard from './components/FirstRunWizard'
 import { Toast } from './components/ui'
 import { useAppShortcuts } from './hooks/useAppShortcuts'
 import { useTheme, AppThemeProvider } from './hooks/useTheme'
+import { getAntdTokenOverrides } from './theme/tokens'
 import { useDocumentStore } from './store/documentStore'
 import { useWorkspaceStore } from './store/workspaceStore'
 import { api } from './ipc'
@@ -52,34 +53,14 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const { mode: themeMode, resolvedTheme } = useTheme()
   useAppShortcuts()
 
-  const isDark = resolvedTheme === 'dark'
-
-  const tokenOverrides = {
-    colorPrimary: 'var(--color-accent)',
-    colorPrimaryHover: 'var(--color-accent-hover)',
-    colorBgLayout: 'var(--color-background)',
-    colorBgContainer: 'var(--color-panel)',
-    colorBgElevated: 'var(--color-panel-2)',
-    colorBgSpotlight: 'var(--color-panel-2)',
-    colorText: 'var(--color-foreground)',
-    colorTextSecondary: 'var(--color-muted)',
-    colorTextTertiary: 'var(--color-text-tertiary)',
-    colorBorder: 'var(--color-border)',
-    colorBorderSecondary: 'var(--color-border-secondary)',
-    colorFill: 'var(--color-fill)',
-    colorFillSecondary: 'var(--color-fill-secondary)',
-    colorFillTertiary: 'var(--color-fill-tertiary)',
-    colorError: 'var(--color-error)',
-    colorSuccess: 'var(--color-success)',
-    colorWarning: 'var(--color-warning)',
-    borderRadius: 10,
-    borderRadiusLG: 14,
-    borderRadiusSM: 6,
-    fontSize: 13,
-    fontFamily: 'var(--font-sans)',
-    controlHeight: 32,
-    controlHeightSM: 28,
-  }
+  const themeConfig = useMemo(
+    () => ({
+      token: getAntdTokenOverrides(resolvedTheme),
+      algorithm:
+        resolvedTheme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+    }),
+    [resolvedTheme]
+  )
 
   const focusedDocId = useDocumentStore((s) => s.focusedDocId)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
@@ -175,10 +156,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
     <ThemeProvider
       appearance={resolvedTheme}
       themeMode={themeMode === 'system' ? 'auto' : themeMode}
-      theme={{
-        token: tokenOverrides,
-        algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-      }}
+      theme={themeConfig}
       enableGlobalStyle={false}
       enableCustomFonts={false}
     >

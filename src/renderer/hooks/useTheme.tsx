@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, createContext, useContext, useMemo } from 'react'
 import { api } from '../ipc'
+import { injectThemeCssVars } from '../theme/tokens'
 
 export type ThemeMode = 'system' | 'dark' | 'light'
 export type ResolvedTheme = 'dark' | 'light'
@@ -19,7 +20,10 @@ function getSystemTheme(): ResolvedTheme {
 function applyTheme(mode: ThemeMode) {
   const resolved = mode === 'system' ? getSystemTheme() : mode
   document.documentElement.setAttribute('data-theme', resolved)
+  injectThemeCssVars(resolved)
 }
+
+injectThemeCssVars(getSystemTheme())
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
