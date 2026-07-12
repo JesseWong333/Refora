@@ -7,7 +7,7 @@
   [data-theme='dark'] {
     --color-background: #141416;
     --color-foreground: #d4d4d4;
-    --color-muted: #9a9a9a;
+    --color-muted: #a8a8a8;
     --color-text-tertiary: #6e6e73;
     --color-panel: #1e1e20;
     --color-panel-2: #28282a;
@@ -50,7 +50,7 @@
   [data-theme='light'] {
     --color-background: #ececed;
     --color-foreground: #1d1d1f;
-    --color-muted: #6e6e73;
+    --color-muted: #5f5f64;
     --color-text-tertiary: #8e8e93;
     --color-panel: #ffffff;
     --color-panel-2: #f0f0f0;
@@ -80,7 +80,7 @@
     :root:not([data-theme='dark']) {
       --color-background: #ececed;
       --color-foreground: #1d1d1f;
-      --color-muted: #6e6e73;
+      --color-muted: #5f5f64;
       --color-text-tertiary: #8e8e93;
       --color-panel: #ffffff;
       --color-panel-2: #f0f0f0;
