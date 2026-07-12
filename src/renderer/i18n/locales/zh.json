@@ -146,6 +146,7 @@
     "emptyLibrary": "您的库是空的",
     "selectDocHint": "选择一篇文献查看详情",
     "noSearchResults": "没有匹配的文献。",
+    "clearSearch": "清除搜索",
     "saving": "正在保存…",
     "saved": "已保存",
     "networkError": "Crossref 无法访问 — 使用离线元数据",

@@ -4,6 +4,7 @@ import { RefreshCw, ArrowLeftRight, X, Trash2, FolderOpen, FileText } from 'luci
 import { Button } from './ui'
 import { Textarea } from './ui'
 import { PanelHeader } from './ui'
+import { EmptyState } from './ui'
 
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
@@ -650,9 +651,10 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
     return (
       <div className="relative flex shrink-0 flex-col bg-panel">
         <PanelHeader onClose={onClose} />
-        <div className="flex flex-1 items-center justify-center px-4 py-16 text-xs text-muted">
-          {t('common.selectDocHint')}
-        </div>
+        <EmptyState
+          icon={<FileText className="h-10 w-10" />}
+          title={t('common.selectDocHint')}
+        />
       </div>
     )
   }
