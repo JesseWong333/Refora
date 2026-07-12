@@ -29,9 +29,7 @@ import {
   RotateCcw,
   X,
   ArrowDown,
-  ArrowUp,
-  ThumbsUp,
-  ThumbsDown
+  ArrowUp
 } from 'lucide-react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
@@ -557,7 +555,6 @@ export default function ChatPanel() {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const [loadingHistory, setLoadingHistory] = useState(false)
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
 
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
@@ -1679,39 +1676,15 @@ export default function ChatPanel() {
                             <div className="mt-1 flex justify-end gap-0.5">
                               <CopyButton text={m.content} />
                               {showRegenerate && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className={`shrink-0 rounded p-1 transition-opacity hover:opacity-100 ${
-                                      feedback === 'up' ? 'text-success opacity-100' : 'text-muted opacity-40'
-                                    }`}
-                                    onClick={() => setFeedback((f) => f === 'up' ? null : 'up')}
-                                    title={t('workspace.chat.feedbackUp', 'Good response')}
-                                    aria-label={t('workspace.chat.feedbackUp', 'Good response')}
-                                  >
-                                    <ThumbsUp className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`shrink-0 rounded p-1 transition-opacity hover:opacity-100 ${
-                                      feedback === 'down' ? 'text-error opacity-100' : 'text-muted opacity-40'
-                                    }`}
-                                    onClick={() => setFeedback((f) => f === 'down' ? null : 'down')}
-                                    title={t('workspace.chat.feedbackDown', 'Poor response')}
-                                    aria-label={t('workspace.chat.feedbackDown', 'Poor response')}
-                                  >
-                                    <ThumbsDown className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
-                                    onClick={() => void handleRegenerate()}
-                                    title={t('workspace.chat.regenerate', 'Regenerate')}
-                                    aria-label={t('workspace.chat.regenerate', 'Regenerate')}
-                                  >
-                                    <RotateCcw className="h-3 w-3" />
-                                  </button>
-                                </>
+                                <button
+                                  type="button"
+                                  className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
+                                  onClick={() => void handleRegenerate()}
+                                  title={t('workspace.chat.regenerate', 'Regenerate')}
+                                  aria-label={t('workspace.chat.regenerate', 'Regenerate')}
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
                               )}
                             </div>
                           </>
