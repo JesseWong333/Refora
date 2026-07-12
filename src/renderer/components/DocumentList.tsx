@@ -114,7 +114,7 @@ function SkeletonRows() {
     <div>
       {Array.from({ length: 5 }).map((_, i) => (
         <div key={i} className="flex items-center px-3" style={{ height: ROW_HEIGHT }}>
-          <div className="w-8" />
+          <div className="w-10" />
           <div className="w-8" />
           <div className="w-8" />
           <div className="skeleton-shimmer mx-1 h-3 flex-1 rounded" />
@@ -399,7 +399,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
   const colHeaderBar =
     cols.length > 0 ? (
       <div className="flex border-b border-border bg-panel-2">
-        <div className="w-8 flex-shrink-0" />
+        <div className="w-10 flex-shrink-0" />
         <div className="w-8 flex-shrink-0" />
         <div className="w-8 flex-shrink-0" />
         {cols.map((col) => (
@@ -530,10 +530,10 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                     style={{ height: ROW_HEIGHT }}
                     onClick={(e) => handleRowClick(doc.id, e)}
                   >
-                    <div className="w-8 flex-shrink-0 flex items-center justify-center">
+                    <div className="w-10 flex-shrink-0 flex items-center justify-center">
                       <input
                         type="checkbox"
-                        className="h-3 w-3 rounded border-border bg-background accent-accent cursor-pointer"
+                        className="h-4 w-4 rounded border-border bg-background accent-accent cursor-pointer"
                         checked={isSelected}
                         onChange={(e) => {
                           e.stopPropagation()
