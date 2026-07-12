@@ -19,14 +19,16 @@ import {
   Sun,
   Monitor,
   Loader2,
-  LayoutDashboard
+  LayoutDashboard,
+  Check
 } from 'lucide-react'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { useConfirmStore } from '../store/confirmStore'
-import { useTheme } from '../hooks/useTheme'
+import { useTheme, type ThemeMode } from '../hooks/useTheme'
+import { useClickOutside } from '../hooks/useClickOutside'
 import { errorMessage } from '../../shared/ipc-types'
 import type { ListMode, Category, Workspace } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
@@ -46,6 +48,18 @@ const SMART_ITEMS: { key: string; mode: ListMode; icon: ReactNode }[] = [
   { key: 'recentlyAdded', mode: 'recentlyAdded', icon: <Plus className="h-4 w-4" /> },
   { key: 'starred', mode: 'starred', icon: <Star className="h-4 w-4" /> }
 ]
+
+const THEME_OPTIONS: { mode: ThemeMode; icon: ReactNode }[] = [
+  { mode: 'system', icon: <Monitor className="h-4 w-4" /> },
+  { mode: 'light', icon: <Sun className="h-4 w-4" /> },
+  { mode: 'dark', icon: <Moon className="h-4 w-4" /> },
+]
+
+const THEME_LABEL_KEYS: Record<ThemeMode, string> = {
+  system: 'settings.themeSystem',
+  light: 'settings.themeLight',
+  dark: 'settings.themeDark',
+}
 
 function SidebarItem({
   icon,
@@ -153,6 +167,9 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [pendingCatImports, setPendingCatImports] = useState<Set<string>>(new Set())
   const { mode: themeMode, setMode: setThemeMode } = useTheme()
+  const [themePopoverOpen, setThemePopoverOpen] = useState(false)
+  const themePopoverRef = useRef<HTMLDivElement | null>(null)
+  useClickOutside(themePopoverRef, () => setThemePopoverOpen(false), themePopoverOpen)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
 
   const workspaces = useWorkspaceStore((s) => s.workspaces)
@@ -519,15 +536,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     await deleteWorkspace(ws.id)
   }, [deleteWorkspace])
 
-  const cycleTheme = useCallback(() => {
-    if (themeMode === 'system') setThemeMode('light')
-    else if (themeMode === 'light') setThemeMode('dark')
-    else setThemeMode('system')
-  }, [themeMode, setThemeMode])
-
-  const ThemeIcon = themeMode === 'dark' ? Moon : themeMode === 'light' ? Sun : Monitor
-  const themeTitle =
-    themeMode === 'dark' ? t('settings.themeDark') : themeMode === 'light' ? t('settings.themeLight') : t('settings.themeSystem')
+  const currentThemeOption = THEME_OPTIONS.find((o) => o.mode === themeMode) ?? THEME_OPTIONS[0]
+  const themeTitle = t(THEME_LABEL_KEYS[themeMode])
 
   if (collapsed) {
     const toolbarLeft = isMac ? 92 : 8
@@ -819,15 +829,47 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           muted={selectedIds.length === 0}
           active={false}
         />
-        <div className="mt-1 px-1">
+        <div className="relative mt-1 px-1" ref={themePopoverRef}>
           <button
             className="sidebar-item flex w-full items-center gap-2 px-2.5 text-xs text-foreground"
-            onClick={cycleTheme}
+            onClick={() => setThemePopoverOpen((v) => !v)}
             title={themeTitle}
+            aria-haspopup="menu"
+            aria-expanded={themePopoverOpen}
           >
-            <ThemeIcon className="h-4 w-4 flex-shrink-0 opacity-70" />
+            {currentThemeOption?.icon && (
+              <span className="flex-shrink-0 opacity-70">{currentThemeOption.icon}</span>
+            )}
             <span className="truncate">{themeTitle}</span>
           </button>
+          {themePopoverOpen && (
+            <div
+              className="absolute bottom-full left-1 right-1 z-50 mb-1 rounded-lg border border-border bg-panel p-1 shadow-lg"
+              role="menu"
+            >
+              {THEME_OPTIONS.map((opt) => {
+                const isActive = themeMode === opt.mode
+                return (
+                  <button
+                    key={opt.mode}
+                    role="menuitemradio"
+                    aria-checked={isActive}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors duration-150 ${
+                      isActive ? 'text-accent' : 'text-foreground hover:bg-hover'
+                    }`}
+                    onClick={() => {
+                      setThemeMode(opt.mode)
+                      setThemePopoverOpen(false)
+                    }}
+                  >
+                    <span className="flex-shrink-0 opacity-70">{opt.icon}</span>
+                    <span className="flex-1 truncate text-left">{t(THEME_LABEL_KEYS[opt.mode])}</span>
+                    {isActive && <Check className="h-3.5 w-3.5 flex-shrink-0" />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
