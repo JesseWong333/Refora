@@ -20,19 +20,41 @@ import type {
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 
-const EDITABLE_FIELDS: { field: EditableField; labelKey: string }[] = [
-  { field: 'title', labelKey: 'detail.title' },
-  { field: 'authors', labelKey: 'detail.authors' },
-  { field: 'year', labelKey: 'detail.year' },
-  { field: 'venue', labelKey: 'detail.venue' },
-  { field: 'volume', labelKey: 'detail.volume' },
-  { field: 'issue', labelKey: 'detail.issue' },
-  { field: 'pages', labelKey: 'detail.pages' },
-  { field: 'abstract', labelKey: 'detail.abstract' },
-  { field: 'keywords', labelKey: 'detail.keywords' },
-  { field: 'url', labelKey: 'detail.url' },
-  { field: 'doi', labelKey: 'DOI' },
-  { field: 'note', labelKey: 'detail.note' }
+const FIELD_GROUPS: {
+  labelKey: string
+  fields: { field: EditableField; labelKey: string }[]
+}[] = [
+  {
+    labelKey: 'detail.sectionBasic',
+    fields: [
+      { field: 'title', labelKey: 'detail.title' },
+      { field: 'authors', labelKey: 'detail.authors' },
+      { field: 'year', labelKey: 'detail.year' }
+    ]
+  },
+  {
+    labelKey: 'detail.sectionPublication',
+    fields: [
+      { field: 'venue', labelKey: 'detail.venue' },
+      { field: 'volume', labelKey: 'detail.volume' },
+      { field: 'issue', labelKey: 'detail.issue' },
+      { field: 'pages', labelKey: 'detail.pages' }
+    ]
+  },
+  {
+    labelKey: 'detail.sectionContent',
+    fields: [
+      { field: 'abstract', labelKey: 'detail.abstract' },
+      { field: 'keywords', labelKey: 'detail.keywords' }
+    ]
+  },
+  {
+    labelKey: 'detail.sectionIdentifiers',
+    fields: [
+      { field: 'url', labelKey: 'detail.url' },
+      { field: 'doi', labelKey: 'DOI' }
+    ]
+  }
 ]
 
 function InlineField({
@@ -41,7 +63,8 @@ function InlineField({
   value,
   remoteValue,
   docId,
-  onSaved
+  onSaved,
+  expandable = false
 }: {
   field: EditableField
   label: string
@@ -49,12 +72,16 @@ function InlineField({
   remoteValue?: RemoteValue
   docId: string
   onSaved: (doc: Document) => void
+  expandable?: boolean
 }) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(value)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [expanded, setExpanded] = useState(false)
+  const [overflowing, setOverflowing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const displayRef = useRef<HTMLDivElement>(null)
   const statusRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
@@ -66,6 +93,11 @@ function InlineField({
       textareaRef.current.focus()
     }
   }, [editing])
+
+  useEffect(() => {
+    if (!expandable || editing || !displayRef.current) return
+    setOverflowing(displayRef.current.scrollHeight > 160)
+  }, [value, expandable, editing])
 
   const save = useCallback(async () => {
     const trimmed = text.trim()
@@ -125,7 +157,7 @@ function InlineField({
           </span>
         )}
       </span>
-      <div className="flex items-center gap-1">
+      <div className="flex items-start gap-1">
         {editing ? (
           <Textarea
             ref={textareaRef}
@@ -153,7 +185,8 @@ function InlineField({
           />
         ) : (
           <div
-            className="w-full rounded-lg border border-transparent bg-background px-3 py-1.5 text-sm text-foreground transition-colors duration-150 hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent cursor-text"
+            ref={expandable ? displayRef : undefined}
+            className={`w-full rounded-lg border border-transparent bg-background px-3 py-1.5 text-sm text-foreground transition-colors duration-150 hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent cursor-text${expandable && !expanded ? ' max-h-40 overflow-hidden' : ''}`}
             onClick={() => setEditing(true)}
             role="button"
             tabIndex={0}
@@ -177,6 +210,14 @@ function InlineField({
           </Button>
         )}
       </div>
+      {expandable && !editing && overflowing && (
+        <button
+          className="self-start text-caption text-accent transition-colors duration-150 hover:text-accent-hover"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? t('detail.showLess') : t('detail.showMore')}
+        </button>
+      )}
     </div>
   )
 }
@@ -448,16 +489,27 @@ function SingleDetail({ doc }: { doc: Document }) {
         </Button>
       </div>
 
-      {EDITABLE_FIELDS.filter((f) => f.field !== 'note').map(({ field, labelKey }) => (
-        <InlineField
-          key={field}
-          field={field}
-          label={labelKey === 'DOI' ? 'DOI' : t(`detail.${field}` as never)}
-          value={(doc[field] as string) ?? ''}
-          remoteValue={remoteValues[field]}
-          docId={doc.id}
-          onSaved={onSaved}
-        />
+      {FIELD_GROUPS.map((group) => (
+        <div key={group.labelKey} className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-caption font-semibold uppercase tracking-wider text-muted">
+              {t(group.labelKey as never)}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          {group.fields.map(({ field, labelKey }) => (
+            <InlineField
+              key={field}
+              field={field}
+              label={labelKey === 'DOI' ? 'DOI' : t(`detail.${field}` as never)}
+              value={(doc[field] as string) ?? ''}
+              remoteValue={remoteValues[field]}
+              docId={doc.id}
+              onSaved={onSaved}
+              expandable={field === 'abstract'}
+            />
+          ))}
+        </div>
       ))}
 
       <div className="flex flex-col gap-1">
