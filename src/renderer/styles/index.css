@@ -52,6 +52,7 @@
     --color-accent: #007aff;
     --color-accent-hover: #0062cc;
     --color-warning: #ff9f0a;
+    --color-success: #34c759;
     --color-error: #ff3b30;
     --color-success: #34c759;
     --color-success-hover: #28a745;
@@ -77,6 +78,7 @@
       --color-accent: #007aff;
       --color-accent-hover: #0062cc;
       --color-warning: #ff9f0a;
+      --color-success: #34c759;
       --color-error: #ff3b30;
       --color-success: #34c759;
       --color-success-hover: #28a745;
