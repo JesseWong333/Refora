@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, type ReactNode } from 'react'
 import { ChevronUp, ChevronDown, Star, AlertTriangle, Zap, Check, FileText, FolderOpen, Copy, RefreshCw, Trash2, Search, FolderTree, Plus, FilePlus } from 'lucide-react'
-import { showContextMenu } from '@lobehub/ui'
+import { Input, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
@@ -30,6 +30,22 @@ function renderCell(doc: Document, col: ColumnId): string {
     case 'filePath':
       return formatFilePath(doc.filePath)
   }
+}
+
+function highlightMatch(text: string, query: string): ReactNode {
+  const tokens = query.trim().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return text
+  const pattern = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  const parts = text.split(new RegExp(`(${pattern})`, 'gi'))
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <mark key={i} className="rounded-[3px] bg-warning/30 px-0.5 text-inherit">
+        {part}
+      </mark>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  )
 }
 
 function ColumnHeader({
@@ -578,21 +594,25 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                         />
                       </button>
                     </div>
-                    {cols.map((col) => (
-                      <div
-                        key={col.id}
-                        className="truncate px-1"
-                        style={{ width: col.width, flexShrink: 0 }}
-                      >
-                        {col.id === 'title' ? (
-                          <span className={`${isMissing ? 'text-muted' : 'text-foreground'}`}>
-                            {renderCell(doc, col.id)}
-                          </span>
-                        ) : (
-                          <span className="text-muted">{renderCell(doc, col.id)}</span>
-                        )}
-                      </div>
-                    ))}
+                    {cols.map((col) => {
+                      const cellText = renderCell(doc, col.id)
+                      const content = isSearching ? highlightMatch(cellText, searchQuery) : cellText
+                      return (
+                        <div
+                          key={col.id}
+                          className="truncate px-1"
+                          style={{ width: col.width, flexShrink: 0 }}
+                        >
+                          {col.id === 'title' ? (
+                            <span className={`${isMissing ? 'text-muted' : 'text-foreground'}`}>
+                              {content}
+                            </span>
+                          ) : (
+                            <span className="text-muted">{content}</span>
+                          )}
+                        </div>
+                      )
+                    })}
                     {hasError && !isMissing && (
                       <div className="ml-1 flex-shrink-0" title={`${t('common.networkError')} (${doc.metadataAttempts})`}>
                         <Zap className="h-3.5 w-3.5 text-error" aria-hidden="true" />
