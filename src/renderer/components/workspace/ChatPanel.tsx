@@ -197,6 +197,13 @@ function formatDuration(step: AgentTraceStep): string | null {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}m ${s}s`
+}
+
 type TFunc = ReturnType<typeof useTranslation>['t']
 
 interface ToolLabelResult {
@@ -534,6 +541,7 @@ export default function ChatPanel() {
   const [streaming, setStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [streamingReasoning, setStreamingReasoning] = useState('')
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [providers, setProviders] = useState<AiProvider[]>([])
   const [activeProviderId, setActiveProviderId] = useState('')
@@ -580,6 +588,8 @@ export default function ChatPanel() {
   const stickToBottomRef = useRef(true)
   const streamingTextRef = useRef('')
   const streamingReasoningRef = useRef('')
+  const streamingStartTimeRef = useRef<number | null>(null)
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cancelledRef = useRef(false)
   const rafIdRef = useRef<number | null>(null)
 
@@ -874,6 +884,30 @@ export default function ChatPanel() {
   useEffect(() => {
     setChatStreaming(streaming)
   }, [streaming, setChatStreaming])
+
+  useEffect(() => {
+    if (streaming) {
+      streamingStartTimeRef.current = Date.now()
+      setElapsedSeconds(0)
+      elapsedTimerRef.current = setInterval(() => {
+        if (streamingStartTimeRef.current != null) {
+          setElapsedSeconds(Math.floor((Date.now() - streamingStartTimeRef.current) / 1000))
+        }
+      }, 1000)
+    } else {
+      if (elapsedTimerRef.current != null) {
+        clearInterval(elapsedTimerRef.current)
+        elapsedTimerRef.current = null
+      }
+      streamingStartTimeRef.current = null
+    }
+    return () => {
+      if (elapsedTimerRef.current != null) {
+        clearInterval(elapsedTimerRef.current)
+        elapsedTimerRef.current = null
+      }
+    }
+  }, [streaming])
 
   useClickOutside(menuRef, () => setModelMenuOpen(false), modelMenuOpen)
 
@@ -1508,7 +1542,7 @@ export default function ChatPanel() {
                   <span className="thinking-dot" />
                   <span className="thinking-dot" />
                   <span className="ml-1 text-xs text-muted">
-                    {t('workspace.chat.thinking', 'Thinking…')}
+                    {t('workspace.chat.thinking', 'Thinking…')} ({formatElapsed(elapsedSeconds)})
                   </span>
                 </div>
               </div>
