@@ -1487,14 +1487,14 @@ export default function ChatPanel() {
               </div>
             )}
             {streamingText && (
-              <div className="flex justify-start">
+              <div className="flex justify-start" aria-live="polite" aria-label={t('workspace.chat.streamingResponse', 'AI response')}>
                 <div className="max-w-[85%] break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground chat-markdown">
                   <StreamingMarkdown content={streamingText} />
                 </div>
               </div>
             )}
             {streaming && !streamingText && !streamingReasoning && (
-              <div className="flex justify-start">
+              <div className="flex justify-start" aria-live="polite">
                 <div className="flex items-center gap-1 rounded-2xl bg-panel-2 px-3 py-2">
                   <span className="thinking-dot" />
                   <span className="thinking-dot" />
@@ -1725,6 +1725,23 @@ export default function ChatPanel() {
                   <div
                     className="absolute top-full right-0 z-50 mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
                     role="listbox"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]'))
+                      const currentIndex = buttons.findIndex((b) => b === document.activeElement)
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        const next = buttons[Math.min(currentIndex + 1, buttons.length - 1)] ?? buttons[0]
+                        next?.focus()
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const prev = buttons[Math.max(currentIndex - 1, 0)] ?? buttons[0]
+                        prev?.focus()
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault()
+                        setModelMenuOpen(false)
+                      }
+                    }}
                   >
                     <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
                       {t('workspace.chat.providerModels', 'Provider models')}

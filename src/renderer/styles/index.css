@@ -133,6 +133,10 @@
   ::-webkit-scrollbar-corner {
     background: transparent;
   }
+
+  input[type="checkbox"] {
+    accent-color: var(--color-accent);
+  }
 }
 
 @layer components {
@@ -140,6 +144,11 @@
     @apply inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground hover:bg-hover active:bg-active disabled:opacity-40 disabled:cursor-default;
     -webkit-app-region: no-drag;
     transition: background-color 0.15s ease;
+  }
+
+  .toolbar-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
   }
 
   .toolbar-btn-danger {
@@ -366,10 +375,20 @@
     height: 15px;
   }
 
+  .sidebar-header-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
   .sidebar-item {
     @apply flex cursor-pointer items-center gap-2 truncate rounded-lg px-2.5 py-2 text-xs hover:bg-hover;
     min-height: 34px;
     transition: background-color 0.15s ease;
+  }
+
+  .sidebar-item:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
   }
 
   .sidebar-item-active {
