@@ -4,3 +4,4 @@ export { Textarea, type TextareaProps, type TextareaVariant, type TextareaSize }
 export { Card, cardClassName, type CardProps, type CardVariant } from './Card'
 export { Badge, type BadgeProps, type BadgeVariant, type BadgeSize } from './Badge'
 export { Toast } from './Toast'
+export { PanelHeader, type PanelHeaderProps } from './PanelHeader'
