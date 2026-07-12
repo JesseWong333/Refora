@@ -196,6 +196,92 @@
     box-shadow: var(--shadow-sm);
   }
 
+  .chat-markdown p {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+  .chat-markdown p:first-child {
+    margin-top: 0;
+  }
+  .chat-markdown p:last-child {
+    margin-bottom: 0;
+  }
+  .chat-markdown pre {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+    overflow-x: auto;
+    border-radius: 0.25rem;
+    background-color: var(--color-background);
+    padding: 0.5rem;
+  }
+  .chat-markdown code {
+    border-radius: 0.25rem;
+    background-color: var(--color-background);
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+  .chat-markdown ul {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+    list-style-type: disc;
+    padding-left: 1rem;
+  }
+  .chat-markdown ol {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+    list-style-type: decimal;
+    padding-left: 1rem;
+  }
+  .chat-markdown a {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
+  .chat-markdown h1 {
+    margin-bottom: 0.25rem;
+    font-weight: 700;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  .chat-markdown h2 {
+    margin-bottom: 0.25rem;
+    font-weight: 700;
+  }
+  .chat-markdown h3 {
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+  }
+  .chat-markdown blockquote {
+    border-left-width: 2px;
+    border-color: var(--color-border);
+    padding-left: 0.5rem;
+    color: var(--color-muted);
+  }
+
+  .chat-markdown-muted p {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+  .chat-markdown-muted p:first-child {
+    margin-top: 0;
+  }
+  .chat-markdown-muted p:last-child {
+    margin-bottom: 0;
+  }
+  .chat-markdown-muted pre {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+    overflow-x: auto;
+    border-radius: 0.25rem;
+    background-color: var(--color-background);
+    padding: 0.5rem;
+  }
+  .chat-markdown-muted code {
+    border-radius: 0.25rem;
+    background-color: var(--color-background);
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
   /* Floating sidebar — floats on all four sides so the app background
      shows through the gap between it and the document list, creating the
      illusion that the sidebar is suspended above the page. */
@@ -381,4 +467,32 @@
   animation: cat-pulse 0.8s ease-out forwards;
   border-radius: 8px;
   pointer-events: none;
+}
+
+@keyframes thinking-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.thinking-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-muted);
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.3s;
 }

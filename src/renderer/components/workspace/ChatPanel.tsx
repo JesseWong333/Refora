@@ -1206,22 +1206,64 @@ export default function ChatPanel() {
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {loadingHistory ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-4 w-4 animate-spin text-muted" />
+          <div className="flex flex-col gap-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                <div
+                  className={`skeleton-shimmer h-12 rounded-2xl ${
+                    i % 2 === 0 ? 'max-w-[70%] w-48' : 'max-w-[70%] w-36'
+                  }`}
+                />
+              </div>
+            ))}
           </div>
         ) : showEmpty ? (
-          <div className="flex h-full items-center justify-center text-center">
-            <p className="text-xs text-muted">
-              {providers.length === 0
-                ? t(
-                    'workspace.chat.noProvider',
-                    'No AI provider configured. Add one in Settings.'
-                  )
-                : t(
-                    'workspace.chatPlaceholder',
-                    'Ask anything about the papers in this workspace.'
-                  )}
-            </p>
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+            {providers.length === 0 ? (
+              <>
+                <Bot className="h-10 w-10 text-muted/50" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    {t('workspace.chat.noProviderTitle', 'No AI Provider')}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {t('workspace.chat.noProvider', 'No AI provider configured. Add one in Settings.')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-opacity duration-150 hover:opacity-90"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('refora:open-settings'))
+                  }}
+                >
+                  {t('topbar.settings', 'Settings')}
+                </button>
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-8 w-8 text-accent/60" />
+                <p className="text-xs text-muted">
+                  {t('workspace.chatPlaceholder', 'Ask anything about the papers in this workspace.')}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    { key: 'summarize', text: t('workspace.chat.suggestionSummarize', 'Summarize the key contributions of these papers') },
+                    { key: 'compare', text: t('workspace.chat.suggestionCompare', 'Compare the methodologies used in these papers') },
+                    { key: 'report', text: t('workspace.chat.suggestionReport', 'Generate a research report') }
+                  ].map((s) => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      className="rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-left text-[11px] text-muted transition-colors duration-150 hover:border-accent hover:text-foreground"
+                      onClick={() => setInput(s.text)}
+                    >
+                      {s.text}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -1244,7 +1286,7 @@ export default function ChatPanel() {
                       className={`max-w-[85%] break-words rounded-2xl px-3 py-2 text-xs ${
                         m.role === 'user'
                           ? 'whitespace-pre-wrap bg-accent text-white'
-                          : 'group bg-panel-2 text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted'
+                          : 'group bg-panel-2 text-foreground chat-markdown'
                       }`}
                     >
                       {m.role === 'user'
@@ -1289,7 +1331,7 @@ export default function ChatPanel() {
                   <summary className="cursor-pointer select-none font-medium text-muted">
                     {t('workspace.chat.reasoning', 'Reasoning')}
                   </summary>
-                  <div className="mt-1 text-muted [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1">
+                  <div className="mt-1 text-muted chat-markdown-muted">
                     <StreamingMarkdown content={streamingReasoning} />
                   </div>
                 </details>
@@ -1297,16 +1339,21 @@ export default function ChatPanel() {
             )}
             {streamingText && (
               <div className="flex justify-start">
-                <div className="max-w-[85%] break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_code]:rounded [&_code]:bg-background [&_code]:px-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-1 [&_h1]:font-bold [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted">
+                <div className="max-w-[85%] break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground chat-markdown">
                   <StreamingMarkdown content={streamingText} />
                 </div>
               </div>
             )}
             {streaming && !streamingText && !streamingReasoning && (
               <div className="flex justify-start">
-                <span className="text-xs text-muted">
-                  {t('workspace.chat.thinking', 'Thinking…')}
-                </span>
+                <div className="flex items-center gap-1 rounded-2xl bg-panel-2 px-3 py-2">
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                  <span className="ml-1 text-xs text-muted">
+                    {t('workspace.chat.thinking', 'Thinking…')}
+                  </span>
+                </div>
               </div>
             )}
           </div>
