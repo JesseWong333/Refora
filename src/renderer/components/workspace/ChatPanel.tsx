@@ -1122,6 +1122,11 @@ export default function ChatPanel() {
     ? t('workspace.chat.notConfigured', 'Not configured')
     : requestModel || t('workspace.chat.selectProvider', 'Select model / provider')
 
+  const activeThread = threads.find((th) => th.id === activeThreadId)
+  const activeThreadTitle = activeThread?.title?.trim()
+    ? activeThread.title.trim()
+    : t('workspace.chat.newConversation', 'New conversation')
+
   const runTraceGroups = useMemo(() => {
     const sorted = [...traceSteps].sort((a, b) => a.seq - b.seq)
     const order: string[] = []
@@ -1329,9 +1334,15 @@ export default function ChatPanel() {
             </div>
           )}
         </div>
-        <span className="truncate text-xs font-medium text-muted">
-          {t('workspace.chat.title', 'Chat')}
-        </span>
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-center text-xs font-medium text-foreground transition-colors duration-150 hover:text-accent disabled:opacity-40"
+          onClick={() => !streaming && setThreadMenuOpen((v) => !v)}
+          disabled={streaming}
+          title={activeThreadTitle}
+        >
+          {activeThreadTitle}
+        </button>
         <UiButton
           variant="ghost"
           size="sm"
