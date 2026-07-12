@@ -630,7 +630,6 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   const documents = useDocumentStore((s) => s.documents)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
   const focusedDocId = useDocumentStore((s) => s.focusedDocId)
-  const toastMessage = useDocumentStore((s) => s.toastMessage)
 
   const focusedDoc = documents.find((d) => d.id === focusedDocId) ?? null
 
@@ -651,13 +650,6 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
           </Button>
         </div>
         <BulkBar count={selectedIds.length} selectedIds={selectedIds} />
-        {toastMessage && (
-          <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
-            style={{ boxShadow: 'var(--shadow-md)' }}
-          >
-            {toastMessage}
-          </div>
-        )}
       </div>
     )
   }
@@ -681,13 +673,6 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
         <div className="flex flex-1 items-center justify-center px-4 py-16 text-xs text-muted">
           {t('common.selectDocHint')}
         </div>
-        {toastMessage && (
-          <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
-            style={{ boxShadow: 'var(--shadow-md)' }}
-          >
-            {toastMessage}
-          </div>
-        )}
       </div>
     )
   }
@@ -708,13 +693,6 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
         </Button>
       </div>
       <SingleDetail doc={focusedDoc} />
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
-          style={{ boxShadow: 'var(--shadow-md)' }}
-        >
-          {toastMessage}
-        </div>
-      )}
     </div>
   )
 }
