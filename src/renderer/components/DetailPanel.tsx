@@ -5,6 +5,8 @@ import { Button } from './ui'
 import { Textarea } from './ui'
 import { PanelHeader } from './ui'
 import { EmptyState } from './ui'
+import { Select, showContextMenu } from '@lobehub/ui'
+import type { ContextMenuItem } from '@lobehub/ui'
 
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
@@ -261,7 +263,6 @@ function CategoryChips({
   const allCategories = useDocumentStore((s) => s.categories)
   const fetchCategories = useDocumentStore((s) => s.fetchCategories)
   const [assigned, setAssigned] = useState<Category[]>(docCategories ?? [])
-  const [showPicker, setShowPicker] = useState(false)
 
   useEffect(() => {
     setAssigned(docCategories ?? [])
@@ -285,7 +286,6 @@ function CategoryChips({
   const assign = async (catId: string) => {
     const cat = allCategories.find((c) => c.id === catId)
     if (cat) setAssigned((prev) => [...prev, { ...cat, count: undefined }])
-    setShowPicker(false)
     try {
       await api.categories.assign(docId, catId)
       void fetchCategories()
@@ -293,6 +293,20 @@ function CategoryChips({
       setAssigned((prev) => prev.filter((c) => c.id !== catId))
       fetchCategories().catch(() => {})
     }
+  }
+
+  const handleAddCategory = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const items: ContextMenuItem[] =
+      unassigned.length > 0
+        ? unassigned.map((c) => ({
+            key: c.id,
+            label: c.name,
+            onClick: () => assign(c.id)
+          }))
+        : [{ key: 'empty', label: '\u2014', disabled: true }]
+    showContextMenu(items)
   }
 
   return (
@@ -316,34 +330,13 @@ function CategoryChips({
             </button>
           </span>
         ))}
-        {showPicker ? (
-          <select
-            className="rounded border border-border bg-panel px-1 py-0.5 text-xs text-foreground"
-            value=""
-            onChange={(e) => {
-              if (e.target.value) assign(e.target.value)
-            }}
-            autoFocus
-            onBlur={() => setShowPicker(false)}
-          >
-            <option value="">+</option>
-            {unassigned.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-            {unassigned.length === 0 && (
-              <option disabled>{'\u2014'}</option>
-            )}
-          </select>
-        ) : (
-          <button
-            className="text-xs text-accent transition-colors duration-150 hover:text-accent-hover"
-            onClick={() => setShowPicker(true)}
-          >
-            +
-          </button>
-        )}
+        <button
+          className="text-xs text-accent transition-colors duration-150 hover:text-accent-hover"
+          onClick={handleAddCategory}
+          title={t('common.create') ?? 'Add'}
+        >
+          +
+        </button>
       </div>
     </div>
   )
@@ -560,6 +553,7 @@ function BulkBar({
   const bulkCategorize = useDocumentStore((s) => s.bulkCategorize)
   const allCategories = useDocumentStore((s) => s.categories)
   const fetchCategories = useDocumentStore((s) => s.fetchCategories)
+  const [bulkCategory, setBulkCategory] = useState<string>()
 
   useEffect(() => {
     void fetchCategories()
@@ -589,20 +583,19 @@ function BulkBar({
         </Button>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted">{t('sidebar.categories')}</span>
-          <select
-            className="rounded-lg border border-border bg-panel px-2 py-1.5 text-xs text-foreground"
-            value=""
-            onChange={(e) => {
-              if (e.target.value) bulkCategorize(selectedIds, e.target.value)
+          <Select
+            value={bulkCategory}
+            placeholder={`${t('common.create')}…`}
+            onChange={(v: string) => {
+              if (v) {
+                bulkCategorize(selectedIds, v)
+                setBulkCategory(undefined)
+              }
             }}
-          >
-            <option value="">{t('common.create')}…</option>
-            {allCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            options={allCategories.map((c) => ({ label: c.name, value: c.id }))}
+            size="small"
+            style={{ width: 160 }}
+          />
         </div>
         <Button
           variant="ghost"
