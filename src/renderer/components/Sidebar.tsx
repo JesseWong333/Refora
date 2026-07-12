@@ -25,6 +25,7 @@ import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
+import { useConfirmStore } from '../store/confirmStore'
 import { useTheme } from '../hooks/useTheme'
 import type { ListMode, Category, Workspace } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
@@ -148,7 +149,6 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const newInputRef = useRef<HTMLInputElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
   const submittingRef = useRef(false)
-  const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [pendingCatImports, setPendingCatImports] = useState<Set<string>>(new Set())
   const { mode: themeMode, setMode: setThemeMode } = useTheme()
@@ -166,10 +166,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const [wsCreating, setWsCreating] = useState(false)
   const [wsRenamingId, setWsRenamingId] = useState<string | null>(null)
   const [wsDraftName, setWsDraftName] = useState('')
-  const [wsDeleteConfirm, setWsDeleteConfirm] = useState<Workspace | null>(null)
   const wsNewInputRef = useRef<HTMLInputElement>(null)
   const wsRenameInputRef = useRef<HTMLInputElement>(null)
   const wsSubmittingRef = useRef(false)
+
+  const showConfirm = useConfirmStore((s) => s.show)
 
   const isMac = document.documentElement.dataset.platform === 'mac'
 
@@ -249,9 +250,16 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
   const handleDelete = useCallback(
     (cat: Category) => {
-      setDeleteConfirm(cat)
+      showConfirm({
+        title: t('common.delete'),
+        message: t('sidebar.deleteCategoryConfirm', { name: cat.name }),
+        confirmText: t('common.delete'),
+        cancelText: t('common.cancel'),
+        danger: true,
+        onConfirm: () => void confirmDeleteCategory(cat)
+      })
     },
-    []
+    [t, showConfirm]
   )
 
   const handleSectionContext = useCallback(
@@ -381,17 +389,15 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     [fetchCategories, fetchDocuments]
   )
 
-  const confirmDeleteCategory = useCallback(async () => {
-    if (!deleteConfirm) return
-    await deleteCategory(deleteConfirm.id)
-    if (listMode.mode === 'category' && listMode.categoryId === deleteConfirm.id) {
+  const confirmDeleteCategory = useCallback(async (cat: Category) => {
+    await deleteCategory(cat.id)
+    if (listMode.mode === 'category' && listMode.categoryId === cat.id) {
       setListMode({ mode: 'all' })
     }
     if (focusedDocId) {
       useDocumentStore.getState().setFocusedDoc(null)
     }
-    setDeleteConfirm(null)
-  }, [deleteConfirm, deleteCategory, listMode, focusedDocId, setListMode])
+  }, [deleteCategory, listMode, focusedDocId, setListMode])
 
   const startWsCreate = useCallback(() => {
     setWsDraftName('')
@@ -492,7 +498,14 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           key: 'delete',
           label: t('sidebar.deleteWorkspace'),
           icon: <Trash2 className="h-3.5 w-3.5" />,
-          onClick: () => setWsDeleteConfirm(ws),
+          onClick: () => showConfirm({
+            title: t('common.delete'),
+            message: t('sidebar.deleteWorkspaceConfirm', { name: ws.name }),
+            confirmText: t('common.delete'),
+            cancelText: t('common.cancel'),
+            danger: true,
+            onConfirm: () => void confirmDeleteWorkspace(ws)
+          }),
           danger: true,
         },
       ]
@@ -501,11 +514,9 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     [t, startWsCreate, startWsRename]
   )
 
-  const confirmDeleteWorkspace = useCallback(async () => {
-    if (!wsDeleteConfirm) return
-    await deleteWorkspace(wsDeleteConfirm.id)
-    setWsDeleteConfirm(null)
-  }, [wsDeleteConfirm, deleteWorkspace])
+  const confirmDeleteWorkspace = useCallback(async (ws: Workspace) => {
+    await deleteWorkspace(ws.id)
+  }, [deleteWorkspace])
 
   const cycleTheme = useCallback(() => {
     if (themeMode === 'system') setThemeMode('light')
@@ -818,52 +829,6 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           </button>
         </div>
       </div>
-
-      {deleteConfirm && (
-        <div className="dialog-overlay" onClick={() => setDeleteConfirm(null)}>
-          <div className="dialog-panel w-96" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm text-foreground">
-              {t('sidebar.deleteCategoryConfirm', { name: deleteConfirm.name })}
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <UiButton variant="secondary" size="md" onClick={() => setDeleteConfirm(null)}>
-                {t('common.cancel')}
-              </UiButton>
-              <UiButton
-                variant="danger"
-                size="md"
-                icon={<Trash2 className="h-3.5 w-3.5" />}
-                onClick={confirmDeleteCategory}
-              >
-                {t('common.delete')}
-              </UiButton>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {wsDeleteConfirm && (
-        <div className="dialog-overlay" onClick={() => setWsDeleteConfirm(null)}>
-          <div className="dialog-panel w-96" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm text-foreground">
-              {t('sidebar.deleteWorkspaceConfirm', { name: wsDeleteConfirm.name })}
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <UiButton variant="secondary" size="md" onClick={() => setWsDeleteConfirm(null)}>
-                {t('common.cancel')}
-              </UiButton>
-              <UiButton
-                variant="danger"
-                size="md"
-                icon={<Trash2 className="h-3.5 w-3.5" />}
-                onClick={confirmDeleteWorkspace}
-              >
-                {t('common.delete')}
-              </UiButton>
-            </div>
-          </div>
-        </div>
-      )}
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </aside>
