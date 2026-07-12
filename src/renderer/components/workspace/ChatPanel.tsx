@@ -501,6 +501,7 @@ export default function ChatPanel() {
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
   const [workspaceDocs, setWorkspaceDocs] = useState<Array<{ docId: string; title: string }>>([])
+  const [workspaceScopeOpen, setWorkspaceScopeOpen] = useState(false)
 
   const threads = useWorkspaceStore((s) => s.threads)
   const fetchThreads = useWorkspaceStore((s) => s.fetchThreads)
@@ -513,6 +514,7 @@ export default function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const attachMenuRef = useRef<HTMLDivElement | null>(null)
+  const workspaceScopeRef = useRef<HTMLDivElement | null>(null)
   const inputAreaRef = useRef<HTMLDivElement | null>(null)
   const hadMessagesRef = useRef(false)
   const isSendingRef = useRef(false)
@@ -870,6 +872,36 @@ export default function ChatPanel() {
       }
     })()
   }, [attachMenuOpen, activeWorkspaceId])
+
+  useEffect(() => {
+    if (!workspaceScopeOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!workspaceScopeRef.current?.contains(e.target as Node)) {
+        setWorkspaceScopeOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [workspaceScopeOpen])
+
+  useEffect(() => {
+    if (!workspaceScopeOpen || !activeWorkspaceId || workspaceDocs.length > 0) return
+    void (async () => {
+      try {
+        const items = await api.workspaceItems.list(activeWorkspaceId)
+        const docItems = items.filter((i) => i.kind === 'document' && i.docId)
+        const docs = await Promise.all(
+          docItems.map(async (i) => {
+            const doc = await api.documents.get(i.docId!)
+            return { docId: i.docId!, title: doc?.title ?? doc?.fileName ?? i.docId! }
+          })
+        )
+        setWorkspaceDocs(docs)
+      } catch {
+        setWorkspaceDocs([])
+      }
+    })()
+  }, [workspaceScopeOpen, activeWorkspaceId, workspaceDocs.length])
 
   const applyModel = useCallback(
     async (baseModel: string, variant = '', providerId?: string) => {
@@ -1379,20 +1411,9 @@ export default function ChatPanel() {
             disabled={providers.length === 0}
             aria-label={t('workspace.chat.inputPlaceholder', 'Send a message…')}
           />
-          {input.length > MAX_INPUT_LENGTH * 0.8 && (
-            <div className="flex justify-end px-3 pt-0.5">
-              <span
-                className={`text-[10px] ${
-                  input.length > MAX_INPUT_LENGTH ? 'text-error' : 'text-muted'
-                }`}
-              >
-                {Math.max(0, MAX_INPUT_LENGTH - input.length)}{' '}
-                {t('workspace.chat.charsRemaining', 'chars left')}
-              </span>
-            </div>
-          )}
 
-          <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 pt-1">
+          <div className="flex flex-col gap-1 px-2 pb-2 pt-1">
+            <div className="flex items-center gap-1">
             <div className="relative shrink-0" ref={attachMenuRef}>
               <button
                 type="button"
@@ -1450,11 +1471,45 @@ export default function ChatPanel() {
                 </div>
               )}
             </div>
-            <span className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted">
-              {t('workspace.chat.workspaceScope', 'Workspace')}
-            </span>
+            <div className="relative shrink-0" ref={workspaceScopeRef}>
+              <button
+                type="button"
+                className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted transition-colors duration-150 hover:border-accent hover:text-foreground disabled:opacity-40"
+                onClick={() => setWorkspaceScopeOpen((v) => !v)}
+                disabled={!activeWorkspaceId}
+              >
+                {t('workspace.chat.workspaceScope', 'Workspace')}
+                <ChevronDown className="ml-0.5 inline h-2.5 w-2.5" />
+              </button>
+              {workspaceScopeOpen && (
+                <div className="absolute bottom-full left-0 z-50 mb-1 max-h-48 w-56 overflow-y-auto rounded-lg border border-border bg-panel p-1 shadow-lg">
+                  {workspaceDocs.length === 0 ? (
+                    <p className="px-2 py-1.5 text-[11px] text-muted">
+                      {t('workspace.chat.noWorkspaceDocs', 'No papers in workspace.')}
+                    </p>
+                  ) : (
+                    workspaceDocs.map((doc) => (
+                      <div key={doc.docId} className="truncate px-2 py-1 text-[11px] text-foreground">
+                        {doc.title}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            {input.length > MAX_INPUT_LENGTH * 0.8 && (
+              <span
+                className={`ml-auto text-[10px] ${
+                  input.length > MAX_INPUT_LENGTH ? 'text-error' : 'text-muted'
+                }`}
+              >
+                {Math.max(0, MAX_INPUT_LENGTH - input.length)}{' '}
+                {t('workspace.chat.charsRemaining', 'chars left')}
+              </span>
+            )}
+            </div>
 
-            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
+            <div className="flex items-center gap-1">
               <div className="relative" ref={menuRef}>
                 <button
                   type="button"
@@ -1471,7 +1526,7 @@ export default function ChatPanel() {
 
                 {modelMenuOpen && (
                   <div
-                    className="absolute bottom-full right-0 z-50 mb-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
+                    className="absolute top-full right-0 z-50 mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
                     role="listbox"
                   >
                     <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -1634,12 +1689,13 @@ export default function ChatPanel() {
                 )}
               </div>
 
+              <div className="ml-auto flex items-center gap-1">
               <button
                 type="button"
                 className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] ${
                   deepThinking
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-muted hover:bg-hover hover:text-foreground'
+                    ? 'bg-accent text-white'
+                    : 'text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground'
                 } disabled:opacity-40`}
                 onClick={() => {
                   setDeepThinking((v) => {
@@ -1666,9 +1722,6 @@ export default function ChatPanel() {
                 }
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                {deepThinking
-                  ? t('workspace.chat.featureOn', 'On')
-                  : t('workspace.chat.featureOff', 'Off')}
               </button>
 
               {streaming ? (
@@ -1693,6 +1746,7 @@ export default function ChatPanel() {
                   <Send className="h-3.5 w-3.5" />
                 </button>
               )}
+            </div>
             </div>
           </div>
         </div>

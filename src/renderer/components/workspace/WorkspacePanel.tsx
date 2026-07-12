@@ -7,7 +7,7 @@ import ResizeDivider from '../ResizeDivider'
 import Board from './Board'
 import ChatPanel from './ChatPanel'
 
-const CHAT_MIN = 180
+const CHAT_MIN = 220
 const CHAT_DEFAULT = 280
 
 export default function WorkspacePanel() {
