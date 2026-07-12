@@ -6,6 +6,7 @@ export function SidebarItem({
   muted = false,
   active = false,
   disabled = false,
+  title,
   onClick,
   onContextMenu,
   onDragOver,
@@ -16,6 +17,7 @@ export function SidebarItem({
   muted?: boolean
   active?: boolean
   disabled?: boolean
+  title?: string
   onClick?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   onDragOver?: (e: React.DragEvent) => void
@@ -26,6 +28,7 @@ export function SidebarItem({
       className={`sidebar-item ${
         active ? 'sidebar-item-active' : muted ? 'text-muted' : 'text-foreground'
       } ${disabled ? 'pointer-events-none opacity-40' : ''}`}
+      title={title}
       onClick={disabled ? undefined : onClick}
       onContextMenu={onContextMenu}
       onDragOver={onDragOver}

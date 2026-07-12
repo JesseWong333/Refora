@@ -16,6 +16,8 @@ interface SidebarProps {
   onToggleCollapse: () => void
 }
 
+
+
 export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { t } = useTranslation()
   const fetchDocuments = useDocumentStore((s) => s.fetchDocuments)
@@ -62,7 +64,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             size="sm"
             iconOnly
             onClick={handleAddFiles}
-            title={t('topbar.addFile')}
+            title={`${t('topbar.addFile')} (⌘I)`}
             aria-label={t('topbar.addFile')}
           >
             <FilePlus className="h-3.5 w-3.5" />
@@ -92,7 +94,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             size="sm"
             iconOnly
             onClick={handleAddFiles}
-            title={t('topbar.addFile')}
+            title={`${t('topbar.addFile')} (⌘I)`}
             aria-label={t('topbar.addFile')}
           >
             <FilePlus className="h-4 w-4" />
@@ -153,6 +155,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       </nav>
 
       <SidebarFooter onOpenSettings={() => setShowSettings(true)} />
+
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </aside>

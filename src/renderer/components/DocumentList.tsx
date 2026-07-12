@@ -455,6 +455,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             inputSize="md"
             className="w-[280px] no-drag"
             placeholder={t('topbar.search')}
+            title={`${t('topbar.search')} (⌘F)`}
             value={searchQuery}
             onChange={(e) => performSearch(e.target.value)}
             onKeyDown={(e) => {

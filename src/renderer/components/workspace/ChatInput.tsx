@@ -125,6 +125,7 @@ export default function ChatInput({
             )}
             disabled={providers.length === 0}
             aria-label={t('workspace.chat.inputPlaceholder', 'Send a message…')}
+            title={`${t('workspace.chat.inputPlaceholder', 'Send a message…')} (⌘L)`}
           />
           {input.length > MAX_INPUT_LENGTH * 0.8 && (
             <span
@@ -220,7 +221,7 @@ export default function ChatInput({
                 onClick={onSend}
                 disabled={!canSend}
                 aria-label={t('workspace.chat.send', 'Send')}
-                title={t('workspace.chat.send', 'Send')}
+                title={`${t('workspace.chat.send', 'Send')} (⏎)`}
               >
                 <Send className="h-3.5 w-3.5" />
               </UiButton>

@@ -44,11 +44,13 @@ export default function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
       <SidebarItem
         icon={<FileJson className="h-4 w-4" />}
         label={t('topbar.exportJson')}
+        title={`${t('topbar.exportJson')} (⌘E)`}
         onClick={() => { void api.export.toJson() }}
       />
       <SidebarItem
         icon={<FileText className="h-4 w-4" />}
         label={t('topbar.exportBibtex')}
+        title={`${t('topbar.exportBibtex')} (⌘⇧B)`}
         onClick={() => { void api.export.toBibtex(selectedIds) }}
         muted={selectedIds.length === 0}
         active={false}
