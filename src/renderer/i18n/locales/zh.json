@@ -82,8 +82,17 @@
     "en": "English",
     "chooseFolder": "选择文件夹",
     "sidebarCollapsed": "收起侧边栏",
+    "sectionGeneral": {
+      "title": "通用",
+      "desc": "库文件夹、代理与 Crossref 邮箱"
+    },
+    "sectionAppearance": {
+      "title": "外观",
+      "desc": "主题、语言与侧边栏偏好"
+    },
     "aiProviders": {
       "title": "AI 服务商",
+      "desc": "配置 AI 模型服务商与 API 密钥",
       "add": "添加",
       "name": "名称",
       "baseUrl": "Base URL",

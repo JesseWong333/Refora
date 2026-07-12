@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Modal, Button, Select } from '@lobehub/ui'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { Modal, Button, Input, Select } from '@lobehub/ui'
 import { Loader2 } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
@@ -58,6 +58,35 @@ const VARIANT_FORMAT_OPTIONS: { label: string; value: ModelVariantFormat }[] = [
   { label: 'base:variant', value: 'colon' },
   { label: 'base only', value: 'none' }
 ]
+
+function SettingsSection({
+  title,
+  description,
+  action,
+  children
+}: {
+  title: string
+  description?: string
+  action?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-0.5">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+            {title}
+          </h4>
+          {description && (
+            <p className="text-label text-muted">{description}</p>
+          )}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      <div className="flex flex-col gap-4">{children}</div>
+    </section>
+  )
+}
 
 function AiProvidersSection() {
   const { t } = useTranslation()
@@ -321,19 +350,18 @@ function AiProvidersSection() {
     ...COMMON_VARIANTS.map((v) => ({ label: v, value: v }))
   ]
 
-  return (
-    <div className="flex flex-col gap-2 border-t border-border pt-4">
-      <div className="flex items-center justify-between">
-        <label className="text-xs text-muted">
-          {t('settings.aiProviders.title', 'AI Providers')}
-        </label>
-        {!form && (
-          <Button size="small" onClick={startAdd}>
-            {t('settings.aiProviders.add', 'Add')}
-          </Button>
-        )}
-      </div>
+  const addAction = !form ? (
+    <Button size="small" onClick={startAdd}>
+      {t('settings.aiProviders.add', 'Add')}
+    </Button>
+  ) : null
 
+  return (
+    <SettingsSection
+      title={t('settings.aiProviders.title', 'AI Providers')}
+      description={t('settings.aiProviders.desc', 'Configure AI model providers and API keys')}
+      action={addAction}
+    >
       {form && (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-panel p-3">
           {!form.id && (
@@ -663,7 +691,7 @@ function AiProvidersSection() {
       {error && (
         <div className="rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">{error}</div>
       )}
-    </div>
+    </SettingsSection>
   )
 }
 
@@ -772,75 +800,87 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       }
       destroyOnClose
     >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs text-muted">{t('settings.libraryFolder')}</label>
-          <div className="flex gap-2">
-            <span className="min-w-0 flex-1 truncate rounded-lg bg-panel-2 px-3 py-1.5 text-xs text-foreground">
-              {libraryFolderPath || '\u2014'}
-            </span>
-            <Button size="small" onClick={handleChooseFolder} loading={switching}>
-              {switching ? t('settings.switching') : t('settings.chooseFolder')}
-            </Button>
+      <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto pr-1">
+        <SettingsSection
+          title={t('settings.sectionGeneral.title')}
+          description={t('settings.sectionGeneral.desc')}
+        >
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted">{t('settings.libraryFolder')}</label>
+            <div className="flex gap-2">
+              <span className="min-w-0 flex-1 truncate rounded-lg bg-panel-2 px-3 py-1.5 text-xs text-foreground">
+                {libraryFolderPath || '\u2014'}
+              </span>
+              <Button size="small" onClick={handleChooseFolder} loading={switching}>
+                {switching ? t('settings.switching') : t('settings.chooseFolder')}
+              </Button>
+            </div>
+            <span className="text-label text-muted">{t('settings.libraryFolderAutoImportHint')}</span>
           </div>
-          <span className="text-label text-muted">{t('settings.libraryFolderAutoImportHint')}</span>
-        </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs text-muted">{t('settings.proxy')}</label>
-          <UiInput variant="outlined"             value={proxyUrl}
-            onChange={(e) => setProxyUrl(e.target.value)}
-            onBlur={saveProxy}
-            onPressEnter={saveProxy}
-            placeholder="http://proxy:8080"
-            inputSize="sm"
-          />
-        </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted">{t('settings.proxy')}</label>
+            <UiInput variant="outlined"
+              value={proxyUrl}
+              onChange={(e) => setProxyUrl(e.target.value)}
+              onBlur={saveProxy}
+              onPressEnter={saveProxy}
+              placeholder="http://proxy:8080"
+              inputSize="sm"
+            />
+          </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs text-muted">{t('settings.crossrefMailto')}</label>
-          <UiInput variant="outlined"             value={crossrefMailto}
-            onChange={(e) => setCrossrefMailto(e.target.value)}
-            onBlur={saveMailto}
-            onPressEnter={saveMailto}
-            placeholder="user@example.com"
-            inputSize="sm"
-          />
-        </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted">{t('settings.crossrefMailto')}</label>
+            <UiInput variant="outlined"
+              value={crossrefMailto}
+              onChange={(e) => setCrossrefMailto(e.target.value)}
+              onBlur={saveMailto}
+              onPressEnter={saveMailto}
+              placeholder="user@example.com"
+              inputSize="sm"
+            />
+          </div>
+        </SettingsSection>
 
-        <div className="flex items-center justify-between">
-          <label className="text-xs text-muted">{t('settings.theme')}</label>
-          <Select
-            value={themeMode}
-            onChange={handleThemeChange}
-            options={THEME_OPTIONS}
-            size="small"
-            style={{ width: 120 }}
-          />
-        </div>
+        <SettingsSection
+          title={t('settings.sectionAppearance.title')}
+          description={t('settings.sectionAppearance.desc')}
+        >
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-muted">{t('settings.theme')}</label>
+            <Select
+              value={themeMode}
+              onChange={handleThemeChange}
+              options={THEME_OPTIONS}
+              size="small"
+              style={{ width: 120 }}
+            />
+          </div>
 
-        <div className="flex items-center justify-between">
-          <label className="text-xs text-muted">{t('settings.language')}</label>
-          <Select
-            value={currentLang}
-            onChange={handleLanguageChange}
-            options={LANG_OPTIONS}
-            size="small"
-            style={{ width: 120 }}
-          />
-        </div>
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-muted">{t('settings.language')}</label>
+            <Select
+              value={currentLang}
+              onChange={handleLanguageChange}
+              options={LANG_OPTIONS}
+              size="small"
+              style={{ width: 120 }}
+            />
+          </div>
 
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            className="m-0"
-            checked={sidebarCollapsed}
-            onChange={handleSidebarToggle}
-          />
-          <span className="text-xs text-foreground">
-            {t('settings.sidebarCollapsed')}
-          </span>
-        </label>
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              className="m-0"
+              checked={sidebarCollapsed}
+              onChange={handleSidebarToggle}
+            />
+            <span className="text-xs text-foreground">
+              {t('settings.sidebarCollapsed')}
+            </span>
+          </label>
+        </SettingsSection>
 
         <AiProvidersSection />
       </div>

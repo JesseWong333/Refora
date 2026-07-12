@@ -82,8 +82,17 @@
     "en": "English",
     "chooseFolder": "Choose Folder",
     "sidebarCollapsed": "Collapse Sidebar",
+    "sectionGeneral": {
+      "title": "General",
+      "desc": "Library folder, proxy, and Crossref mailto"
+    },
+    "sectionAppearance": {
+      "title": "Appearance",
+      "desc": "Theme, language, and sidebar preferences"
+    },
     "aiProviders": {
       "title": "AI Providers",
+      "desc": "Configure AI model providers and API keys",
       "add": "Add",
       "name": "Name",
       "baseUrl": "Base URL",
