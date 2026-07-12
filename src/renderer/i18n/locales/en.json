@@ -146,6 +146,7 @@
     "emptyLibrary": "Your library is empty",
     "selectDocHint": "Select a document to view details",
     "noSearchResults": "No documents match your search.",
+    "clearSearch": "Clear search",
     "saving": "Saving…",
     "saved": "Saved",
     "networkError": "Crossref unreachable — using offline metadata",

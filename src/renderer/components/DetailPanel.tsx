@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { RefreshCw, ArrowLeftRight, X, Trash2, FolderOpen, FileText } from 'lucide-react'
 import { Button } from './ui'
 import { Textarea } from './ui'
+import { PanelHeader } from './ui'
+import { EmptyState } from './ui'
 
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
@@ -630,34 +632,17 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   const documents = useDocumentStore((s) => s.documents)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
   const focusedDocId = useDocumentStore((s) => s.focusedDocId)
-  const toastMessage = useDocumentStore((s) => s.toastMessage)
 
   const focusedDoc = documents.find((d) => d.id === focusedDocId) ?? null
 
   if (selectedIds.length >= 2) {
     return (
     <div className="relative flex shrink-0 flex-col bg-panel">
-        <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
-          <Button
-            variant="ghost"
-            size="md"
-            iconOnly
-            className="no-drag"
-            onClick={onClose}
-            title={t('common.close')}
-            aria-label={t('common.close')}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <PanelHeader
+          title={t('common.multiSelected', { count: selectedIds.length })}
+          onClose={onClose}
+        />
         <BulkBar count={selectedIds.length} selectedIds={selectedIds} />
-        {toastMessage && (
-          <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
-            style={{ boxShadow: 'var(--shadow-md)' }}
-          >
-            {toastMessage}
-          </div>
-        )}
       </div>
     )
   }
@@ -665,56 +650,19 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   if (!focusedDoc) {
     return (
       <div className="relative flex shrink-0 flex-col bg-panel">
-        <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
-          <Button
-            variant="ghost"
-            size="md"
-            iconOnly
-            className="no-drag"
-            onClick={onClose}
-            title={t('common.close')}
-            aria-label={t('common.close')}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex flex-1 items-center justify-center px-4 py-16 text-xs text-muted">
-          {t('common.selectDocHint')}
-        </div>
-        {toastMessage && (
-          <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
-            style={{ boxShadow: 'var(--shadow-md)' }}
-          >
-            {toastMessage}
-          </div>
-        )}
+        <PanelHeader onClose={onClose} />
+        <EmptyState
+          icon={<FileText className="h-10 w-10" />}
+          title={t('common.selectDocHint')}
+        />
       </div>
     )
   }
 
   return (
     <div className="relative flex shrink-0 flex-col bg-panel">
-      <div className="drag-region flex h-12 shrink-0 items-center justify-end px-2">
-        <Button
-          variant="ghost"
-          size="md"
-          iconOnly
-          className="no-drag"
-          onClick={onClose}
-          title={t('common.close')}
-          aria-label={t('common.close')}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+      <PanelHeader title={focusedDoc.title ?? undefined} onClose={onClose} />
       <SingleDetail doc={focusedDoc} />
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 animate-slide-up rounded-xl bg-panel px-4 py-2.5 text-xs text-foreground"
-          style={{ boxShadow: 'var(--shadow-md)' }}
-        >
-          {toastMessage}
-        </div>
-      )}
     </div>
   )
 }

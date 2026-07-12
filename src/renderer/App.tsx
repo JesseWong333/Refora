@@ -9,6 +9,7 @@ import WorkspacePanel from './components/workspace/WorkspacePanel'
 import ResizeDivider from './components/ResizeDivider'
 import ConfirmDialog from './components/ConfirmDialog'
 import FirstRunWizard from './components/FirstRunWizard'
+import { Toast } from './components/ui'
 import { useAppShortcuts } from './hooks/useAppShortcuts'
 import { useTheme, AppThemeProvider } from './hooks/useTheme'
 import { useDocumentStore } from './store/documentStore'
@@ -196,6 +197,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
           </div>
         )}
         <ConfirmDialog />
+        <Toast />
       </div>
     </ThemeProvider>
   )

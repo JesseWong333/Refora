@@ -1,13 +1,13 @@
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRef, useState, useCallback } from 'react'
-import { ChevronUp, ChevronDown, Star, AlertTriangle, Zap, Check, FileText, FolderOpen, Copy, RefreshCw, Trash2, Search, FolderTree, Plus } from 'lucide-react'
+import { ChevronUp, ChevronDown, Star, AlertTriangle, Zap, Check, FileText, FolderOpen, Copy, RefreshCw, Trash2, Search, FolderTree, Plus, FilePlus } from 'lucide-react'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
 import { formatDate, formatFilePath } from '../utils/format'
-import { Input as UiInput } from './ui'
+import { Input as UiInput, Button as UiButton, EmptyState } from './ui'
 import type { Document, ColumnId, SortField, ListColumn, Category } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 
@@ -217,6 +217,13 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
   const handleCopyPath = useCallback((filePath: string) => {
     navigator.clipboard.writeText(filePath).catch(() => {})
   }, [])
+
+  const handleAddFiles = useCallback(async () => {
+    try {
+      await api.import.addFiles([])
+    } catch { void 0 }
+    void fetchDocuments()
+  }, [fetchDocuments])
 
   const handleCopyBibtex = useCallback(async (ids: string[]) => {
     try {
@@ -457,9 +464,34 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
         {isLoading ? (
           <SkeletonRows />
         ) : displayDocs.length === 0 ? (
-          <div className="flex items-center justify-center py-16 text-xs text-muted">
-            {isSearching ? t('common.noSearchResults') : t('common.emptyLibrary')}
-          </div>
+          isSearching ? (
+            <EmptyState
+              className="h-full"
+              icon={<Search className="h-10 w-10" />}
+              title={t('common.noSearchResults')}
+              action={
+                <UiButton variant="secondary" size="md" onClick={clearSearch}>
+                  {t('common.clearSearch')}
+                </UiButton>
+              }
+            />
+          ) : (
+            <EmptyState
+              className="h-full"
+              icon={<FileText className="h-10 w-10" />}
+              title={t('common.emptyLibrary')}
+              action={
+                <UiButton
+                  variant="primary"
+                  size="md"
+                  icon={<FilePlus className="h-4 w-4" />}
+                  onClick={handleAddFiles}
+                >
+                  {t('topbar.addFile')}
+                </UiButton>
+              }
+            />
+          )
         ) : (
           <div
             style={{

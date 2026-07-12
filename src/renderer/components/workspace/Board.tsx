@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { FilePlus } from 'lucide-react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { api } from '../../ipc'
+import { EmptyState } from '../ui'
 import type { AiSummary, Document, SummaryErrorEvent } from '../../../shared/ipc-types'
 import PaperCard from './PaperCard'
 import ReportCard from './ReportCard'
@@ -246,9 +248,11 @@ export default function Board() {
         </div>
       )}
       {isEmpty ? (
-        <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center">
-          <p className="text-sm text-muted">{t('workspace.dragPapersHint')}</p>
-        </div>
+        <EmptyState
+          className="h-full min-h-[200px]"
+          icon={<FilePlus className="h-10 w-10" />}
+          title={t('workspace.dragPapersHint')}
+        />
       ) : (
         <div className="flex flex-wrap content-start gap-3">
           {sortedDocItems.map((it) => {
