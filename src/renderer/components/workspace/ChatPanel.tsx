@@ -50,6 +50,7 @@ import {
 } from '../../../shared/modelVariant'
 import { resolveDeepThinkingMode } from '../../../shared/deepThinking'
 import { useWorkspaceStore } from '../../store/workspaceStore'
+import { useDocumentStore } from '../../store/documentStore'
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -102,7 +103,7 @@ const MARKDOWN_COMPONENTS: Components = {
             className="inline-flex items-center gap-0.5 text-accent underline transition-opacity duration-150 hover:opacity-80"
             onClick={async () => {
               const ok = await openCitationDoc(parsed.docId)
-              if (!ok) window.alert('Failed to open document. It may have been moved or deleted.')
+              if (!ok) useDocumentStore.getState().showToast('Failed to open document. It may have been moved or deleted.')
             }}
             title={parsed.query ?? undefined}
           >
@@ -507,6 +508,7 @@ export default function ChatPanel() {
   const fetchThreads = useWorkspaceStore((s) => s.fetchThreads)
   const deleteThread = useWorkspaceStore((s) => s.deleteThread)
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
+  const [confirmDeleteThread, setConfirmDeleteThread] = useState<{ id: string; title: string } | null>(null)
   const threadMenuRef = useRef<HTMLDivElement | null>(null)
 
   const threadIdRef = useRef<string | null>(null)
@@ -1174,8 +1176,7 @@ export default function ChatPanel() {
                       className="shrink-0 text-muted transition-colors duration-150 hover:text-error"
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (!window.confirm(t('workspace.chat.confirmDelete', 'Delete this conversation?'))) return
-                        void deleteThread(th.id).then(() => void fetchThreads())
+                        setConfirmDeleteThread({ id: th.id, title: th.title?.trim() || `${t('workspace.chat.thread', 'Thread')} ${th.id.slice(0, 8)}` })
                       }}
                       title={t('common.delete', 'Delete')}
                       aria-label={t('common.delete', 'Delete')}
@@ -1751,6 +1752,36 @@ export default function ChatPanel() {
           </div>
         </div>
       </div>
+
+      {confirmDeleteThread && (
+        <div className="dialog-overlay" onClick={() => setConfirmDeleteThread(null)}>
+          <div className="dialog-panel w-96" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-foreground">
+              {t('workspace.chat.confirmDeleteThread', { name: confirmDeleteThread.title, defaultValue: 'Delete "{{name}}"?' })}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => setConfirmDeleteThread(null)}
+              >
+                {t('common.cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-white transition-opacity duration-150 hover:opacity-90"
+                onClick={() => {
+                  void deleteThread(confirmDeleteThread.id).then(() => void fetchThreads())
+                  setConfirmDeleteThread(null)
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t('common.delete', 'Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

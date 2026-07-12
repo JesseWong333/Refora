@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Modal } from 'antd'
-import { showContextMenu } from '@lobehub/ui'
+import { Modal, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { Sparkles, FileText, Trash2, Loader2, BookOpen, AlertCircle, RotateCw } from 'lucide-react'
 import { motion } from 'motion/react'
