@@ -75,7 +75,7 @@ export default function PaperCard({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className="card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3 transition-colors hover:border-accent"
+        className="group/card card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3 transition-colors hover:border-accent"
         onClick={() => setModalOpen(true)}
         onContextMenu={handleContextMenu}
       >
@@ -84,6 +84,37 @@ export default function PaperCard({
           <div className="min-w-0 flex-1">
             <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{title}</h3>
             {authors && <p className="mt-0.5 truncate text-xs text-muted">{authors}</p>}
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/card:opacity-100">
+            {!content && !summarizing && !summaryError && (
+              <button
+                type="button"
+                className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
+                onClick={(e) => { e.stopPropagation(); onSummarize() }}
+                title={t('workspace.aiSummary')}
+                aria-label={t('workspace.aiSummary')}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
+              onClick={(e) => { e.stopPropagation(); onOpenPdf() }}
+              title={t('workspace.openPdf')}
+              aria-label={t('workspace.openPdf')}
+            >
+              <FileText className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="rounded p-1 text-muted transition-colors duration-150 hover:text-error"
+              onClick={(e) => { e.stopPropagation(); onRemove() }}
+              title={t('workspace.removeFromWorkspace')}
+              aria-label={t('workspace.removeFromWorkspace')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 

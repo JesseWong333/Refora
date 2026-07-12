@@ -210,7 +210,9 @@ const api: ReforaApi = {
     chatTraces: (threadId: string) =>
       invoke<AgentTraceStep[]>(IpcChannel.AiChatTraces, threadId),
     chatCancel: (threadId: string) => invoke<void>(IpcChannel.AiChatCancel, threadId),
-    chatDeleteThread: (threadId: string) => invoke<void>(IpcChannel.AiChatDeleteThread, threadId)
+    chatDeleteThread: (threadId: string) => invoke<void>(IpcChannel.AiChatDeleteThread, threadId),
+    renameThread: (threadId: string, title: string) =>
+      invoke<void>(IpcChannel.AiChatRenameThread, threadId, title)
   },
 
   reports: {

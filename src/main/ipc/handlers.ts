@@ -608,6 +608,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         repos().chat.deleteThread(threadId)
         return undefined
       }),
+    [IpcChannel.AiChatRenameThread]: (threadId: string, title: string): Result<ChatThread> =>
+      wrap(() => repos().chat.updateTitle(threadId, title)),
 
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),
