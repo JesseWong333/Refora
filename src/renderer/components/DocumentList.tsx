@@ -89,7 +89,7 @@ function ColumnHeader({
 
   return (
     <div
-      className="relative flex items-center px-1 font-semibold uppercase tracking-wide text-muted cursor-pointer select-none flex-shrink-0 text-[11px]"
+      className="relative flex items-center px-1 font-semibold uppercase tracking-wide text-muted cursor-pointer select-none flex-shrink-0 text-label"
       style={{ width: displayWidth, minWidth: displayWidth }}
       onClick={onSort}
       onContextMenu={onContextMenu}

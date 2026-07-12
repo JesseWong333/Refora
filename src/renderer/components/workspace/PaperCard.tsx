@@ -18,7 +18,7 @@ interface PaperCardProps {
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[10px] text-muted">{children}</span>
+    <span className="rounded bg-panel-2 px-1.5 py-0.5 text-caption text-muted">{children}</span>
   )
 }
 

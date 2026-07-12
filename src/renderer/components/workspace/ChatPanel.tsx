@@ -345,32 +345,32 @@ function TraceStepRow({ step, isLast, forceOpen }: { step: AgentTraceStep; isLas
           </span>
           {step.kind === 'llm' && step.totalTokens != null && (
             <span
-              className="shrink-0 text-[11px] text-muted"
+              className="shrink-0 text-label text-muted"
               title={t('workspace.chat.tokenUsage', 'Tokens')}
             >
               <ArrowUp className="mr-0.5 inline h-2.5 w-2.5" />{step.inputTokens ?? 0} <ArrowDown className="mx-0.5 inline h-2.5 w-2.5" />{step.outputTokens ?? 0}
             </span>
           )}
-          {duration && <span className="shrink-0 text-[11px] text-muted">{duration}</span>}
+          {duration && <span className="shrink-0 text-label text-muted">{duration}</span>}
         </button>
         {open && hasBody && (
           <div className="mt-1 space-y-1.5 pl-1">
             {step.input && (
               <div>
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+                <p className="mb-0.5 text-label font-medium uppercase tracking-wide text-muted">
                   {t('workspace.chat.traceInput', 'Input')}
                 </p>
-                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[11px] text-foreground">
+                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-label text-foreground">
                   {step.input}
                 </pre>
               </div>
             )}
             {step.output && (
               <div>
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+                <p className="mb-0.5 text-label font-medium uppercase tracking-wide text-muted">
                   {t('workspace.chat.traceOutput', 'Output')}
                 </p>
-                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-[11px] text-foreground">
+                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-label text-foreground">
                   {step.output}
                 </pre>
               </div>
@@ -432,21 +432,21 @@ function AgentTracePanel({
         <span className="text-xs font-medium text-foreground">
           {t('workspace.chat.trace', 'Agent steps')}
         </span>
-        <span className="text-[11px] text-muted">
+        <span className="text-label text-muted">
           {visible.length > 0 ? visible.length : streaming ? '…' : 0}
         </span>
         {summaryLabel && (
-          <span className="text-[11px] text-muted">· {summaryLabel}</span>
+          <span className="text-label text-muted">· {summaryLabel}</span>
         )}
         {hasTokenData && !isRunning && (
-          <span className="text-[11px] text-muted">
+          <span className="text-label text-muted">
             · {t('workspace.chat.tokenTotal', { count: totalTokensSum, defaultValue: 'Total: {{count}} tokens' })}
           </span>
         )}
         {visible.length > 0 && open && (
           <button
             type="button"
-            className="ml-auto mr-1 text-[11px] text-muted transition-colors duration-150 hover:text-foreground"
+            className="ml-auto mr-1 text-label text-muted transition-colors duration-150 hover:text-foreground"
             onClick={(e) => {
               e.stopPropagation()
               setExpandAll(expandAll === null ? true : !expandAll)
@@ -1216,21 +1216,21 @@ export default function ChatPanel() {
           {threadMenuOpen && (
             <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
               {threads.length === 0 ? (
-                <p className="px-3 py-2 text-[11px] text-muted">
+                <p className="px-3 py-2 text-label text-muted">
                   {t('workspace.chat.noThreads', 'No conversations yet')}
                 </p>
               ) : (
                 threads.map((th) => (
                   <div
                     key={th.id}
-                    className={`flex items-center gap-1 px-2 py-1.5 text-[11px] transition-colors duration-150 hover:bg-hover ${
+                    className={`flex items-center gap-1 px-2 py-1.5 text-label transition-colors duration-150 hover:bg-hover ${
                       th.id === activeThreadId ? 'bg-active text-foreground' : 'text-muted'
                     }`}
                   >
                     {renamingThreadId === th.id ? (
                       <input
                         type="text"
-                        className="min-w-0 flex-1 rounded border border-accent bg-background px-1.5 py-0.5 text-[11px] text-foreground focus:outline-none"
+                        className="min-w-0 flex-1 rounded border border-accent bg-background px-1.5 py-0.5 text-label text-foreground focus:outline-none"
                         value={renameDraft}
                         autoFocus
                         onChange={(e) => setRenameDraft(e.target.value)}
@@ -1301,7 +1301,7 @@ export default function ChatPanel() {
               {threads.length > 0 && activeThreadId && (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-1.5 border-t border-border px-2 py-1.5 text-[11px] text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground"
+                  className="flex w-full items-center gap-1.5 border-t border-border px-2 py-1.5 text-label text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground"
                   onClick={() => {
                     void exportThread(activeThreadId)
                     setThreadMenuOpen(false)
@@ -1380,7 +1380,7 @@ export default function ChatPanel() {
                     <button
                       key={s.key}
                       type="button"
-                      className="rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-left text-[11px] text-muted transition-colors duration-150 hover:border-accent hover:text-foreground"
+                      className="rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-left text-label text-muted transition-colors duration-150 hover:border-accent hover:text-foreground"
                       onClick={() => setInput(s.text)}
                     >
                       {s.text}
@@ -1536,7 +1536,7 @@ export default function ChatPanel() {
             {lastSendRef.current && !streaming && (
               <button
                 type="button"
-                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors duration-150 hover:bg-error/20"
+                className="shrink-0 rounded px-1.5 py-0.5 text-label font-medium transition-colors duration-150 hover:bg-error/20"
                 onClick={() => void handleRetry()}
                 title={t('workspace.chat.retry', 'Retry')}
                 aria-label={t('workspace.chat.retry', 'Retry')}
@@ -1559,7 +1559,7 @@ export default function ChatPanel() {
 
       {modelSwitchHint && (
         <div className="shrink-0 px-3 pb-1">
-          <div className="rounded-lg bg-panel-2 px-3 py-1.5 text-[11px] text-muted">
+          <div className="rounded-lg bg-panel-2 px-3 py-1.5 text-label text-muted">
             {t(
               'workspace.chat.modelSwitchHint',
               'Model switched — applies to new messages only.'
@@ -1569,7 +1569,7 @@ export default function ChatPanel() {
       )}
 
       <div ref={inputAreaRef} className="shrink-0 p-3">
-        <div className="flex flex-col rounded-2xl border border-border bg-panel-2 shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
+        <div className="flex flex-col rounded-xl border border-border bg-panel-2 shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
           {selectedAttachments.length > 0 && (
             <div className="flex flex-wrap gap-1 px-2 pt-1">
               {selectedAttachments.map((docId) => {
@@ -1577,7 +1577,7 @@ export default function ChatPanel() {
                 return (
                   <span
                     key={docId}
-                    className="inline-flex items-center gap-1 rounded-full border border-border bg-panel-2 px-2 py-0.5 text-[10px] text-foreground"
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-panel-2 px-2 py-0.5 text-caption text-foreground"
                   >
                     <span className="max-w-[120px] truncate">{doc?.title ?? docId.slice(0, 8)}</span>
                     <button
@@ -1622,13 +1622,13 @@ export default function ChatPanel() {
               >
                 <Paperclip className="h-4 w-4" />
                 {selectedAttachments.length > 0 && (
-                  <span className="ml-0.5 text-[10px] font-medium">{selectedAttachments.length}</span>
+                  <span className="ml-0.5 text-caption font-medium">{selectedAttachments.length}</span>
                 )}
               </button>
               {attachMenuOpen && (
                 <div className="absolute bottom-full left-0 z-50 mb-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
                   {workspaceDocs.length === 0 ? (
-                    <p className="px-3 py-2 text-[11px] text-muted">
+                    <p className="px-3 py-2 text-label text-muted">
                       {t('workspace.chat.noWorkspaceDocs', 'No papers in workspace. Add papers to the board first.')}
                     </p>
                   ) : (
@@ -1639,7 +1639,7 @@ export default function ChatPanel() {
                         return (
                           <label
                             key={doc.docId}
-                            className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors duration-150 hover:bg-hover ${maxReached ? 'opacity-40' : ''}`}
+                            className={`flex items-center gap-2 rounded px-2 py-1 text-label transition-colors duration-150 hover:bg-hover ${maxReached ? 'opacity-40' : ''}`}
                           >
                             <input
                               type="checkbox"
@@ -1659,7 +1659,7 @@ export default function ChatPanel() {
                         )
                       })}
                       {selectedAttachments.length >= 8 && (
-                        <p className="px-2 py-1 text-[10px] text-muted">
+                        <p className="px-2 py-1 text-caption text-muted">
                           {t('workspace.chat.attachMax', 'Maximum 8 attachments.')}
                         </p>
                       )}
@@ -1671,7 +1671,7 @@ export default function ChatPanel() {
             <div className="relative shrink-0" ref={workspaceScopeRef}>
               <button
                 type="button"
-                className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted transition-colors duration-150 hover:border-accent hover:text-foreground disabled:opacity-40"
+                className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-caption text-muted transition-colors duration-150 hover:border-accent hover:text-foreground disabled:opacity-40"
                 onClick={() => setWorkspaceScopeOpen((v) => !v)}
                 disabled={!activeWorkspaceId}
               >
@@ -1681,12 +1681,12 @@ export default function ChatPanel() {
               {workspaceScopeOpen && (
                 <div className="absolute bottom-full left-0 z-50 mb-1 max-h-48 w-56 overflow-y-auto rounded-lg border border-border bg-panel p-1 shadow-lg">
                   {workspaceDocs.length === 0 ? (
-                    <p className="px-2 py-1.5 text-[11px] text-muted">
+                    <p className="px-2 py-1.5 text-label text-muted">
                       {t('workspace.chat.noWorkspaceDocs', 'No papers in workspace.')}
                     </p>
                   ) : (
                     workspaceDocs.map((doc) => (
-                      <div key={doc.docId} className="truncate px-2 py-1 text-[11px] text-foreground">
+                      <div key={doc.docId} className="truncate px-2 py-1 text-label text-foreground">
                         {doc.title}
                       </div>
                     ))
@@ -1696,7 +1696,7 @@ export default function ChatPanel() {
             </div>
             {input.length > MAX_INPUT_LENGTH * 0.8 && (
               <span
-                className={`ml-auto text-[10px] ${
+                className={`ml-auto text-caption ${
                   input.length > MAX_INPUT_LENGTH ? 'text-error' : 'text-muted'
                 }`}
               >
@@ -1710,7 +1710,7 @@ export default function ChatPanel() {
               <div className="relative" ref={menuRef}>
                 <button
                   type="button"
-                  className="inline-flex max-w-[160px] items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
+                  className="inline-flex max-w-[160px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
                   onClick={() => setModelMenuOpen((v) => !v)}
                   disabled={providers.length === 0 || streaming}
                   aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
@@ -1743,7 +1743,7 @@ export default function ChatPanel() {
                       }
                     }}
                   >
-                    <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    <p className="px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
                       {t('workspace.chat.providerModels', 'Provider models')}
                     </p>
                     {providers.map((p) => (
@@ -1767,13 +1767,13 @@ export default function ChatPanel() {
                         <span className="truncate text-xs font-medium text-foreground">
                           {p.name}
                         </span>
-                        <span className="truncate text-[10px] text-muted">{p.model}</span>
+                        <span className="truncate text-caption text-muted">{p.model}</span>
                       </button>
                     ))}
 
                     {providerModels.length > 0 && (
                       <>
-                        <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
                           {t('workspace.chat.availableModels', 'Available models')}
                           {loadingModels ? '…' : ''}
                         </p>
@@ -1789,7 +1789,7 @@ export default function ChatPanel() {
                             <span className="min-w-0 flex-1 truncate text-xs text-foreground">{m.id}</span>
                             <span className="flex shrink-0 items-center gap-1">
                               {m.supportsVariants && (
-                                <span className="text-[10px] text-accent">
+                                <span className="text-caption text-accent">
                                   {t('settings.aiProviders.hasVariants', 'variants')}
                                 </span>
                               )}
@@ -1802,7 +1802,7 @@ export default function ChatPanel() {
 
                     {recentModels.length > 0 && (
                       <>
-                        <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
                           {t('workspace.chat.recentModels', 'Recent')}
                         </p>
                         {recentModels.map((entry) => {
@@ -1820,7 +1820,7 @@ export default function ChatPanel() {
                             >
                               <span className="truncate">{entry.model}</span>
                               {providerName && (
-                                <span className="truncate text-[10px] text-muted">{providerName}</span>
+                                <span className="truncate text-caption text-muted">{providerName}</span>
                               )}
                             </button>
                           )
@@ -1828,7 +1828,7 @@ export default function ChatPanel() {
                       </>
                     )}
 
-                    <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
                       {t('workspace.chat.customModel', 'Custom model')}
                     </p>
                     <div className="flex gap-1 px-1">
@@ -1848,7 +1848,7 @@ export default function ChatPanel() {
                       />
                       <button
                         type="button"
-                        className="rounded-md bg-accent px-2 py-1 text-[11px] text-white disabled:opacity-40"
+                        className="rounded-md bg-accent px-2 py-1 text-label text-white disabled:opacity-40"
                         disabled={customModelInvalid}
                         onClick={() => {
                           const parsed = parseModelId(customModelTrimmed)
@@ -1860,20 +1860,20 @@ export default function ChatPanel() {
                       </button>
                     </div>
                     {customModel && customModelInvalid && (
-                      <p className="px-1 pt-1 text-[10px] text-muted">
+                      <p className="px-1 pt-1 text-caption text-muted">
                         {t('workspace.chat.customModelHint', 'Model ID cannot contain spaces.')}
                       </p>
                     )}
 
                     {variantCapable && (
                       <>
-                        <p className="mt-2 px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
                           {t('workspace.chat.variant', 'Variant')}
                         </p>
                         <div className="flex flex-wrap gap-1 px-1 pb-1">
                           <button
                             type="button"
-                            className={`rounded-md border px-2 py-0.5 text-[10px] ${
+                            className={`rounded-md border px-2 py-0.5 text-caption ${
                               !selectedVariant
                                 ? 'border-accent bg-accent/10 text-accent'
                                 : 'border-border text-muted'
@@ -1886,7 +1886,7 @@ export default function ChatPanel() {
                             <button
                               key={v}
                               type="button"
-                              className={`rounded-md border px-2 py-0.5 text-[10px] ${
+                              className={`rounded-md border px-2 py-0.5 text-caption ${
                                 selectedVariant === v
                                   ? 'border-accent bg-accent/10 text-accent'
                                   : 'border-border text-muted'
@@ -1906,7 +1906,7 @@ export default function ChatPanel() {
               <div className="ml-auto flex items-center gap-1">
               <button
                 type="button"
-                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] ${
+                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-label ${
                   deepThinking
                     ? 'bg-accent text-white'
                     : 'text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground'

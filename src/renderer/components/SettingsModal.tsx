@@ -341,7 +341,7 @@ function AiProvidersSection() {
                 <button
                   key={tpl.name}
                   type="button"
-                  className="rounded-md border border-border bg-panel-2 px-2 py-1 text-[11px] text-muted transition-colors duration-150 hover:border-accent hover:text-foreground"
+                  className="rounded-md border border-border bg-panel-2 px-2 py-1 text-label text-muted transition-colors duration-150 hover:border-accent hover:text-foreground"
                   onClick={() => {
                     const parsed = parseModelId(tpl.model)
                     setForm({
@@ -360,7 +360,7 @@ function AiProvidersSection() {
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] text-muted">
+            <label className="text-label text-muted">
               {t('settings.aiProviders.name', 'Name')}
             </label>
             <Input
@@ -371,7 +371,7 @@ function AiProvidersSection() {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] text-muted">
+            <label className="text-label text-muted">
               {t('settings.aiProviders.baseUrl', 'Base URL')}
             </label>
             <Input
@@ -382,7 +382,7 @@ function AiProvidersSection() {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] text-muted">
+            <label className="text-label text-muted">
               {t('settings.aiProviders.apiKey', 'API Key')}
               {form.id && (
                 <span className="ml-1 text-muted">
@@ -439,12 +439,12 @@ function AiProvidersSection() {
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <label className="text-[11px] text-muted">
+              <label className="text-label text-muted">
                 {t('settings.aiProviders.baseModel', 'Base model')}
               </label>
               <button
                 type="button"
-                className="text-[11px] text-accent hover:underline"
+                className="text-label text-accent hover:underline"
                 onClick={() => setManualModel((v) => !v)}
               >
                 {manualModel
@@ -472,12 +472,12 @@ function AiProvidersSection() {
                 />
                 <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-panel-2">
                   {loadingModels ? (
-                    <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-muted">
+                    <div className="flex items-center gap-2 px-2 py-3 text-label text-muted">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       {t('settings.aiProviders.loadingModels', 'Loading models…')}
                     </div>
                   ) : filteredModels.length === 0 ? (
-                    <div className="px-2 py-3 text-[11px] text-muted">
+                    <div className="px-2 py-3 text-label text-muted">
                       {t('settings.aiProviders.noModelMatch', 'No matching models')}
                     </div>
                   ) : (
@@ -485,7 +485,7 @@ function AiProvidersSection() {
                       <button
                         key={m.id}
                         type="button"
-                        className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] transition-colors duration-150 hover:bg-hover ${
+                        className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-label transition-colors duration-150 hover:bg-hover ${
                           form.baseModel === m.id ? 'bg-active text-foreground' : 'text-muted'
                         }`}
                         onClick={() =>
@@ -501,10 +501,10 @@ function AiProvidersSection() {
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
                           {m.providerName && (
-                            <span className="text-[10px] text-muted">{m.providerName}</span>
+                            <span className="text-caption text-muted">{m.providerName}</span>
                           )}
                           {m.supportsVariants && (
-                            <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] text-accent">
+                            <span className="rounded bg-accent/15 px-1 py-0.5 text-caption text-accent">
                               {t('settings.aiProviders.hasVariants', 'variants')}
                             </span>
                           )}
@@ -516,14 +516,14 @@ function AiProvidersSection() {
               </>
             )}
             {modelsError && (
-              <p className="text-[11px] text-muted">{modelsError}</p>
+              <p className="text-label text-muted">{modelsError}</p>
             )}
           </div>
 
           {showVariant && (
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] text-muted">
+                <label className="text-label text-muted">
                   {t('settings.aiProviders.variant', 'Variant')}
                 </label>
                 <Select
@@ -535,7 +535,7 @@ function AiProvidersSection() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] text-muted">
+                <label className="text-label text-muted">
                   {t('settings.aiProviders.variantFormat', 'Variant format')}
                 </label>
                 <Select
@@ -553,7 +553,7 @@ function AiProvidersSection() {
 
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] text-muted">
+              <label className="text-label text-muted">
                 {t('settings.aiProviders.temperature', 'Temperature (0-2)')}
               </label>
               <Input
@@ -568,7 +568,7 @@ function AiProvidersSection() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] text-muted">
+              <label className="text-label text-muted">
                 {t('settings.aiProviders.maxTokens', 'Max tokens')}
               </label>
               <Input
@@ -582,7 +582,7 @@ function AiProvidersSection() {
             </div>
           </div>
 
-          <div className="rounded-md bg-panel-2 px-2 py-1.5 text-[11px] text-muted">
+          <div className="rounded-md bg-panel-2 px-2 py-1.5 text-label text-muted">
             {t('settings.aiProviders.requestModel', 'Request model')}:{' '}
             <span className="font-medium text-foreground">{composedModel || '—'}</span>
           </div>
@@ -599,7 +599,7 @@ function AiProvidersSection() {
       )}
 
       {!form && providers.length === 0 && (
-        <span className="text-[11px] text-muted">
+        <span className="text-label text-muted">
           {t('settings.aiProviders.noProviders', 'No providers configured.')}
         </span>
       )}
@@ -615,17 +615,17 @@ function AiProvidersSection() {
                   <div className="flex items-center gap-2">
                     <span className="truncate text-xs text-foreground">{p.name}</span>
                     {isActive && (
-                      <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] text-white">
+                      <span className="rounded bg-accent px-1.5 py-0.5 text-caption text-white">
                         {t('settings.aiProviders.active', 'Active')}
                       </span>
                     )}
-                    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted">
+                    <span className="rounded border border-border px-1.5 py-0.5 text-caption text-muted">
                       {p.hasKey
                         ? t('settings.aiProviders.hasKey', 'Key set')
                         : t('settings.aiProviders.noKey', 'No key')}
                     </span>
                   </div>
-                  <div className="truncate text-[11px] text-muted">
+                  <div className="truncate text-label text-muted">
                     {p.model} · {p.baseUrl}
                   </div>
                 </div>
@@ -652,7 +652,7 @@ function AiProvidersSection() {
               </div>
               {ts && ts !== 'testing' && (
                 <div
-                  className={`text-[11px] ${ts.ok ? 'text-foreground' : 'text-error'}`}
+                  className={`text-label ${ts.ok ? 'text-foreground' : 'text-error'}`}
                 >
                   {ts.ok
                     ? t('settings.aiProviders.testOk', {
@@ -789,7 +789,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               {switching ? t('settings.switching') : t('settings.chooseFolder')}
             </Button>
           </div>
-          <span className="text-[11px] text-muted">{t('settings.libraryFolderAutoImportHint')}</span>
+          <span className="text-label text-muted">{t('settings.libraryFolderAutoImportHint')}</span>
         </div>
 
         <div className="flex flex-col gap-1.5">

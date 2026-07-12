@@ -111,15 +111,15 @@ function InlineField({
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+      <span className="flex items-center gap-1 text-label font-semibold uppercase tracking-wide text-muted">
         {label}
         {status === 'saving' && (
-          <span className="text-[10px] font-normal normal-case text-muted">
+          <span className="text-caption font-normal normal-case text-muted">
             {t('common.saving')}
           </span>
         )}
         {status === 'saved' && (
-          <span className="text-[10px] font-normal normal-case text-success">
+          <span className="text-caption font-normal normal-case text-success">
             {t('common.saved')}
           </span>
         )}
@@ -218,15 +218,15 @@ function NoteField({
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+      <span className="flex items-center gap-1 text-label font-semibold uppercase tracking-wide text-muted">
         {t('detail.note')}
         {status === 'saving' && (
-          <span className="text-[10px] font-normal normal-case text-muted">
+          <span className="text-caption font-normal normal-case text-muted">
             {t('common.saving')}
           </span>
         )}
         {status === 'saved' && (
-          <span className="text-[10px] font-normal normal-case text-success">
+          <span className="text-caption font-normal normal-case text-success">
             {t('common.saved')}
           </span>
         )}
@@ -291,7 +291,7 @@ function CategoryChips({
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+      <span className="text-label font-semibold uppercase tracking-wide text-muted">
         {t('sidebar.categories')}
       </span>
       <div className="flex flex-wrap items-center gap-1">
@@ -431,17 +431,17 @@ function SingleDetail({ doc }: { doc: Document }) {
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           <span>{t('detail.refreshMetadata')}</span>
           {refreshing && (
-            <span className="text-[10px] font-normal normal-case text-muted">
+            <span className="text-caption font-normal normal-case text-muted">
               {t('detail.refreshing')}
             </span>
           )}
           {refreshResult === 'success' && (
-            <span className="text-[10px] font-normal normal-case text-success">
+            <span className="text-caption font-normal normal-case text-success">
               {t('detail.refreshSuccess')}
             </span>
           )}
           {refreshResult === 'failed' && (
-            <span className="text-[10px] font-normal normal-case text-error">
+            <span className="text-caption font-normal normal-case text-error">
               {t('detail.refreshFailed')}
             </span>
           )}
@@ -461,7 +461,7 @@ function SingleDetail({ doc }: { doc: Document }) {
       ))}
 
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+        <span className="text-label font-semibold uppercase tracking-wide text-muted">
           {t('detail.addedAt')}
         </span>
         <div className="text-sm text-muted">{formatDate(doc.addedAt)}</div>
@@ -469,7 +469,7 @@ function SingleDetail({ doc }: { doc: Document }) {
 
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+          <span className="text-label font-semibold uppercase tracking-wide text-muted">
             {t('detail.filePath')}
           </span>
           {!doc.fileMissing && (
