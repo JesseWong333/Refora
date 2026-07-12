@@ -231,7 +231,6 @@
       "noWorkspaceDocs": "No papers in workspace. Add papers to the board first.",
       "attachMax": "Maximum 8 attachments.",
       "threadUntitled": "Thread",
-      "workspaceScope": "Workspace",
       "trace": "Agent steps",
       "traceEmpty": "No tool or model steps yet.",
       "traceLlm": "Model",

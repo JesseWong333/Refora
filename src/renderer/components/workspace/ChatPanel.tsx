@@ -562,7 +562,6 @@ export default function ChatPanel() {
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
   const [workspaceDocs, setWorkspaceDocs] = useState<Array<{ docId: string; title: string }>>([])
-  const [workspaceScopeOpen, setWorkspaceScopeOpen] = useState(false)
 
   const threads = useWorkspaceStore((s) => s.threads)
   const fetchThreads = useWorkspaceStore((s) => s.fetchThreads)
@@ -580,7 +579,6 @@ export default function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const attachMenuRef = useRef<HTMLDivElement | null>(null)
-  const workspaceScopeRef = useRef<HTMLDivElement | null>(null)
   const inputAreaRef = useRef<HTMLDivElement | null>(null)
   const hadMessagesRef = useRef(false)
   const isSendingRef = useRef(false)
@@ -937,27 +935,6 @@ export default function ChatPanel() {
       }
     })()
   }, [attachMenuOpen, activeWorkspaceId])
-
-  useClickOutside(workspaceScopeRef, () => setWorkspaceScopeOpen(false), workspaceScopeOpen)
-
-  useEffect(() => {
-    if (!workspaceScopeOpen || !activeWorkspaceId || workspaceDocs.length > 0) return
-    void (async () => {
-      try {
-        const items = await api.workspaceItems.list(activeWorkspaceId)
-        const docItems = items.filter((i) => i.kind === 'document' && i.docId)
-        const docs = await Promise.all(
-          docItems.map(async (i) => {
-            const doc = await api.documents.get(i.docId!)
-            return { docId: i.docId!, title: doc?.title ?? doc?.fileName ?? i.docId! }
-          })
-        )
-        setWorkspaceDocs(docs)
-      } catch {
-        setWorkspaceDocs([])
-      }
-    })()
-  }, [workspaceScopeOpen, activeWorkspaceId, workspaceDocs.length])
 
   const applyModel = useCallback(
     async (baseModel: string, variant = '', providerId?: string) => {
@@ -1953,32 +1930,6 @@ export default function ChatPanel() {
                         </p>
                       )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="relative shrink-0" ref={workspaceScopeRef}>
-              <button
-                type="button"
-                className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-caption text-muted transition-colors duration-150 hover:border-accent hover:text-foreground disabled:opacity-40"
-                onClick={() => setWorkspaceScopeOpen((v) => !v)}
-                disabled={!activeWorkspaceId}
-              >
-                {t('workspace.chat.workspaceScope', 'Workspace')}
-                <ChevronDown className="ml-0.5 inline h-2.5 w-2.5" />
-              </button>
-              {workspaceScopeOpen && (
-                <div className="absolute bottom-full left-0 z-50 mb-1 max-h-48 w-56 overflow-y-auto rounded-lg border border-border bg-panel p-1 shadow-lg">
-                  {workspaceDocs.length === 0 ? (
-                    <p className="px-2 py-1.5 text-label text-muted">
-                      {t('workspace.chat.noWorkspaceDocs', 'No papers in workspace.')}
-                    </p>
-                  ) : (
-                    workspaceDocs.map((doc) => (
-                      <div key={doc.docId} className="truncate px-2 py-1 text-label text-foreground">
-                        {doc.title}
-                      </div>
-                    ))
                   )}
                 </div>
               )}

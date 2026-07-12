@@ -231,7 +231,6 @@
       "noWorkspaceDocs": "工作空间中没有论文，请先将论文添加到看板。",
       "attachMax": "最多引用 8 篇论文。",
       "threadUntitled": "对话",
-      "workspaceScope": "工作空间",
       "trace": "Agent 步骤",
       "traceEmpty": "尚无工具或模型步骤。",
       "traceLlm": "模型",
