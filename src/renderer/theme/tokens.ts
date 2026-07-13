@@ -21,6 +21,9 @@ interface ColorPalette {
   fillSecondary: string
   fillTertiary: string
   overlay: string
+  assistantBubble: string
+  inputArea: string
+  userBubble: string
 }
 
 const darkPalette: ColorPalette = {
@@ -44,6 +47,9 @@ const darkPalette: ColorPalette = {
   fillSecondary: 'rgba(255, 255, 255, 0.05)',
   fillTertiary: 'rgba(255, 255, 255, 0.03)',
   overlay: 'rgba(0, 0, 0, 0.5)',
+  assistantBubble: '#2a2a2c',
+  inputArea: '#282829',
+  userBubble: '#3a3a3c',
 }
 
 const lightPalette: ColorPalette = {
@@ -67,6 +73,9 @@ const lightPalette: ColorPalette = {
   fillSecondary: 'rgba(0, 0, 0, 0.05)',
   fillTertiary: 'rgba(0, 0, 0, 0.03)',
   overlay: 'rgba(0, 0, 0, 0.3)',
+  assistantBubble: '#f8f8f8',
+  inputArea: '#fbfbfb',
+  userBubble: '#f3f3f3',
 }
 
 export function getPalette(theme: ResolvedTheme): ColorPalette {
@@ -94,6 +103,9 @@ const cssVarMap: Readonly<Record<keyof ColorPalette, string>> = {
   fillSecondary: '--color-fill-secondary',
   fillTertiary: '--color-fill-tertiary',
   overlay: '--color-overlay',
+  assistantBubble: '--color-assistant-bubble',
+  inputArea: '--color-input-area',
+  userBubble: '--color-user-bubble',
 }
 
 export function injectThemeCssVars(theme: ResolvedTheme): void {

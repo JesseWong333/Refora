@@ -43,11 +43,44 @@ export default function ChatPanel() {
 
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
 
+  const [threadMenuOpen, setThreadMenuOpen] = useState(false)
+
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const inputAreaRef = useRef<HTMLDivElement | null>(null)
+  const headerRef = useRef<HTMLDivElement | null>(null)
+  const leftRef = useRef<HTMLDivElement | null>(null)
+  const rightRef = useRef<HTMLDivElement | null>(null)
+
+  const [titleMaxWidth, setTitleMaxWidth] = useState<number | undefined>(undefined)
+
+  useEffect(() => {
+    const el = headerRef.current
+    const left = leftRef.current
+    const right = rightRef.current
+    if (!el) return
+    const update = () => {
+      const lw = left?.offsetWidth ?? 0
+      const rw = right?.offsetWidth ?? 0
+      const side = Math.max(lw, rw)
+      const gap = 24
+      const available = el.clientWidth - side * 2 - gap * 2
+      setTitleMaxWidth(available > 0 ? available : 0)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    if (left) ro.observe(left)
+    if (right) ro.observe(right)
+    return () => ro.disconnect()
+  }, [providers.length, providerModels.length])
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
+
+  const activeThread = threads.find((th) => th.id === activeThreadId)
+  const activeThreadTitle = activeThread?.title?.trim()
+    ? activeThread.title.trim()
+    : t('workspace.chat.newConversation', 'New conversation')
 
   const requestModel = useMemo(() => {
     if (!selectedModel) return ''
@@ -246,24 +279,26 @@ export default function ChatPanel() {
 
   return (
     <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
-        <ThreadHistory streaming={chat.streaming} onExportThread={exportThread} />
-        <div className="flex items-center gap-1">
-          <ModelSelector
-            providers={providers}
-            activeProviderId={activeProviderId}
-            selectedModel={selectedModel}
-            selectedVariant={selectedVariant}
-            providerModels={providerModels}
-            recentModels={recentModels}
-            loadingModels={loadingModels}
-            deepThinking={deepThinking}
-            thinkingMode={thinkingMode}
-            requestModel={requestModel}
+      <div ref={headerRef} className="relative flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
+        <div ref={leftRef} className="shrink-0">
+          <ThreadHistory
             streaming={chat.streaming}
-            onApplyModel={applyModel}
-            onToggleDeepThinking={toggleDeepThinking}
+            onExportThread={exportThread}
+            menuOpen={threadMenuOpen}
+            onMenuOpenChange={setThreadMenuOpen}
           />
+        </div>
+        <button
+          type="button"
+          className="absolute left-1/2 top-1/2 max-w-[40%] -translate-x-1/2 -translate-y-1/2 truncate text-center text-xs font-medium text-foreground transition-colors duration-150 hover:text-accent disabled:opacity-40"
+          style={{ maxWidth: titleMaxWidth != null ? `${titleMaxWidth}px` : undefined }}
+          onClick={() => !chat.streaming && setThreadMenuOpen((v) => !v)}
+          disabled={chat.streaming}
+          title={activeThreadTitle}
+        >
+          {activeThreadTitle}
+        </button>
+        <div ref={rightRef} className="flex shrink-0 items-center gap-1">
           <UiButton
             variant="ghost"
             size="sm"
@@ -348,6 +383,23 @@ export default function ChatPanel() {
         onCancel={chat.handleCancel}
         textareaRef={textareaRef}
         inputAreaRef={inputAreaRef}
+        toolbar={
+          <ModelSelector
+            providers={providers}
+            activeProviderId={activeProviderId}
+            selectedModel={selectedModel}
+            selectedVariant={selectedVariant}
+            providerModels={providerModels}
+            recentModels={recentModels}
+            loadingModels={loadingModels}
+            deepThinking={deepThinking}
+            thinkingMode={thinkingMode}
+            requestModel={requestModel}
+            streaming={chat.streaming}
+            onApplyModel={applyModel}
+            onToggleDeepThinking={toggleDeepThinking}
+          />
+        }
       />
     </div>
   )

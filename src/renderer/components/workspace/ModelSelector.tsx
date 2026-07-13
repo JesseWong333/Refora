@@ -93,7 +93,7 @@ export default function ModelSelector({
 
         {modelMenuOpen && (
           <div
-            className="absolute top-full right-0 z-50 mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
+            className="absolute bottom-full right-0 z-50 mb-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
             role="listbox"
             tabIndex={0}
             onKeyDown={(e) => {

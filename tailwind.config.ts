@@ -20,7 +20,10 @@ export default {
         'success-hover': 'var(--color-success-hover)',
         hover: 'var(--color-hover)',
         active: 'var(--color-active)',
-        overlay: 'var(--color-overlay)'
+        overlay: 'var(--color-overlay)',
+        'assistant-bubble': 'var(--color-assistant-bubble)',
+        'input-area': 'var(--color-input-area)',
+        'user-bubble': 'var(--color-user-bubble)'
       },
       borderRadius: {
         sm: 'var(--radius-sm)',

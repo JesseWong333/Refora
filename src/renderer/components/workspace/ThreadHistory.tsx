@@ -14,11 +14,15 @@ import { Button as UiButton, Input as UiInput } from '../ui'
 export interface ThreadHistoryProps {
   streaming: boolean
   onExportThread: (threadId: string) => Promise<void>
+  menuOpen: boolean
+  onMenuOpenChange: (open: boolean) => void
 }
 
 export default function ThreadHistory({
   streaming,
-  onExportThread
+  onExportThread,
+  menuOpen,
+  onMenuOpenChange
 }: ThreadHistoryProps) {
   const { t } = useTranslation()
   const threads = useWorkspaceStore((s) => s.threads)
@@ -29,17 +33,11 @@ export default function ThreadHistory({
   const renameThread = useWorkspaceStore((s) => s.renameThread)
   const showConfirm = useConfirmStore((s) => s.show)
 
-  const [threadMenuOpen, setThreadMenuOpen] = useState(false)
   const threadMenuRef = useRef<HTMLDivElement | null>(null)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
 
-  useClickOutside(threadMenuRef, () => setThreadMenuOpen(false), threadMenuOpen)
-
-  const activeThread = threads.find((th) => th.id === activeThreadId)
-  const activeThreadTitle = activeThread?.title?.trim()
-    ? activeThread.title.trim()
-    : t('workspace.chat.newConversation', 'New conversation')
+  useClickOutside(threadMenuRef, () => onMenuOpenChange(false), menuOpen)
 
   return (
     <>
@@ -48,14 +46,14 @@ export default function ThreadHistory({
           variant="ghost"
           size="sm"
           iconOnly
-          onClick={() => setThreadMenuOpen((v) => !v)}
+          onClick={() => onMenuOpenChange(!menuOpen)}
           title={t('workspace.chat.threadHistory', 'Thread history')}
           aria-label={t('workspace.chat.threadHistory', 'Thread history')}
           disabled={streaming}
         >
           <ClockCounterClockwise className="h-4 w-4" />
         </UiButton>
-        {threadMenuOpen && (
+        {menuOpen && (
           <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
             {threads.length === 0 ? (
               <p className="px-3 py-2 text-label text-muted">
@@ -103,7 +101,7 @@ export default function ThreadHistory({
                       className="min-w-0 flex-1 truncate text-left"
                       onClick={() => {
                         setActiveThreadId(th.id)
-                        setThreadMenuOpen(false)
+                        onMenuOpenChange(false)
                       }}
                     >
                       {th.title?.trim() || `${t('workspace.chat.thread', 'Thread')} ${th.id.slice(0, 8)}`}
@@ -157,7 +155,7 @@ export default function ThreadHistory({
                 className="flex w-full items-center gap-1.5 border-t border-border px-2 py-1.5 text-label text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground"
                 onClick={() => {
                   void onExportThread(activeThreadId)
-                  setThreadMenuOpen(false)
+                  onMenuOpenChange(false)
                 }}
               >
                 <Download className="h-3 w-3" />
@@ -167,15 +165,6 @@ export default function ThreadHistory({
           </div>
         )}
       </div>
-      <button
-        type="button"
-        className="min-w-0 flex-1 truncate text-center text-xs font-medium text-foreground transition-colors duration-150 hover:text-accent disabled:opacity-40"
-        onClick={() => !streaming && setThreadMenuOpen((v) => !v)}
-        disabled={streaming}
-        title={activeThreadTitle}
-      >
-        {activeThreadTitle}
-      </button>
     </>
   )
 }

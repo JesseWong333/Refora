@@ -270,7 +270,7 @@ export function AgentTracePanel({
     <div className="rounded-xl border border-border bg-panel-2/80">
       <button
         type="button"
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+        className="flex w-full items-center gap-1.5 px-4 py-1.5 text-left"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
@@ -308,7 +308,7 @@ export function AgentTracePanel({
         />
       </button>
       {open && (
-        <div ref={contentRef} className="flex flex-col gap-0 px-2.5 pb-2 pt-0.5">
+        <div ref={contentRef} className="flex flex-col gap-0 px-4 pb-2 pt-0.5">
           {visible.length === 0 ? (
             <p className="px-1 py-1 text-xs text-muted">
               {t('workspace.chat.traceEmpty', 'No tool or model steps yet.')}

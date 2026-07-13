@@ -26,6 +26,7 @@ export interface ChatInputProps {
   onCancel: () => void
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   inputAreaRef: React.RefObject<HTMLDivElement | null>
+  toolbar?: React.ReactNode
 }
 
 export default function ChatInput({
@@ -42,7 +43,8 @@ export default function ChatInput({
   onSend,
   onCancel,
   textareaRef,
-  inputAreaRef
+  inputAreaRef,
+  toolbar
 }: ChatInputProps) {
   const { t } = useTranslation()
   const [workspaceDocs, setWorkspaceDocs] = useState<Array<{ docId: string; title: string }>>([])
@@ -86,7 +88,7 @@ export default function ChatInput({
 
   return (
     <div ref={inputAreaRef} className="shrink-0 p-3">
-      <div className="flex flex-col rounded-xl border border-border bg-panel-2 shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
+      <div className="flex flex-col rounded-xl border border-border bg-input-area shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
         {selectedAttachments.length > 0 && (
           <div className="flex flex-wrap gap-1 px-2 pt-1">
             {selectedAttachments.map((docId) => {
@@ -200,6 +202,7 @@ export default function ChatInput({
             )}
           </div>
           <div className="ml-auto flex items-center gap-1">
+            {toolbar}
             {streaming ? (
               <UiButton
                 variant="danger"
