@@ -971,7 +971,7 @@ export function createAiAgentService(
           trace.failOpen('Cancelled by user')
           finalText =
             finalText.length > 0
-              ? `${finalText}\n\n[Response cancelled by user]`
+              ? finalText
               : '[Response cancelled by user]'
         } else {
           const isRecursionError =

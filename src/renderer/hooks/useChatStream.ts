@@ -328,12 +328,10 @@ export function useChatStream({
       cancelAnimationFrame(rafIdRef.current)
       rafIdRef.current = null
     }
+    setStreamingText(streamingTextRef.current)
+    setStreamingReasoning(streamingReasoningRef.current)
     isSendingRef.current = false
     setStreaming(false)
-    streamingTextRef.current = ''
-    streamingReasoningRef.current = ''
-    setStreamingText('')
-    setStreamingReasoning('')
   }, [])
 
   const handleRegenerate = useCallback(() => {
