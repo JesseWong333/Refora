@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import clsx from 'clsx'
 import { ThemeProvider, ContextMenuHost } from '@lobehub/ui'
 import { theme as antdTheme } from 'antd'
+import { IconContext } from '@phosphor-icons/react'
 import Sidebar from './components/Sidebar'
 import DocumentList from './components/DocumentList'
 import DetailPanel from './components/DetailPanel'
@@ -153,6 +154,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
     : { width: `${sidebarWidth}px` }
 
   return (
+    <IconContext.Provider value={{ weight: 'regular' }}>
     <ThemeProvider
       appearance={resolvedTheme}
       themeMode={themeMode === 'system' ? 'auto' : themeMode}
@@ -169,8 +171,8 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
           </div>
         ) : (
           <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-            <div style={sidebarStyle} className="relative z-30 shrink-0 overflow-hidden">
-              <div className="h-full min-h-0 py-0">
+            <div style={sidebarStyle} className="relative z-30 shrink-0">
+              <div className="h-full min-h-0" style={{ padding: 'var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset)' }}>
                 <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
               </div>
             </div>
@@ -214,5 +216,6 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
         <Toast />
       </div>
     </ThemeProvider>
+    </IconContext.Provider>
   )
 }

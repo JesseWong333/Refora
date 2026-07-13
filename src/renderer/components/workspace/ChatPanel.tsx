@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, X, RotateCcw } from 'lucide-react'
+import { Plus, X, ArrowCounterClockwise } from '@phosphor-icons/react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
 import type { AiProvider, ProviderModelInfo } from '../../../shared/ipc-types'
@@ -306,7 +306,7 @@ export default function ChatPanel() {
                 title={t('workspace.chat.retry', 'Retry')}
                 aria-label={t('workspace.chat.retry', 'Retry')}
               >
-                <RotateCcw className="h-3 w-3" />
+                <ArrowCounterClockwise className="h-3 w-3" />
               </button>
             )}
             <button

@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next'
 import {
   Check,
   Copy,
-  RotateCcw,
-  Bot,
-  Sparkles,
+  ArrowCounterClockwise,
+  Robot,
+  Sparkle,
   ArrowDown
-} from 'lucide-react'
+} from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, createMarkdownComponents, urlTransform } from '../../utils/markdown'
 import { useDocumentStore } from '../../store/documentStore'
@@ -218,13 +218,13 @@ export default function ChatMessages({
           <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
             {providers.length === 0 ? (
               <>
-                <Bot className="h-10 w-10 text-muted/50" />
+                <Robot className="h-10 w-10 text-muted/50" />
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">
                     {t('workspace.chat.noProviderTitle', 'No AI Provider')}
                   </p>
                   <p className="text-xs text-muted">
-                    {t('workspace.chat.noProvider', 'No AI provider configured. Add one in Settings.')}
+                    {t('workspace.chat.noProvider', 'No AI provider configured. Add one in Gear.')}
                   </p>
                 </div>
                 <UiButton
@@ -234,12 +234,12 @@ export default function ChatMessages({
                     window.dispatchEvent(new CustomEvent('refora:open-settings'))
                   }}
                 >
-                  {t('topbar.settings', 'Settings')}
+                  {t('topbar.settings', 'Gear')}
                 </UiButton>
               </>
             ) : (
               <>
-                <Sparkles className="h-8 w-8 text-accent/60" />
+                <Sparkle className="h-8 w-8 text-accent/60" />
                 <p className="text-xs text-muted">
                   {t('workspace.chatPlaceholder', 'Ask anything about the papers in this workspace.')}
                 </p>
@@ -276,6 +276,9 @@ export default function ChatMessages({
                 m.role === 'assistant' && idx === lastAssistantIdx && !streaming
               return (
                 <Fragment key={m.id}>
+                  {showTraceHere && (
+                    <AgentTracePanel steps={runSteps} streaming={false} />
+                  )}
                   <div
                     className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
@@ -305,7 +308,7 @@ export default function ChatMessages({
                                   title={t('workspace.chat.regenerate', 'Regenerate')}
                                   aria-label={t('workspace.chat.regenerate', 'Regenerate')}
                                 >
-                                  <RotateCcw className="h-3 w-3" />
+                                  <ArrowCounterClockwise className="h-3 w-3" />
                                 </button>
                               )}
                             </div>
@@ -313,9 +316,6 @@ export default function ChatMessages({
                         )}
                     </div>
                   </div>
-                  {showTraceHere && (
-                    <AgentTracePanel steps={runSteps} streaming={false} />
-                  )}
                 </Fragment>
               )
             })}
@@ -360,7 +360,7 @@ export default function ChatMessages({
       {showScrollBtn && (
         <button
           type="button"
-          className="absolute left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-panel p-1.5 shadow-lg transition-colors duration-150 hover:bg-hover"
+          className="absolute right-4 z-10 rounded-full border border-border bg-panel p-1.5 shadow-lg transition-colors duration-150 hover:bg-hover"
           style={{ bottom: inputAreaHeight > 0 ? inputAreaHeight + 8 : 80 }}
           onClick={() => {
             const el = scrollRef.current

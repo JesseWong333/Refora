@@ -1,11 +1,11 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  MessageSquare,
-  Pencil,
+  ClockCounterClockwise,
+  PencilSimple,
   Download,
-  Trash2
-} from 'lucide-react'
+  Trash
+} from '@phosphor-icons/react'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useConfirmStore } from '../../store/confirmStore'
@@ -53,7 +53,7 @@ export default function ThreadHistory({
           aria-label={t('workspace.chat.threadHistory', 'Thread history')}
           disabled={streaming}
         >
-          <MessageSquare className="h-4 w-4" />
+          <ClockCounterClockwise className="h-4 w-4" />
         </UiButton>
         {threadMenuOpen && (
           <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
@@ -121,7 +121,7 @@ export default function ThreadHistory({
                       title={t('common.rename', 'Rename')}
                       aria-label={t('common.rename', 'Rename')}
                     >
-                      <Pencil className="h-3 w-3" />
+                      <PencilSimple className="h-3 w-3" />
                     </button>
                   )}
                   {renamingThreadId !== th.id && (
@@ -145,7 +145,7 @@ export default function ThreadHistory({
                       title={t('common.delete', 'Delete')}
                       aria-label={t('common.delete', 'Delete')}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash className="h-3 w-3" />
                     </button>
                   )}
                 </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Plus, PencilSimple, Trash, CircleNotch } from '@phosphor-icons/react'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
@@ -160,13 +160,13 @@ export default function SidebarCategories() {
         {
           key: 'rename',
           label: t('sidebar.renameCategory'),
-          icon: <Pencil className="h-3.5 w-3.5" />,
+          icon: <PencilSimple className="h-3.5 w-3.5" />,
           onClick: () => startRename(cat),
         },
         {
           key: 'delete',
           label: t('sidebar.deleteCategory'),
-          icon: <Trash2 className="h-3.5 w-3.5" />,
+          icon: <Trash className="h-3.5 w-3.5" />,
           onClick: () => handleDelete(cat),
           danger: true,
         },
@@ -236,7 +236,7 @@ export default function SidebarCategories() {
                 />
               ) : (
                 <SidebarItem
-                  icon={isPending ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : undefined}
+                  icon={isPending ? <CircleNotch className="h-4 w-4 animate-spin text-accent" /> : undefined}
                   label={`${c.name} (${c.count ?? 0})`}
                   active={listMode.mode === 'category' && listMode.categoryId === c.id}
                   onClick={() => handleCategoryClick(c)}

@@ -1,5 +1,5 @@
 import { useState, useRef, type ComponentPropsWithoutRef } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy } from '@phosphor-icons/react'
 import type { Components } from 'react-markdown'
 import { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'

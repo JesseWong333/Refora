@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FilePlus } from 'lucide-react'
+import { FilePlus } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useDocumentStore } from '../../store/documentStore'
 import { api } from '../../ipc'

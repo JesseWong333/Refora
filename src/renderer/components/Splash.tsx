@@ -1,4 +1,4 @@
-import { BookOpen } from 'lucide-react'
+import { BookOpen } from '@phosphor-icons/react'
 
 export default function Splash() {
   return (

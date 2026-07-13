@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { Sparkles, FileText, Trash2, Loader2, BookOpen, AlertCircle, RotateCw } from 'lucide-react'
+import { Sparkle, FileText, Trash, CircleNotch, BookOpen, WarningCircle, ArrowClockwise } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import { Button, Badge, cardClassName } from '../ui'
 import type { AiSummary, Document } from '../../../shared/ipc-types'
@@ -42,7 +42,7 @@ export default function PaperCard({
       {
         key: 'summarize',
         label: t('workspace.aiSummary'),
-        icon: <Sparkles className="h-3.5 w-3.5" />,
+        icon: <Sparkle className="h-3.5 w-3.5" />,
         onClick: onSummarize
       },
       {
@@ -55,7 +55,7 @@ export default function PaperCard({
       {
         key: 'remove',
         label: t('workspace.removeFromWorkspace'),
-        icon: <Trash2 className="h-3.5 w-3.5" />,
+        icon: <Trash className="h-3.5 w-3.5" />,
         onClick: onRemove,
         danger: true
       }
@@ -89,7 +89,7 @@ export default function PaperCard({
                 title={t('workspace.aiSummary')}
                 aria-label={t('workspace.aiSummary')}
               >
-                <Sparkles className="h-3.5 w-3.5" />
+                <Sparkle className="h-3.5 w-3.5" />
               </button>
             )}
             <button
@@ -108,7 +108,7 @@ export default function PaperCard({
               title={t('workspace.removeFromWorkspace')}
               aria-label={t('workspace.removeFromWorkspace')}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
@@ -123,13 +123,13 @@ export default function PaperCard({
         <div className="min-h-0 flex-1 overflow-hidden text-xs">
           {summarizing ? (
             <div className="flex items-center gap-1.5 text-muted">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <CircleNotch className="h-3.5 w-3.5 animate-spin" />
               <span>{t('workspace.summarizing')}</span>
             </div>
           ) : summaryError ? (
             <div className="space-y-1.5">
               <div className="flex items-start gap-1.5 rounded-lg bg-error/10 px-2 py-1.5 text-error">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <WarningCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span className="line-clamp-3">{summaryError}</span>
               </div>
               <button
@@ -140,7 +140,7 @@ export default function PaperCard({
                 }}
                 className="inline-flex items-center gap-1 text-muted transition-colors duration-150 hover:text-foreground"
               >
-                <RotateCw className="h-3 w-3" />
+                <ArrowClockwise className="h-3 w-3" />
                 {t('workspace.retry')}
               </button>
             </div>
@@ -221,14 +221,14 @@ export default function PaperCard({
           <div className="space-y-4">
             {summaryError ? (
               <div className="flex items-start gap-1.5 rounded-lg bg-error/10 px-3 py-2 text-sm text-error">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <WarningCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{summaryError}</span>
               </div>
             ) : (
               <p className="text-sm text-muted">{t('workspace.summarizeHint')}</p>
             )}
             <div className="flex justify-end">
-              <Button variant="ghost" size="md" icon={<Sparkles className="h-3.5 w-3.5" />} onClick={onSummarize}>
+              <Button variant="ghost" size="md" icon={<Sparkle className="h-3.5 w-3.5" />} onClick={onSummarize}>
                 {summaryError ? t('workspace.retry') : t('workspace.aiSummary')}
               </Button>
             </div>

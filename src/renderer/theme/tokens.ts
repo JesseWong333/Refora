@@ -47,11 +47,11 @@ const darkPalette: ColorPalette = {
 }
 
 const lightPalette: ColorPalette = {
-  background: '#ececed',
+  background: '#ffffff',
   foreground: '#1d1d1f',
   muted: '#5f5f64',
   textTertiary: '#8e8e93',
-  panel: '#ffffff',
+  panel: '#f7f7f7',
   panel2: '#f0f0f0',
   border: '#d2d2d7',
   borderSecondary: '#e5e5ea',

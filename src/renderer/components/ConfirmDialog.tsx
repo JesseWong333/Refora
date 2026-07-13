@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
+import { Trash } from '@phosphor-icons/react'
 import { Modal } from '@lobehub/ui'
 import { Button as UiButton } from './ui'
 import { useDocumentStore } from '../store/documentStore'
@@ -28,7 +28,7 @@ export default function ConfirmDialog() {
             <UiButton
               variant={confirmRequest.danger ? 'danger' : 'primary'}
               size="md"
-              icon={confirmRequest.danger ? <Trash2 className="h-3.5 w-3.5" /> : undefined}
+              icon={confirmRequest.danger ? <Trash className="h-3.5 w-3.5" /> : undefined}
               onClick={() => {
                 const fn = confirmRequest.onConfirm
                 dismissConfirm()
@@ -66,7 +66,7 @@ export default function ConfirmDialog() {
           <UiButton
             variant="danger"
             size="md"
-            icon={<Trash2 className="h-3.5 w-3.5" />}
+            icon={<Trash className="h-3.5 w-3.5" />}
             onClick={confirmDeleteAction}
           >
             {t('common.delete')}

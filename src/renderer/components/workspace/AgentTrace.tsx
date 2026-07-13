@@ -1,23 +1,23 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  ChevronDown,
-  ChevronRight,
+  CaretDown,
+  CaretRight,
   Wrench,
-  Bot,
-  Activity,
-  CheckCircle2,
+  Robot,
+  Pulse,
+  CheckCircle,
   XCircle,
-  Loader2,
-  Search,
+  CircleNotch,
+  MagnifyingGlass,
   FileText,
-  FileSearch,
+  FileMagnifyingGlass,
   FilePlus,
-  ClipboardList,
+  ClipboardText,
   FolderOpen,
   ArrowDown,
   ArrowUp
-} from 'lucide-react'
+} from '@phosphor-icons/react'
 import type { AgentTraceStep } from '../../../shared/ipc-types'
 
 type TFunc = ReturnType<typeof useTranslation>['t']
@@ -90,13 +90,13 @@ function formatToolLabel(
   }
 }
 
-const TOOL_ICONS: Record<string, typeof Search> = {
-  search: Search,
+const TOOL_ICONS: Record<string, typeof MagnifyingGlass> = {
+  search: MagnifyingGlass,
   read: FileText,
-  summary: FileSearch,
-  metadata: FileSearch,
+  summary: FileMagnifyingGlass,
+  metadata: FileMagnifyingGlass,
   open: FolderOpen,
-  report: ClipboardList,
+  report: ClipboardText,
   add: FilePlus
 }
 
@@ -120,7 +120,7 @@ function TraceStepRow({ step, isLast, forceOpen }: { step: AgentTraceStep; isLas
   const duration = formatDuration(step)
   const toolLabel = formatToolLabel(step, t)
 
-  const StatusIcon = step.status === 'running' ? Loader2 : step.status === 'error' ? XCircle : CheckCircle2
+  const StatusIcon = step.status === 'running' ? CircleNotch : step.status === 'error' ? XCircle : CheckCircle
   const statusColor =
     step.status === 'running'
       ? 'text-accent'
@@ -137,8 +137,8 @@ function TraceStepRow({ step, isLast, forceOpen }: { step: AgentTraceStep; isLas
   const KindIcon = step.kind === 'tool'
     ? (toolLabel ? (TOOL_ICONS[toolLabel.icon] ?? Wrench) : Wrench)
     : step.kind === 'llm'
-      ? Bot
-      : Activity
+      ? Robot
+      : Pulse
 
   const displayText = toolLabel
     ? toolLabel.text
@@ -165,9 +165,9 @@ function TraceStepRow({ step, isLast, forceOpen }: { step: AgentTraceStep; isLas
         >
           {hasBody ? (
             open ? (
-              <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+              <CaretDown className="h-3 w-3 shrink-0 text-muted" />
             ) : (
-              <ChevronRight className="h-3 w-3 shrink-0 text-muted" />
+              <CaretRight className="h-3 w-3 shrink-0 text-muted" />
             )
           ) : (
             <span className="w-3 shrink-0" />
@@ -258,7 +258,7 @@ export function AgentTracePanel({
 
   if (visible.length === 0 && !streaming) return null
 
-  const SummaryIcon = isRunning ? Loader2 : hasError ? XCircle : CheckCircle2
+  const SummaryIcon = isRunning ? CircleNotch : hasError ? XCircle : CheckCircle
   const summaryColor = isRunning ? 'text-accent' : hasError ? 'text-error' : 'text-muted'
   const summaryLabel = isRunning
     ? t('workspace.chat.traceRunningLabel', 'running…')
@@ -303,7 +303,7 @@ export function AgentTracePanel({
             {expandAll ? t('workspace.chat.collapseAll', 'Collapse all') : t('workspace.chat.expandAll', 'Expand all')}
           </button>
         )}
-        <ChevronDown
+        <CaretDown
           className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'} ${visible.length > 0 && open ? '' : 'ml-auto'}`}
         />
       </button>

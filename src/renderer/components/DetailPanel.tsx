@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { RefreshCw, ArrowLeftRight, X, Trash2, FolderOpen, FileText } from 'lucide-react'
+import { ArrowClockwise, ArrowsLeftRight, X, Trash, FolderOpen, FileText } from '@phosphor-icons/react'
 import { Button } from './ui'
 import { Textarea } from './ui'
 import { PanelHeader } from './ui'
@@ -206,7 +206,7 @@ function InlineField({
             title={t('detail.applyRemote') ?? 'Apply remote value'}
             onClick={applyRemote}
           >
-            <ArrowLeftRight className="h-4 w-4" />
+            <ArrowsLeftRight className="h-4 w-4" />
           </Button>
         )}
       </div>
@@ -466,7 +466,7 @@ function SingleDetail({ doc }: { doc: Document }) {
         <Button
           variant="link"
           size="sm"
-          icon={<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />}
+          icon={<ArrowClockwise className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />}
           onClick={handleRefresh}
           disabled={refreshing}
         >
@@ -583,7 +583,7 @@ function SingleDetail({ doc }: { doc: Document }) {
         variant="ghost"
         size="sm"
         className="self-start text-error"
-        icon={<Trash2 className="h-3.5 w-3.5" />}
+        icon={<Trash className="h-3.5 w-3.5" />}
         onClick={() => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm'))}
       >
         {t('common.delete')}
@@ -621,7 +621,7 @@ function BulkBar({
           variant="ghost"
           size="md"
           className="self-start text-error"
-          icon={<Trash2 className="h-4 w-4" />}
+          icon={<Trash className="h-4 w-4" />}
           onClick={() =>
             requestDeleteConfirm(
               selectedIds,
@@ -653,7 +653,7 @@ function BulkBar({
           variant="ghost"
           size="md"
           className="self-start"
-          icon={<RefreshCw className="h-4 w-4" />}
+          icon={<ArrowClockwise className="h-4 w-4" />}
           onClick={() => bulkRefreshMetadata(selectedIds)}
         >
           {t('detail.refreshMetadata')} ({count})

@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { X } from '@phosphor-icons/react'
 import { useTranslation } from 'react-i18next'
 import { Button } from './Button'
 

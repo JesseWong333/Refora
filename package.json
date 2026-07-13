@@ -25,6 +25,7 @@
     "@lobehub/fluent-emoji": "^4.1.0",
     "@lobehub/icons": "^5.10.1",
     "@lobehub/ui": "^5.19.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.10.0",
     "antd": "^6.5.0",
     "antd-style": "^4.1.0",
@@ -34,6 +35,7 @@
     "electron-log": "^5.1.0",
     "fast-xml-parser": "^5.9.3",
     "i18next": "^23.12.0",
+    "katex": "^0.16.47",
     "langchain": "^1.5.3",
     "lucide-react": "^1.23.0",
     "motion": "^12.42.2",
@@ -45,7 +47,6 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "katex": "^0.16.47",
     "uuid": "^9.0.1",
     "zustand": "^4.5.0"
   },

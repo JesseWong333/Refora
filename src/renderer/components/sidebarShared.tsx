@@ -41,7 +41,7 @@ export function SidebarItem({
         if (e.key === 'Enter' && onClick) onClick()
       }}
     >
-      {icon && <span className="flex-shrink-0 opacity-70">{icon}</span>}
+      {icon && <span className="flex-shrink-0">{icon}</span>}
       <span className="truncate">{label}</span>
     </div>
   )

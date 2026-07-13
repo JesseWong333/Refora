@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Pencil, Trash2, LayoutDashboard } from 'lucide-react'
+import { Plus, PencilSimple, Trash, SquaresFour } from '@phosphor-icons/react'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useWorkspaceStore } from '../store/workspaceStore'
@@ -129,13 +129,13 @@ export default function SidebarWorkspaces() {
         {
           key: 'rename',
           label: t('sidebar.renameWorkspace'),
-          icon: <Pencil className="h-3.5 w-3.5" />,
+          icon: <PencilSimple className="h-3.5 w-3.5" />,
           onClick: () => startWsRename(ws),
         },
         {
           key: 'delete',
           label: t('sidebar.deleteWorkspace'),
-          icon: <Trash2 className="h-3.5 w-3.5" />,
+          icon: <Trash className="h-3.5 w-3.5" />,
           onClick: () => showConfirm({
             title: t('common.delete'),
             message: t('sidebar.deleteWorkspaceConfirm', { name: ws.name }),
@@ -211,7 +211,7 @@ export default function SidebarWorkspaces() {
                 />
               ) : (
                 <SidebarItem
-                  icon={<LayoutDashboard className="h-4 w-4" />}
+                  icon={<SquaresFour className="h-4 w-4" />}
                   label={w.name}
                   active={activeWorkspaceId === w.id}
                   disabled={chatStreaming && activeWorkspaceId !== w.id}

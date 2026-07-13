@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Files, Clock, Plus, Star } from 'lucide-react'
+import { Files, Clock, Plus, Star } from '@phosphor-icons/react'
 import { useDocumentStore } from '../store/documentStore'
 import type { ListMode } from '../../shared/ipc-types'
 import { SidebarItem } from './sidebarShared'

@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-import { BookOpen } from 'lucide-react'
+import { BookOpen } from '@phosphor-icons/react'
 import { api } from '../ipc'
 import { errorMessage } from '../../shared/ipc-types'
 import { Button } from './ui'

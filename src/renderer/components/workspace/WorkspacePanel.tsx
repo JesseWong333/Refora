@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Maximize2, Minimize2, X } from 'lucide-react'
+import { ArrowsOutSimple, ArrowsInSimple, X } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { api } from '../../ipc'
 import ResizeDivider from '../ResizeDivider'
@@ -69,7 +69,7 @@ export default function WorkspacePanel() {
             title={fullscreen ? t('workspace.exitFullscreen') : t('workspace.enterFullscreen')}
             aria-label={fullscreen ? t('workspace.exitFullscreen') : t('workspace.enterFullscreen')}
           >
-            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {fullscreen ? <ArrowsInSimple className="h-4 w-4" /> : <ArrowsOutSimple className="h-4 w-4" />}
           </button>
           {!fullscreen && (
             <button

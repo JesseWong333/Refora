@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Send,
+  PaperPlaneTilt,
   Square,
   Paperclip
-} from 'lucide-react'
+} from '@phosphor-icons/react'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { Button as UiButton } from '../ui'
 import { api } from '../../ipc'
@@ -121,11 +121,11 @@ export default function ChatInput({
             onKeyDown={onKeyDown}
             placeholder={t(
               'workspace.chat.inputPlaceholder',
-              'Send a message… (Enter to send, Shift+Enter for newline)'
+              'PaperPlaneTilt a message… (Enter to send, Shift+Enter for newline)'
             )}
             disabled={providers.length === 0}
-            aria-label={t('workspace.chat.inputPlaceholder', 'Send a message…')}
-            title={`${t('workspace.chat.inputPlaceholder', 'Send a message…')} (⌘L)`}
+            aria-label={t('workspace.chat.inputPlaceholder', 'PaperPlaneTilt a message…')}
+            title={`${t('workspace.chat.inputPlaceholder', 'PaperPlaneTilt a message…')} (⌘L)`}
           />
           {input.length > MAX_INPUT_LENGTH * 0.8 && (
             <span
@@ -220,10 +220,10 @@ export default function ChatInput({
                 className="shrink-0"
                 onClick={onSend}
                 disabled={!canSend}
-                aria-label={t('workspace.chat.send', 'Send')}
-                title={`${t('workspace.chat.send', 'Send')} (⏎)`}
+                aria-label={t('workspace.chat.send', 'PaperPlaneTilt')}
+                title={`${t('workspace.chat.send', 'PaperPlaneTilt')} (⏎)`}
               >
-                <Send className="h-3.5 w-3.5" />
+                <PaperPlaneTilt className="h-3.5 w-3.5" />
               </UiButton>
             )}
           </div>

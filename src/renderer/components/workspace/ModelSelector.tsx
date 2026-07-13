@@ -2,9 +2,9 @@ import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Check,
-  ChevronDown,
-  Sparkles
-} from 'lucide-react'
+  CaretDown,
+  Sparkle
+} from '@phosphor-icons/react'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { Button as UiButton, Input as UiInput } from '../ui'
 import {
@@ -88,7 +88,7 @@ export default function ModelSelector({
           aria-haspopup="listbox"
         >
           <span className="truncate font-medium">{displayModelLabel}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+          <CaretDown className="h-3 w-3 shrink-0 text-muted" />
         </button>
 
         {modelMenuOpen && (
@@ -294,7 +294,7 @@ export default function ModelSelector({
               : t('workspace.chat.deepThinking', 'Deep thinking')
         }
       >
-        <Sparkles className="h-3.5 w-3.5" />
+        <Sparkle className="h-3.5 w-3.5" />
       </button>
     </>
   )

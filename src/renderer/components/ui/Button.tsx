@@ -1,8 +1,8 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
-import { Loader2 } from 'lucide-react'
+import { CircleNotch } from '@phosphor-icons/react'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'link'
-export type ButtonSize = 'sm' | 'md' | 'lg'
+export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -13,12 +13,14 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
+  xs: 'h-5 text-xs gap-1 px-1.5',
   sm: 'h-6 text-xs gap-1 px-2',
   md: 'h-8 text-xs gap-1.5 px-2.5',
   lg: 'h-10 text-sm gap-2 px-4',
 }
 
 const ICON_ONLY_SIZE_CLASSES: Record<ButtonSize, string> = {
+  xs: 'h-5 w-5 p-0',
   sm: 'h-6 w-6 p-0',
   md: 'h-8 w-8 p-0',
   lg: 'h-10 w-10 p-0',
@@ -71,11 +73,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {...props}
     >
       {loading ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <CircleNotch className="h-3.5 w-3.5 animate-spin" />
       ) : icon ? (
         <span className="flex shrink-0 items-center">{icon}</span>
       ) : null}
-      {children && !iconOnly && <span className="truncate">{children}</span>}
+      {children && (iconOnly ? children : <span className="truncate">{children}</span>)}
     </button>
   )
 })

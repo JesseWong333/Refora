@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal, Button } from '@lobehub/ui'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { FileBarChart, Trash2, Pencil, Download } from 'lucide-react'
+import { ChartBar, Trash, PencilSimple, Download } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
@@ -49,7 +49,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
       {
         key: 'edit',
         label: t('workspace.reportEdit'),
-        icon: <Pencil className="h-3.5 w-3.5" />,
+        icon: <PencilSimple className="h-3.5 w-3.5" />,
         onClick: () => {
           setExpanded(true)
           enterEditMode()
@@ -64,7 +64,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
       {
         key: 'delete',
         label: t('workspace.reportDelete'),
-        icon: <Trash2 className="h-3.5 w-3.5" />,
+        icon: <Trash className="h-3.5 w-3.5" />,
         onClick: () => setExpanded(true),
         danger: true
       }
@@ -101,7 +101,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
         onContextMenu={handleContextMenu}
       >
         <div className="flex shrink-0 items-start gap-2">
-          <FileBarChart className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <ChartBar className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
           <div className="min-w-0 flex-1">
             <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{report.title}</h3>
             <p className="mt-0.5 text-xs text-muted">{formatDate(report.createdAt)}</p>
@@ -114,7 +114,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
               title={t('workspace.reportEdit')}
               aria-label={t('workspace.reportEdit')}
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <PencilSimple className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -132,7 +132,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
               title={t('workspace.reportDelete')}
               aria-label={t('workspace.reportDelete')}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
@@ -162,7 +162,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
                 }
               }}
             >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              <Trash className="mr-1.5 h-3.5 w-3.5" />
               {confirmDelete ? t('common.confirm') : t('workspace.reportDelete')}
             </Button>
             <div className="flex gap-2">
@@ -181,7 +181,7 @@ export default function ReportCard({ report, onDelete, onUpdate }: ReportCardPro
                 </>
               ) : (
                 <Button onClick={enterEditMode}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                  <PencilSimple className="mr-1.5 h-3.5 w-3.5" />
                   {t('workspace.reportEdit')}
                 </Button>
               )}

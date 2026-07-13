@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRef, useState, useCallback, type ReactNode } from 'react'
-import { ChevronUp, ChevronDown, Star, AlertTriangle, Zap, Check, FileText, FolderOpen, Copy, RefreshCw, Trash2, Search, FolderTree, Plus, FilePlus } from 'lucide-react'
+import { CaretUp, CaretDown, Star, Warning, Lightning, Check, FileText, FolderOpen, Copy, ArrowClockwise, Trash, MagnifyingGlass, TreeStructure, Plus, FilePlus } from '@phosphor-icons/react'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
@@ -52,34 +52,43 @@ function ColumnHeader({
   id,
   label,
   width,
+  displayWidth,
   sortField,
   sortDir,
   onSort,
   onResize,
+  onLiveResize,
+  onLiveResizeEnd,
   onContextMenu
 }: {
   id: ColumnId
   label: string
   width: number
+  displayWidth: number
   sortField: SortField
   sortDir: 'asc' | 'desc'
   onSort: () => void
   onResize: (id: ColumnId, width: number) => void
+  onLiveResize: (id: ColumnId, width: number) => void
+  onLiveResizeEnd: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const isSorted = sortField === id
   const startRef = useRef({ x: 0, w: 0 })
-  const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const currentWidthRef = useRef(width)
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
       startRef.current = { x: e.clientX, w: width }
+      currentWidthRef.current = width
 
       const onMouseMove = (ev: MouseEvent) => {
         const delta = ev.clientX - startRef.current.x
-        setDragWidth(Math.max(MIN_COL_WIDTH, startRef.current.w + delta))
+        const newWidth = Math.max(MIN_COL_WIDTH, startRef.current.w + delta)
+        currentWidthRef.current = newWidth
+        onLiveResize(id, newWidth)
       }
 
       const onMouseUp = () => {
@@ -87,11 +96,8 @@ function ColumnHeader({
         document.removeEventListener('mouseup', onMouseUp)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        setDragWidth((dw) => {
-          const final = dw ?? startRef.current.w
-          onResize(id, final)
-          return null
-        })
+        onResize(id, currentWidthRef.current)
+        onLiveResizeEnd()
       }
 
       document.addEventListener('mousemove', onMouseMove)
@@ -99,10 +105,8 @@ function ColumnHeader({
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     },
-    [id, width, onResize]
+    [id, width, onResize, onLiveResize, onLiveResizeEnd]
   )
-
-  const displayWidth = dragWidth ?? width
 
   return (
     <div
@@ -114,7 +118,7 @@ function ColumnHeader({
       <span className="truncate">{label}</span>
       {isSorted && (
         <span className="ml-0.5">
-          {sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {sortDir === 'asc' ? <CaretUp className="h-3 w-3" /> : <CaretDown className="h-3 w-3" />}
         </span>
       )}
       <div
@@ -188,6 +192,16 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
   const parentRef = useRef<HTMLDivElement>(null)
 
   const cols = visibleColumns(listColumnState.columns)
+
+  const [liveWidths, setLiveWidths] = useState<Record<string, number>>({})
+
+  const handleLiveResize = useCallback((id: ColumnId, w: number) => {
+    setLiveWidths((prev) => ({ ...prev, [id]: w }))
+  }, [])
+
+  const handleLiveResizeEnd = useCallback(() => {
+    setLiveWidths({})
+  }, [])
 
   const displayDocs = isSearching ? searchResults : documents
 
@@ -293,7 +307,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
         {
           key: 'addToCategory',
           label: t('sidebar.addToCategory'),
-          icon: <FolderTree className="h-3.5 w-3.5" />,
+          icon: <TreeStructure className="h-3.5 w-3.5" />,
           type: 'submenu',
           children: [
             ...categoryItems,
@@ -334,13 +348,13 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
         {
           key: 'refreshMetadata',
           label: t('detail.refreshMetadata'),
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          icon: <ArrowClockwise className="h-3.5 w-3.5" />,
           onClick: () => refreshMetadata(doc.id),
         },
         {
           key: 'delete',
           label: t('common.delete'),
-          icon: <Trash2 className="h-3.5 w-3.5" />,
+          icon: <Trash className="h-3.5 w-3.5" />,
           onClick: () =>
             requestDeleteConfirm(
               effectiveIds,
@@ -414,7 +428,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
 
   const colHeaderBar =
     cols.length > 0 ? (
-      <div className="flex border-b border-border bg-panel-2">
+      <div className="relative flex" style={{ background: 'linear-gradient(to right, var(--color-background), var(--color-panel) 60px)' }}>
         <div className="w-10 flex-shrink-0" />
         <div className="w-8 flex-shrink-0" />
         <div className="w-8 flex-shrink-0" />
@@ -424,13 +438,17 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             id={col.id}
             label={t(`list.${col.id}` as never)}
             width={col.width}
+            displayWidth={liveWidths[col.id] ?? col.width}
             sortField={listColumnState.sort.field}
             sortDir={listColumnState.sort.dir}
             onSort={() => setSort(col.id)}
             onResize={handleResize}
+            onLiveResize={handleLiveResize}
+            onLiveResizeEnd={handleLiveResizeEnd}
             onContextMenu={handleColContextMenu}
           />
         ))}
+        <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(to right, var(--color-background), var(--color-border) 100px)' }} />
       </div>
     ) : null
 
@@ -440,7 +458,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="relative z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border drag-region">
+      <div className="relative z-10 flex h-14 shrink-0 items-center gap-2 drag-region">
         {sidebarCollapsed && (
           <div
             className="no-drag self-stretch shrink-0"
@@ -448,12 +466,12 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             style={{ width: 'var(--toolbar-preserve, 168px)' }}
           />
         )}
-        <div className="mx-auto flex items-center gap-[10px] no-drag">
-          <Search className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
+        <div className="mx-auto flex w-1/2 items-center gap-[10px] no-drag">
+          <MagnifyingGlass className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
           <UiInput
             variant="outlined"
             inputSize="md"
-            className="w-[280px] no-drag"
+            className="w-full no-drag"
             placeholder={t('topbar.search')}
             title={`${t('topbar.search')} (⌘F)`}
             value={searchQuery}
@@ -473,6 +491,14 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             <span className="shrink-0 text-sm text-muted font-medium whitespace-nowrap">{headerLabel}</span>
           )}
         </div>
+        {sidebarCollapsed && (
+          <div
+            className="shrink-0 self-stretch"
+            aria-hidden="true"
+            style={{ width: 'var(--toolbar-preserve, 168px)' }}
+          />
+        )}
+        <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(to right, var(--color-background), var(--color-border) 100px)' }} />
       </div>
 
       {colHeaderBar}
@@ -484,7 +510,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
           isSearching ? (
             <EmptyState
               className="h-full"
-              icon={<Search className="h-10 w-10" />}
+              icon={<MagnifyingGlass className="h-10 w-10" />}
               title={t('common.noSearchResults')}
               action={
                 <UiButton variant="secondary" size="md" onClick={clearSearch}>
@@ -562,7 +588,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                     <div className="w-8 flex-shrink-0 flex items-center justify-center text-center">
                       {isMissing ? (
                         <span title={t('detail.relocate') ?? 'Relocate'}>
-                          <AlertTriangle className="h-4 w-4 text-warning" />
+                          <Warning className="h-4 w-4 text-warning" />
                         </span>
                       ) : (
                         <button
@@ -602,7 +628,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                         <div
                           key={col.id}
                           className="truncate px-1"
-                          style={{ width: col.width, flexShrink: 0 }}
+                          style={{ width: liveWidths[col.id] ?? col.width, flexShrink: 0 }}
                         >
                           {col.id === 'title' ? (
                             <span className={`${isMissing ? 'text-muted' : 'text-foreground'}`}>
@@ -616,7 +642,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                     })}
                     {hasError && !isMissing && (
                       <div className="ml-1 flex-shrink-0" title={`${t('common.networkError')} (${doc.metadataAttempts})`}>
-                        <Zap className="h-3.5 w-3.5 text-error" aria-hidden="true" />
+                        <Lightning className="h-3.5 w-3.5 text-error" aria-hidden="true" />
                       </div>
                     )}
                   </div>

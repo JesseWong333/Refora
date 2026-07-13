@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { Modal, Button, Select } from '@lobehub/ui'
-import { Loader2 } from 'lucide-react'
+import { CircleNotch } from '@phosphor-icons/react'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
@@ -490,14 +490,14 @@ function AiProvidersSection() {
                   onChange={(e) => setModelFilter(e.target.value)}
                   placeholder={t(
                     'settings.aiProviders.searchModels',
-                    'Search models…'
+                    'MagnifyingGlass models…'
                   )}
                   inputSize="sm"
                 />
                 <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-panel-2">
                   {loadingModels ? (
                     <div className="flex items-center gap-2 px-2 py-3 text-label text-muted">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <CircleNotch className="h-3.5 w-3.5 animate-spin" />
                       {t('settings.aiProviders.loadingModels', 'Loading models…')}
                     </div>
                   ) : filteredModels.length === 0 ? (

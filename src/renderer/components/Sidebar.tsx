@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FilePlus, FolderPlus, PanelLeftClose, PanelLeftOpen, Loader2 } from 'lucide-react'
+import { FilePlus, FolderPlus, ArrowLineLeft, ArrowLineRight, CircleNotch } from '@phosphor-icons/react'
 import { useDocumentStore } from '../store/documentStore'
 import { errorMessage } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
@@ -56,39 +56,9 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             title={t('settings.sidebarCollapsed')}
             aria-label={t('settings.sidebarCollapsed')}
           >
-            <PanelLeftOpen className="h-3.5 w-3.5" />
+            <ArrowLineRight className="h-4 w-4" />
           </UiButton>
           <div className="toolbar-sep" aria-hidden="true" />
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleAddFiles}
-            title={`${t('topbar.addFile')} (⌘I)`}
-            aria-label={t('topbar.addFile')}
-          >
-            <FilePlus className="h-3.5 w-3.5" />
-          </UiButton>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleAddFolder}
-            title={t('topbar.addFolder')}
-            aria-label={t('topbar.addFolder')}
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-          </UiButton>
-        </div>
-        <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
-      </>
-    )
-  }
-
-  return (
-    <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
-      <div className={`drag-region flex h-12 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
-        <div className="ml-auto flex items-center no-drag">
           <UiButton
             variant="ghost"
             size="sm"
@@ -109,7 +79,16 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           >
             <FolderPlus className="h-4 w-4" />
           </UiButton>
-          <div className="mx-1 h-3.5 w-px bg-border" aria-hidden="true" />
+        </div>
+        <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      </>
+    )
+  }
+
+  return (
+    <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
+      <div className={`drag-region flex h-10 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
+        <div className="ml-auto mr-2 flex items-center gap-3 no-drag">
           <UiButton
             variant="ghost"
             size="sm"
@@ -118,7 +97,27 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             title={t('settings.sidebarCollapsed')}
             aria-label={t('settings.sidebarCollapsed')}
           >
-            <PanelLeftClose className="h-4 w-4" />
+            <ArrowLineLeft className="h-4 w-4" />
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={handleAddFiles}
+            title={`${t('topbar.addFile')} (⌘I)`}
+            aria-label={t('topbar.addFile')}
+          >
+            <FilePlus className="h-4 w-4" />
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={handleAddFolder}
+            title={t('topbar.addFolder')}
+            aria-label={t('topbar.addFolder')}
+          >
+            <FolderPlus className="h-4 w-4" />
           </UiButton>
         </div>
       </div>
@@ -141,7 +140,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
       {!importProgress && pendingMetadataCount > 0 && (
         <div className="mx-2 mb-1 flex items-center gap-2 text-label text-muted">
-          <Loader2 className="h-3 w-3 animate-spin text-accent" />
+          <CircleNotch className="h-3 w-3 animate-spin text-accent" />
           <span className="whitespace-nowrap">
             {t('topbar.refreshingMetadata', { count: pendingMetadataCount })}
           </span>
