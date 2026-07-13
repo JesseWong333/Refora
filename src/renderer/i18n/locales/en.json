@@ -273,7 +273,11 @@
       "toolAddDocs": "Adding to workspace…",
       "toolRequestSummary": "Requesting summary…",
       "regenerate": "Regenerate",
-      "exportChat": "Export conversation"
+      "exportChat": "Export conversation",
+      "cut": "Cut",
+      "copy": "Copy",
+      "paste": "Paste",
+      "selectAll": "Select All"
     }
   }
 }

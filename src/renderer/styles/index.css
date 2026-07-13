@@ -472,3 +472,18 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+[data-lobe-portal-host] {
+  --ant-color-bg-elevated: rgb(247, 247, 247);
+  --ant-color-text: #1d1d1f;
+  --ant-color-text-secondary: #5f5f64;
+  --ant-color-text-tertiary: #8e8e93;
+  --ant-color-text-disabled: #1d1d1f;
+  --ant-color-border: #d2d2d7;
+  --ant-color-fill-tertiary: rgba(0, 0, 0, 0.03);
+  --ant-color-fill-secondary: rgba(0, 0, 0, 0.05);
+}
+
+[data-lobe-portal-host] [role="menu"] {
+  min-width: 0;
+}

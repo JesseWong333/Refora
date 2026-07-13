@@ -77,12 +77,14 @@ const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content
   )
 })
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, className }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <button
       type="button"
-      className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
+      className={`shrink-0 rounded p-1 transition-opacity hover:text-foreground hover:opacity-100 ${
+        className ?? 'text-muted opacity-40'
+      }`}
       title="Copy"
       aria-label="Copy"
       onClick={() => {
@@ -201,7 +203,7 @@ export default function ChatMessages({
 
   return (
     <>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-3" style={{ paddingInline: 'clamp(12px, 7cqi, 64px)' }}>
         {loadingHistory ? (
           <div className="flex flex-col gap-3">
             {[0, 1, 2].map((i) => (
@@ -263,7 +265,7 @@ export default function ChatMessages({
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="mx-auto flex w-full max-w-[768px] flex-col gap-3">
             {displayMessages.map((m, idx) => {
               const runId = assistantRunForIdx[idx]
               const runSteps = runId ? (runTraceGroups.map.get(runId) ?? []) : []
@@ -282,39 +284,36 @@ export default function ChatMessages({
                   <div
                     className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div
-                      className={`max-w-[85%] break-words rounded-2xl px-3 py-2 text-xs ${
-                        m.role === 'user'
-                          ? 'whitespace-pre-wrap bg-accent text-white'
-                          : 'group bg-panel-2 text-foreground chat-markdown'
-                      }`}
-                    >
-                      {m.role === 'user'
-                        ? m.content
-                        : (
-                          <>
-                            {isCancelled ? (
-                              <span className="italic text-muted">{m.content}</span>
-                            ) : (
-                              <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>
-                            )}
-                            <div className="mt-1 flex justify-end gap-0.5">
-                              <CopyButton text={m.content} />
-                              {showRegenerate && (
-                                <button
-                                  type="button"
-                                  className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
-                                  onClick={() => onRegenerate()}
-                                  title={t('workspace.chat.regenerate', 'Regenerate')}
-                                  aria-label={t('workspace.chat.regenerate', 'Regenerate')}
-                                >
-                                  <ArrowCounterClockwise className="h-3 w-3" />
-                                </button>
-                              )}
-                            </div>
-                          </>
+                    {m.role === 'user' ? (
+                      <div className="group flex w-full flex-col items-end">
+                        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-none bg-[rgb(242,242,242)] px-3 py-2 text-xs break-words text-[#1d1d1f]">
+                          {m.content}
+                        </div>
+                        <CopyButton text={m.content} className="mt-1 text-muted opacity-0 group-hover:opacity-100" />
+                      </div>
+                    ) : (
+                      <div className="group w-full break-words text-xs text-foreground chat-markdown">
+                        {isCancelled ? (
+                          <span className="italic text-muted">{m.content}</span>
+                        ) : (
+                          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>
                         )}
-                    </div>
+                        <div className="mt-1 flex justify-end gap-0.5">
+                          <CopyButton text={m.content} />
+                          {showRegenerate && (
+                            <button
+                              type="button"
+                              className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
+                              onClick={() => onRegenerate()}
+                              title={t('workspace.chat.regenerate', 'Regenerate')}
+                              aria-label={t('workspace.chat.regenerate', 'Regenerate')}
+                            >
+                              <ArrowCounterClockwise className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Fragment>
               )
@@ -324,7 +323,7 @@ export default function ChatMessages({
             )}
             {streamingReasoning && (
               <div className="flex justify-start">
-                <details className="max-w-[85%] rounded-2xl bg-panel-2 px-3 py-2 text-xs" open>
+                <details className="w-full text-xs" open>
                   <summary className="cursor-pointer select-none font-medium text-muted">
                     {t('workspace.chat.reasoning', 'Reasoning')}
                   </summary>
@@ -336,14 +335,14 @@ export default function ChatMessages({
             )}
             {streamingText && (
               <div className="flex justify-start" aria-live="polite" aria-label={t('workspace.chat.streamingResponse', 'AI response')}>
-                <div className="max-w-[85%] break-words rounded-2xl bg-panel-2 px-3 py-2 text-xs text-foreground chat-markdown">
+                <div className="w-full break-words text-xs text-foreground chat-markdown">
                   <StreamingMarkdown content={streamingText} />
                 </div>
               </div>
             )}
             {streaming && !streamingText && !streamingReasoning && (
               <div className="flex justify-start" aria-live="polite">
-                <div className="flex items-center gap-1 rounded-2xl bg-panel-2 px-3 py-2">
+                <div className="flex items-center gap-1">
                   <span className="thinking-dot" />
                   <span className="thinking-dot" />
                   <span className="thinking-dot" />

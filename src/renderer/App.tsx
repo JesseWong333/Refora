@@ -190,7 +190,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
             )}
             <div
               className={clsx(
-                'relative z-20 shrink-0 overflow-hidden transition-[width] duration-200',
+                'relative z-20 min-w-0 overflow-hidden transition-[width] duration-200',
                 rightPanelOpen ? 'border-l border-border' : 'w-0 border-0'
               )}
               style={rightPanelOpen ? { width: `${detailWidth}px`, minWidth: 0 } : { width: 0 }}
@@ -205,7 +205,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
             {workspacePanelOpen && (
               <div
                 style={{ width: `${workspaceWidth}px` }}
-                className="relative z-20 min-h-0 min-w-0 shrink-0 overflow-hidden border-l border-border/50"
+                className="relative z-20 min-h-0 min-w-0 overflow-hidden border-l border-border/50"
               >
                 <WorkspacePanel />
               </div>

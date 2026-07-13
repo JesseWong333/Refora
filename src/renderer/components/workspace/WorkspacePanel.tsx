@@ -88,7 +88,7 @@ export default function WorkspacePanel() {
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <Board />
         </div>
-        <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="soft" />
+        <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="line" />
         <div
           style={{ height: `${chatHeight}px` }}
           className="min-h-0 shrink-0 overflow-hidden bg-background"

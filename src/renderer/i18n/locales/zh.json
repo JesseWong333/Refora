@@ -273,7 +273,11 @@
       "toolAddDocs": "正在添加到工作空间…",
       "toolRequestSummary": "正在请求摘要…",
       "regenerate": "重新生成",
-      "exportChat": "导出对话"
+      "exportChat": "导出对话",
+      "cut": "剪切",
+      "copy": "复制",
+      "paste": "粘贴",
+      "selectAll": "全选"
     }
   }
 }

@@ -278,7 +278,7 @@ export default function ChatPanel() {
   }, [threads, chat.setError])
 
   return (
-    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background" style={{ containerType: 'inline-size' }}>
       <div ref={headerRef} className="relative flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
         <div ref={leftRef} className="shrink-0">
           <ThreadHistory
