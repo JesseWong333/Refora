@@ -24,6 +24,7 @@
 
   [data-platform='mac'] {
     --toolbar-preserve: 212px;
+    --traffic-light-width: 76px;
   }
 
   [data-theme='light'] {

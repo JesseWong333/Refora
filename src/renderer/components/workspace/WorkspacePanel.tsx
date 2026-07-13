@@ -58,7 +58,7 @@ export default function WorkspacePanel() {
           padTrafficLights ? 'pl-[86px]' : ''
         }`}
       >
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground no-drag">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {name}
         </span>
         <div className="flex shrink-0 items-center gap-1 no-drag">

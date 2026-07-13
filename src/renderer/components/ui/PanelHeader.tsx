@@ -14,7 +14,7 @@ export function PanelHeader({ title, onClose, actions }: PanelHeaderProps) {
   return (
     <div className="drag-region flex h-9 shrink-0 items-center gap-2 px-2">
       {title ? (
-        <span className="no-drag min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
           {title}
         </span>
       ) : (
