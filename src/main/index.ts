@@ -182,8 +182,8 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     ...(IS_MAC && {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 22, y: 22 },
-      vibrancy: 'under-window',
-      visualEffectState: 'active'
+      vibrancy: 'sidebar',
+      visualEffectState: 'followWindow'
     }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
