@@ -163,7 +163,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
       enableCustomFonts={false}
     >
       <ContextMenuHost />
-      <div className="h-screen w-screen overflow-hidden bg-background text-foreground">
+      <div className="app-root h-screen w-screen overflow-hidden bg-background text-foreground">
         {showWizard && <FirstRunWizard onDone={() => setShowWizard(false)} />}
         {workspaceFullscreen ? (
           <div className="relative z-40 h-full min-h-0 w-full overflow-hidden">
@@ -172,7 +172,10 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
         ) : (
           <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
             <div style={sidebarStyle} className="relative z-30 shrink-0">
-              <div className="h-full min-h-0" style={{ padding: 'var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset)' }}>
+              <div className="sidebar-vibrancy-frame" aria-hidden="true">
+                <div className="sidebar-vibrancy-frame__mask" />
+              </div>
+              <div className="relative z-10 h-full min-h-0" style={{ padding: 'var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset)' }}>
                 <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
               </div>
             </div>

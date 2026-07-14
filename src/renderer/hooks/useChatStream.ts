@@ -18,6 +18,7 @@ import {
   pushRecentModel,
   localMessage,
   mergeTraceStep,
+  type ChatSendContext,
   type UseChatStreamParams,
   type UseChatStreamReturn
 } from '../utils/chatUtils'
@@ -41,6 +42,7 @@ export function useChatStream({
   const [streamingReasoning, setStreamingReasoning] = useState('')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [canRetry, setCanRetry] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
 
   const threadIdRef = useRef<string | null>(null)
@@ -49,9 +51,11 @@ export function useChatStream({
   const streamingStartTimeRef = useRef<number | null>(null)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cancelledRef = useRef(false)
+  const cancelledThreadRef = useRef<string | null>(null)
   const rafIdRef = useRef<number | null>(null)
   const isSendingRef = useRef(false)
-  const lastSendRef = useRef<{ text: string; attachments: string[]; threadId: string | null } | null>(null)
+  const retrySendRef = useRef<ChatSendContext | null>(null)
+  const latestSendRef = useRef<ChatSendContext | null>(null)
   const hadMessagesRef = useRef(false)
   const stickToBottomRef = useRef(true)
 
@@ -60,6 +64,11 @@ export function useChatStream({
   useEffect(() => {
     threadIdRef.current = activeThreadId
     if (!isSendingRef.current) {
+      retrySendRef.current = null
+      latestSendRef.current = null
+      cancelledRef.current = false
+      cancelledThreadRef.current = null
+      setCanRetry(false)
       streamingTextRef.current = ''
       streamingReasoningRef.current = ''
       setStreamingText('')
@@ -144,7 +153,9 @@ export function useChatStream({
             rafIdRef.current = null
           }
           isSendingRef.current = false
-          lastSendRef.current = null
+          retrySendRef.current = null
+          cancelledThreadRef.current = null
+          setCanRetry(false)
           streamingTextRef.current = ''
           streamingReasoningRef.current = ''
           setStreamingText('')
@@ -158,7 +169,9 @@ export function useChatStream({
           rafIdRef.current = null
         }
         isSendingRef.current = false
-        lastSendRef.current = null
+        retrySendRef.current = null
+        cancelledThreadRef.current = null
+        setCanRetry(false)
         setMessages((prev) => [
           ...prev,
           localMessage(payload.threadId, 'assistant', payload.finalText)
@@ -176,7 +189,9 @@ export function useChatStream({
           rafIdRef.current = null
         }
         isSendingRef.current = false
-        lastSendRef.current = null
+        cancelledRef.current = false
+        cancelledThreadRef.current = null
+        setCanRetry(retrySendRef.current !== null)
         setError(payload.message)
         streamingTextRef.current = ''
         streamingReasoningRef.current = ''
@@ -250,6 +265,15 @@ export function useChatStream({
     }
   }, [streaming])
 
+  const cancelThread = useCallback((threadId: string) => {
+    if (cancelledThreadRef.current === threadId) return
+    cancelledThreadRef.current = threadId
+    void api.ai.chatCancel(threadId).catch((e) => {
+      setCanRetry(retrySendRef.current !== null)
+      setError(errorMessage(e, 'Failed to stop response'))
+    })
+  }, [])
+
   const sendText = useCallback(async (text: string, attachments: string[], existingThread: string | null) => {
     if (isSendingRef.current) return
     if (!activeWorkspaceId || !activeProviderId || !text.trim() || streaming) return
@@ -266,9 +290,13 @@ export function useChatStream({
     setStreamingText('')
     setStreamingReasoning('')
     setError(null)
+    setCanRetry(false)
     hadMessagesRef.current = true
     stickToBottomRef.current = true
-    lastSendRef.current = { text, attachments: [...attachments], threadId: existingThread }
+    const sendContext = { text, attachments: [...attachments], threadId: existingThread }
+    retrySendRef.current = sendContext
+    latestSendRef.current = sendContext
+    cancelledThreadRef.current = null
     try {
       const model = requestModel || undefined
       if (model) void pushRecentModel(model, activeProviderId)
@@ -283,15 +311,19 @@ export function useChatStream({
           ? attachments.map((docId) => ({ type: 'document' as const, docId }))
           : undefined
       })
-      if (lastSendRef.current) {
-        lastSendRef.current = { ...lastSendRef.current, threadId }
-      }
+      const resolvedContext = { ...sendContext, threadId }
+      if (retrySendRef.current === sendContext) retrySendRef.current = resolvedContext
+      if (latestSendRef.current === sendContext) latestSendRef.current = resolvedContext
       if (!existingThread) {
         setActiveThreadId(threadId)
         threadIdRef.current = threadId
       }
+      if (cancelledRef.current) cancelThread(threadId)
       void fetchThreads()
     } catch (e) {
+      cancelledRef.current = false
+      cancelledThreadRef.current = null
+      setCanRetry(true)
       setError(errorMessage(e, 'Failed to send message'))
       isSendingRef.current = false
       setStreaming(false)
@@ -306,11 +338,12 @@ export function useChatStream({
     requestModel,
     deepThinking,
     fetchThreads,
+    cancelThread,
     t
   ])
 
   const handleRetry = useCallback(() => {
-    const last = lastSendRef.current
+    const last = retrySendRef.current
     if (!last) return
     setMessages((prev) => {
       const idx = prev.findLastIndex((m) => m.role === 'user' && m.content === last.text)
@@ -320,10 +353,15 @@ export function useChatStream({
     void sendText(last.text, last.attachments, last.threadId)
   }, [sendText])
 
+  const clearError = useCallback(() => {
+    retrySendRef.current = null
+    setCanRetry(false)
+    setError(null)
+  }, [])
+
   const handleCancel = useCallback(() => {
-    if (!threadIdRef.current) return
-    void api.ai.chatCancel(threadIdRef.current)
     cancelledRef.current = true
+    if (threadIdRef.current) cancelThread(threadIdRef.current)
     if (rafIdRef.current != null) {
       cancelAnimationFrame(rafIdRef.current)
       rafIdRef.current = null
@@ -332,16 +370,17 @@ export function useChatStream({
     setStreamingReasoning(streamingReasoningRef.current)
     isSendingRef.current = false
     setStreaming(false)
-  }, [])
+  }, [cancelThread])
 
   const handleRegenerate = useCallback(() => {
     let text = ''
     let attachments: string[] = []
     let threadId = activeThreadId
-    if (lastSendRef.current) {
-      text = lastSendRef.current.text
-      attachments = lastSendRef.current.attachments
-      threadId = lastSendRef.current.threadId ?? activeThreadId
+    const latestSend = latestSendRef.current
+    if (latestSend && latestSend.threadId === activeThreadId) {
+      text = latestSend.text
+      attachments = latestSend.attachments
+      threadId = latestSend.threadId
     } else {
       for (let i = displayMessages.length - 1; i >= 0; i--) {
         if (displayMessages[i].role === 'user') {
@@ -376,8 +415,8 @@ export function useChatStream({
   return {
     messages, setMessages, traceSteps, setTraceSteps,
     streaming, streamingText, streamingReasoning, elapsedSeconds,
-    error, setError, loadingHistory, displayMessages,
+    error, setError, clearError, canRetry, loadingHistory, displayMessages,
     sendText, handleCancel, handleRetry, handleRegenerate,
-    lastSendRef, stickToBottomRef, threadIdRef, hadMessagesRef
+    stickToBottomRef, threadIdRef, hadMessagesRef
   }
 }

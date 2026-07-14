@@ -333,7 +333,7 @@ export default function ChatPanel() {
         <div className="shrink-0 px-3 pb-1">
           <div className="flex items-center gap-2 rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">
             <span className="min-w-0 flex-1 break-words">{chat.error}</span>
-            {chat.lastSendRef.current && !chat.streaming && (
+            {chat.canRetry && !chat.streaming && (
               <button
                 type="button"
                 className="shrink-0 rounded px-1.5 py-0.5 text-label font-medium transition-colors duration-150 hover:bg-error/20"
@@ -347,7 +347,7 @@ export default function ChatPanel() {
             <button
               type="button"
               className="shrink-0 rounded px-1 py-0.5 transition-colors duration-150 hover:bg-error/20"
-              onClick={() => chat.setError(null)}
+              onClick={chat.clearError}
               title={t('common.dismiss', 'Dismiss')}
               aria-label={t('common.dismiss', 'Dismiss')}
             >

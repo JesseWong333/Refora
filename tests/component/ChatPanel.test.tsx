@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import type { ChatMessage, AiProvider } from '../../src/shared/ipc-types'
+import { render, screen, fireEvent, cleanup, renderHook, act, waitFor } from '@testing-library/react'
+import type {
+  AgentTraceStep,
+  AiProvider,
+  ChatDoneEvent,
+  ChatErrorEvent,
+  ChatMessage,
+  ChatSendRequest
+} from '../../src/shared/ipc-types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -15,9 +22,15 @@ import { useDocumentStore } from '../../src/renderer/store/documentStore'
 const ChatPanelModule = await import('../../src/renderer/components/workspace/ChatPanel')
 const ChatPanel = ChatPanelModule.default
 const { parseReforaDocLink } = ChatPanelModule
+const { useChatStream } = await import('../../src/renderer/hooks/useChatStream')
+const { AgentTracePanel } = await import('../../src/renderer/components/workspace/AgentTrace')
 
 const mockChatHistory = vi.fn()
+const mockChatSend = vi.fn()
+const mockChatCancel = vi.fn()
 const mockOpenPdf = vi.fn()
+let chatDoneHandler: ((payload: ChatDoneEvent) => void) | undefined
+let chatErrorHandler: ((payload: ChatErrorEvent) => void) | undefined
 
 const TEST_PROVIDER: AiProvider = {
   id: 'p1',
@@ -50,10 +63,20 @@ function setupApi(messages: ChatMessage[]): void {
   w.api.settings.get = async (_key: string, defaultValue: unknown) => defaultValue
   w.api.settings.set = async () => undefined
   w.api.ai.chatHistory = mockChatHistory
+  w.api.ai.chatSend = mockChatSend
+  w.api.ai.chatCancel = mockChatCancel
   w.api.ai.chatTraces = async () => []
   w.api.ai.chatThreads = async () => []
   w.api.documents.openPdf = mockOpenPdf
+  w.api.events.onAiChatDone = (handler: (payload: ChatDoneEvent) => void) => {
+    chatDoneHandler = handler
+  }
+  w.api.events.onAiChatError = (handler: (payload: ChatErrorEvent) => void) => {
+    chatErrorHandler = handler
+  }
   mockChatHistory.mockResolvedValue(messages)
+  mockChatSend.mockResolvedValue({ threadId: 'thread-1' })
+  mockChatCancel.mockResolvedValue(undefined)
 }
 
 function setupStore(): void {
@@ -73,7 +96,11 @@ function setupStore(): void {
 
 beforeEach(() => {
   mockChatHistory.mockReset()
+  mockChatSend.mockReset()
+  mockChatCancel.mockReset()
   mockOpenPdf.mockReset()
+  chatDoneHandler = undefined
+  chatErrorHandler = undefined
   mockOpenPdf.mockResolvedValue(null)
   setupStore()
 })
@@ -216,5 +243,123 @@ describe('ChatPanel tool message filtering', () => {
     await screen.findByText('hi there')
     expect(screen.queryByText(/search_workspace_docs/)).toBeNull()
     expect(screen.queryByText(/toolCallId/)).toBeNull()
+  })
+})
+
+function renderChatStream(activeThreadId: string | null = 'thread-1') {
+  setupApi([])
+  return renderHook(() =>
+    useChatStream({
+      activeWorkspaceId: 'ws-1',
+      activeProviderId: 'p1',
+      activeThreadId,
+      requestModel: '',
+      deepThinking: false,
+      setActiveThreadId: vi.fn(),
+      setChatStreaming: vi.fn(),
+      fetchThreads: vi.fn().mockResolvedValue(undefined)
+    })
+  )
+}
+
+describe('useChatStream lifecycle', () => {
+  it('keeps failed send context available for retry after a stream error', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+
+    await act(async () => {
+      await result.current.sendText('Compare these papers', ['doc-1'], 'thread-1')
+    })
+    act(() => {
+      chatErrorHandler?.({ threadId: 'thread-1', message: 'Provider unavailable' })
+    })
+
+    expect(result.current.error).toBe('Provider unavailable')
+    expect(result.current.canRetry).toBe(true)
+
+    act(() => {
+      result.current.handleRetry()
+    })
+    await waitFor(() => expect(mockChatSend).toHaveBeenCalledTimes(2))
+    expect(mockChatSend.mock.calls[1][0] as ChatSendRequest).toMatchObject({
+      text: 'Compare these papers',
+      attachments: [{ type: 'document', docId: 'doc-1' }]
+    })
+  })
+
+  it('preserves attachments when regenerating a completed response', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+
+    await act(async () => {
+      await result.current.sendText('Summarize this paper', ['doc-2'], 'thread-1')
+    })
+    act(() => {
+      chatDoneHandler?.({ threadId: 'thread-1', finalText: 'Summary' })
+    })
+
+    expect(result.current.canRetry).toBe(false)
+    act(() => {
+      result.current.handleRegenerate()
+    })
+    await waitFor(() => expect(mockChatSend).toHaveBeenCalledTimes(2))
+    expect(mockChatSend.mock.calls[1][0] as ChatSendRequest).toMatchObject({
+      text: 'Summarize this paper',
+      attachments: [{ type: 'document', docId: 'doc-2' }]
+    })
+  })
+
+  it('cancels a new thread after its id arrives when stop is clicked immediately', async () => {
+    let resolveSend: ((value: { threadId: string }) => void) | undefined
+    const { result } = renderChatStream(null)
+    mockChatSend.mockImplementation(
+      () => new Promise<{ threadId: string }>((resolve) => {
+        resolveSend = resolve
+      })
+    )
+    let sendPromise: Promise<void> | undefined
+
+    await act(async () => {
+      sendPromise = result.current.sendText('Start a new chat', [], null)
+      await Promise.resolve()
+    })
+    act(() => {
+      result.current.handleCancel()
+    })
+
+    expect(mockChatCancel).not.toHaveBeenCalled()
+    await act(async () => {
+      resolveSend?.({ threadId: 'new-thread' })
+      await sendPromise
+    })
+    expect(mockChatCancel).toHaveBeenCalledWith('new-thread')
+    expect(result.current.streaming).toBe(false)
+  })
+})
+
+describe('AgentTracePanel structure', () => {
+  it('keeps expand-all outside the panel toggle button', () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    const traceStep: AgentTraceStep = {
+      id: 'step-1',
+      threadId: 'thread-1',
+      runId: 'run-1',
+      kind: 'llm',
+      name: null,
+      input: 'Prompt',
+      output: null,
+      status: 'done',
+      startedAt: 0,
+      endedAt: 1,
+      seq: 0,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null
+    }
+    render(<AgentTracePanel steps={[traceStep]} streaming={false} />)
+    const panelToggle = screen.getByRole('button', { name: /workspace.chat.trace/ })
+    fireEvent.click(panelToggle)
+    expect(panelToggle.querySelector('button')).toBeNull()
+    expect(screen.getByRole('button', { name: 'workspace.chat.expandAll' })).toBeInTheDocument()
   })
 })

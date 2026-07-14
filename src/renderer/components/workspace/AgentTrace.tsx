@@ -268,45 +268,44 @@ export function AgentTracePanel({
 
   return (
     <div className="rounded-xl border border-border bg-panel-2/80">
-      <button
-        type="button"
-        className="flex w-full items-center gap-1.5 px-4 py-1.5 text-left"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <SummaryIcon
-          className={`h-3.5 w-3.5 shrink-0 ${summaryColor} ${isRunning ? 'animate-spin' : ''}`}
-        />
-        <span className="text-xs font-medium text-foreground">
-          {t('workspace.chat.trace', 'Agent steps')}
-        </span>
-        <span className="text-label text-muted">
-          {visible.length > 0 ? visible.length : streaming ? '…' : 0}
-        </span>
-        {summaryLabel && (
-          <span className="text-label text-muted">· {summaryLabel}</span>
-        )}
-        {hasTokenData && !isRunning && (
-          <span className="text-label text-muted">
-            · {t('workspace.chat.tokenTotal', { count: totalTokensSum, defaultValue: 'Total: {{count}} tokens' })}
+      <div className="flex items-center">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-4 py-1.5 text-left"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <SummaryIcon
+            className={`h-3.5 w-3.5 shrink-0 ${summaryColor} ${isRunning ? 'animate-spin' : ''}`}
+          />
+          <span className="text-xs font-medium text-foreground">
+            {t('workspace.chat.trace', 'Agent steps')}
           </span>
-        )}
+          <span className="text-label text-muted">
+            {visible.length > 0 ? visible.length : streaming ? '…' : 0}
+          </span>
+          {summaryLabel && (
+            <span className="text-label text-muted">· {summaryLabel}</span>
+          )}
+          {hasTokenData && !isRunning && (
+            <span className="text-label text-muted">
+              · {t('workspace.chat.tokenTotal', { count: totalTokensSum, defaultValue: 'Total: {{count}} tokens' })}
+            </span>
+          )}
+          <CaretDown
+            className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'}`}
+          />
+        </button>
         {visible.length > 0 && open && (
           <button
             type="button"
-            className="ml-auto mr-1 text-label text-muted transition-colors duration-150 hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation()
-              setExpandAll(expandAll === null ? true : !expandAll)
-            }}
+            className="mr-4 shrink-0 text-label text-muted transition-colors duration-150 hover:text-foreground"
+            onClick={() => setExpandAll(expandAll === null ? true : !expandAll)}
           >
             {expandAll ? t('workspace.chat.collapseAll', 'Collapse all') : t('workspace.chat.expandAll', 'Expand all')}
           </button>
         )}
-        <CaretDown
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'} ${visible.length > 0 && open ? '' : 'ml-auto'}`}
-        />
-      </button>
+      </div>
       {open && (
         <div ref={contentRef} className="flex flex-col gap-0 px-4 pb-2 pt-0.5">
           {visible.length === 0 ? (

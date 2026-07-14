@@ -176,12 +176,14 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     height: bounds?.height ?? 800,
     minWidth: 800,
     minHeight: 500,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: IS_MAC ? '#00000000' : '#1e1e1e',
     show: false,
     title: 'Refora',
     ...(IS_MAC && {
       titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 22, y: 22 }
+      trafficLightPosition: { x: 22, y: 22 },
+      vibrancy: 'under-window',
+      visualEffectState: 'active'
     }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

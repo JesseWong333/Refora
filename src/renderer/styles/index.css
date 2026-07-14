@@ -487,3 +487,33 @@
 [data-lobe-portal-host] [role="menu"] {
   min-width: 0;
 }
+
+[data-platform='mac'] body {
+  background-color: transparent;
+}
+
+[data-platform='mac'] .app-root {
+  background-color: transparent;
+}
+
+[data-platform='mac'] .sidebar-floating {
+  background-color: transparent;
+}
+
+.sidebar-vibrancy-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sidebar-vibrancy-frame__mask {
+  position: absolute;
+  top: var(--sidebar-inset);
+  right: 0;
+  bottom: var(--sidebar-inset);
+  left: var(--sidebar-inset);
+  border-radius: var(--sidebar-radius);
+  box-shadow: 0 0 0 9999px var(--color-background);
+}

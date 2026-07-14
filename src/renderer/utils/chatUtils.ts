@@ -7,6 +7,12 @@ const MAX_RECENT = 8
 
 export type RecentModelEntry = { model: string; providerId: string }
 
+export type ChatSendContext = {
+  text: string
+  attachments: string[]
+  threadId: string | null
+}
+
 export const MAX_INPUT_LENGTH = 32000
 
 export interface UseChatStreamParams {
@@ -31,13 +37,14 @@ export interface UseChatStreamReturn {
   elapsedSeconds: number
   error: string | null
   setError: Dispatch<SetStateAction<string | null>>
+  clearError: () => void
+  canRetry: boolean
   loadingHistory: boolean
   displayMessages: ChatMessage[]
   sendText: (text: string, attachments: string[], existingThread: string | null) => Promise<void>
   handleCancel: () => void
   handleRetry: () => void
   handleRegenerate: () => void
-  lastSendRef: MutableRefObject<{ text: string; attachments: string[]; threadId: string | null } | null>
   stickToBottomRef: MutableRefObject<boolean>
   threadIdRef: MutableRefObject<string | null>
   hadMessagesRef: MutableRefObject<boolean>
