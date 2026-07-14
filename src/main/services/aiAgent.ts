@@ -831,9 +831,32 @@ export function createAiAgentService(
       }
 
       let finalText = ''
+      let tracedMessageText = ''
       const collectedToolCalls: Array<{ name: string; toolCallId: string; input: string | null; output: string | null }> = []
       let activeLlmId: string | null = null
+      let activeContent: { id: string; kind: 'reasoning' | 'message'; text: string } | null = null
       let completedNormally = false
+
+      const finishActiveContent = (status: AgentTraceStepStatus = 'done'): void => {
+        if (!activeContent) return
+        trace.finish(activeContent.id, status, activeContent.text)
+        activeContent = null
+      }
+
+      const appendContent = (kind: 'reasoning' | 'message', token: string): string => {
+        if (!activeContent || activeContent.kind !== kind) {
+          finishActiveContent()
+          const step = trace.start(
+            kind,
+            kind === 'reasoning' ? 'model_reasoning' : 'assistant_message',
+            null
+          )
+          activeContent = { id: step.id, kind, text: '' }
+        }
+        activeContent.text += token
+        if (kind === 'message') tracedMessageText += token
+        return activeContent.id
+      }
 
       try {
         for await (const event of agent.streamEvents(
@@ -845,6 +868,7 @@ export function createAiAgentService(
           const runKey = typeof event.run_id === 'string' ? event.run_id : null
 
           if (eventName === 'on_chat_model_start') {
+            finishActiveContent()
             if (activeLlmId) {
               trace.finish(activeLlmId, 'done', null, null)
               activeLlmId = null
@@ -856,6 +880,7 @@ export function createAiAgentService(
           }
 
           if (eventName === 'on_chat_model_end') {
+            finishActiveContent()
             const usage = extractTokenUsage(data)
             const keys = [runKey, 'llm:active'].filter((k): k is string => !!k)
             const finished = trace.finishByKeys(keys, 'done', extractToolOutput(data), usage)
@@ -873,37 +898,45 @@ export function createAiAgentService(
             }
             const chunk = chunkData?.chunk
             const content = chunk?.content
-            let textToken = ''
-            let reasoningToken = ''
+            const contentParts: Array<{ kind: 'reasoning' | 'message'; token: string }> = []
             if (typeof content === 'string') {
-              textToken = content
+              if (content) contentParts.push({ kind: 'message', token: content })
             } else if (Array.isArray(content)) {
               for (const part of content) {
                 if (typeof part === 'string') {
-                  textToken += part
+                  if (part) contentParts.push({ kind: 'message', token: part })
                 } else if (part && typeof part === 'object') {
                   const p = part as Record<string, unknown>
-                  if (p.type === 'text' && typeof p.text === 'string') textToken += p.text
+                  if (p.type === 'text' && typeof p.text === 'string' && p.text) {
+                    contentParts.push({ kind: 'message', token: p.text })
+                  }
                   else if (p.type === 'reasoning' && typeof p.reasoning === 'string')
-                    reasoningToken += p.reasoning
+                    contentParts.push({ kind: 'reasoning', token: p.reasoning })
                 }
               }
             }
-            if (!textToken && !reasoningToken) {
+            if (contentParts.length === 0) {
               const reasoning = chunk?.additional_kwargs?.reasoning_content
-              if (typeof reasoning === 'string' && reasoning.length > 0) reasoningToken = reasoning
+              if (typeof reasoning === 'string' && reasoning.length > 0) {
+                contentParts.push({ kind: 'reasoning', token: reasoning })
+              }
             }
-            if (!textToken && !reasoningToken) continue
+            if (contentParts.length === 0) continue
             const ww = getWin()
-            if (reasoningToken && ww) emitAiChatReasoning(ww, { threadId, token: reasoningToken })
-            if (textToken) {
-              finalText += textToken
-              if (ww) emitAiChatToken(ww, { threadId, token: textToken })
+            for (const part of contentParts) {
+              const stepId = appendContent(part.kind, part.token)
+              if (part.kind === 'reasoning') {
+                if (ww) emitAiChatReasoning(ww, { threadId, runId, stepId, token: part.token })
+              } else {
+                finalText += part.token
+                if (ww) emitAiChatToken(ww, { threadId, runId, stepId, token: part.token })
+              }
             }
             continue
           }
 
           if (eventName === 'on_tool_start') {
+            finishActiveContent()
             const toolName = extractToolName(event)
             const toolInput = extractToolInput(data)
             const keys = [
@@ -964,6 +997,7 @@ export function createAiAgentService(
           (streamErr instanceof Error &&
             (streamErr.name === 'AbortError' || /abort/i.test(streamErr.message)))
         if (isAbort) {
+          finishActiveContent()
           if (activeLlmId) {
             trace.finish(activeLlmId, 'done', null, null)
             activeLlmId = null
@@ -986,6 +1020,7 @@ export function createAiAgentService(
               ? streamErr.message
               : String(streamErr)
           logger.warn(`aiAgent:stream-error: ${msg}`)
+          finishActiveContent('error')
           if (activeLlmId) {
             trace.finish(activeLlmId, 'error', msg, null)
             activeLlmId = null
@@ -1002,6 +1037,7 @@ export function createAiAgentService(
         }
       }
 
+      finishActiveContent()
       if (activeLlmId) {
         trace.finish(activeLlmId, 'done', null, null)
         activeLlmId = null
@@ -1014,6 +1050,14 @@ export function createAiAgentService(
       }
 
       if (!finalText) finalText = 'No response generated.'
+      if (finalText !== tracedMessageText) {
+        const untracedText = finalText.startsWith(tracedMessageText)
+          ? finalText.slice(tracedMessageText.length)
+          : finalText
+        if (untracedText) {
+          trace.recordSnapshot('message', 'assistant_message', 'done', untracedText)
+        }
+      }
 
       for (const tc of collectedToolCalls) {
         repos.chat.addMessage(

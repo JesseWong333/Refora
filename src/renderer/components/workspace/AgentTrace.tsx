@@ -2,10 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   CaretDown,
-  CaretRight,
   Wrench,
   Robot,
-  Pulse,
   CheckCircle,
   XCircle,
   CircleNotch,
@@ -14,9 +12,7 @@ import {
   FileMagnifyingGlass,
   FilePlus,
   ClipboardText,
-  FolderOpen,
-  ArrowDown,
-  ArrowUp
+  FolderOpen
 } from '@phosphor-icons/react'
 import type { AgentTraceStep } from '../../../shared/ipc-types'
 
@@ -25,6 +21,27 @@ type TFunc = ReturnType<typeof useTranslation>['t']
 interface ToolLabelResult {
   icon: string
   text: string
+}
+
+function formatTokenCount(value: number): string {
+  if (value < 1000) return String(value)
+  return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)}k`
+}
+
+function formatTraceValue(value: string): string {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (typeof parsed === 'string') return parsed
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return value
+  }
+}
+
+function humanizeIdentifier(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function formatDuration(step: AgentTraceStep): string | null {
@@ -51,12 +68,23 @@ function formatToolLabel(
   }
 
   const objParam = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+  const running = step.status === 'running'
 
   switch (name) {
     case 'search_workspace_docs':
-      return { icon: 'search', text: t('workspace.chat.toolSearchWorkspace', 'Searching workspace…') }
+      return {
+        icon: 'search',
+        text: running
+          ? t('workspace.chat.toolSearchWorkspace', 'Searching workspace…')
+          : t('workspace.chat.toolSearchWorkspaceDone', 'Searched workspace')
+      }
     case 'search_library':
-      return { icon: 'search', text: t('workspace.chat.toolSearchLibrary', 'Searching library…') }
+      return {
+        icon: 'search',
+        text: running
+          ? t('workspace.chat.toolSearchLibrary', 'Searching library…')
+          : t('workspace.chat.toolSearchLibraryDone', 'Searched library')
+      }
     case 'read_paper_fulltext': {
       const docId = typeof objParam.docId === 'string' ? objParam.docId : ''
       const offset = typeof objParam.offset === 'number' ? objParam.offset : 0
@@ -65,26 +93,66 @@ function formatToolLabel(
       if (docId) {
         return {
           icon: 'read',
-          text: t('workspace.chat.toolReadingChunk', {
-            chunk: chunkIdx,
-            defaultValue: 'Reading document… (chunk {{chunk}})'
-          })
+          text: running
+            ? t('workspace.chat.toolReadingChunk', {
+                chunk: chunkIdx,
+                defaultValue: 'Reading document… (chunk {{chunk}})'
+              })
+            : t('workspace.chat.toolReadingChunkDone', {
+                chunk: chunkIdx,
+                defaultValue: 'Read document (chunk {{chunk}})'
+              })
         }
       }
-      return { icon: 'read', text: t('workspace.chat.toolReading', 'Reading document…') }
+      return {
+        icon: 'read',
+        text: running
+          ? t('workspace.chat.toolReading', 'Reading document…')
+          : t('workspace.chat.toolReadingDone', 'Read document')
+      }
     }
     case 'get_paper_summary':
-      return { icon: 'summary', text: t('workspace.chat.toolGetSummary', 'Getting summary…') }
+      return {
+        icon: 'summary',
+        text: running
+          ? t('workspace.chat.toolGetSummary', 'Getting summary…')
+          : t('workspace.chat.toolGetSummaryDone', 'Retrieved summary')
+      }
     case 'get_paper_metadata':
-      return { icon: 'metadata', text: t('workspace.chat.toolGetMetadata', 'Fetching metadata…') }
+      return {
+        icon: 'metadata',
+        text: running
+          ? t('workspace.chat.toolGetMetadata', 'Fetching metadata…')
+          : t('workspace.chat.toolGetMetadataDone', 'Retrieved metadata')
+      }
     case 'open_paper':
-      return { icon: 'open', text: t('workspace.chat.toolOpenPaper', 'Opening paper…') }
+      return {
+        icon: 'open',
+        text: running
+          ? t('workspace.chat.toolOpenPaper', 'Opening paper…')
+          : t('workspace.chat.toolOpenPaperDone', 'Opened paper')
+      }
     case 'generate_report':
-      return { icon: 'report', text: t('workspace.chat.toolGenerateReport', 'Generating report…') }
+      return {
+        icon: 'report',
+        text: running
+          ? t('workspace.chat.toolGenerateReport', 'Generating report…')
+          : t('workspace.chat.toolGenerateReportDone', 'Generated report')
+      }
     case 'add_docs_to_workspace':
-      return { icon: 'add', text: t('workspace.chat.toolAddDocs', 'Adding to workspace…') }
+      return {
+        icon: 'add',
+        text: running
+          ? t('workspace.chat.toolAddDocs', 'Adding to workspace…')
+          : t('workspace.chat.toolAddDocsDone', 'Added to workspace')
+      }
     case 'request_summary':
-      return { icon: 'summary', text: t('workspace.chat.toolRequestSummary', 'Requesting summary…') }
+      return {
+        icon: 'summary',
+        text: running
+          ? t('workspace.chat.toolRequestSummary', 'Requesting summary…')
+          : t('workspace.chat.toolRequestSummaryDone', 'Requested summary')
+      }
     default:
       return null
   }
@@ -100,17 +168,17 @@ const TOOL_ICONS: Record<string, typeof MagnifyingGlass> = {
   add: FilePlus
 }
 
-const TOOL_COLORS: Record<string, string> = {
-  search: 'text-accent',
-  read: 'text-success',
-  summary: 'text-warning',
-  metadata: 'text-warning',
-  open: 'text-accent',
-  report: 'text-warning',
-  add: 'text-success'
-}
-
-function TraceStepRow({ step, isLast, forceOpen }: { step: AgentTraceStep; isLast: boolean; forceOpen?: boolean }) {
+function TraceStepRow({
+  step,
+  isLast,
+  forceOpen,
+  compact = false
+}: {
+  step: AgentTraceStep
+  isLast: boolean
+  forceOpen?: boolean
+  compact?: boolean
+}) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -121,12 +189,7 @@ function TraceStepRow({ step, isLast, forceOpen }: { step: AgentTraceStep; isLas
   const toolLabel = formatToolLabel(step, t)
 
   const StatusIcon = step.status === 'running' ? CircleNotch : step.status === 'error' ? XCircle : CheckCircle
-  const statusColor =
-    step.status === 'running'
-      ? 'text-accent'
-      : step.status === 'error'
-        ? 'text-error'
-        : 'text-muted'
+  const statusColor = step.status === 'error' ? 'text-error' : 'text-muted'
   const statusTitle =
     step.status === 'running'
       ? t('workspace.chat.traceRunning', 'Running')
@@ -136,81 +199,114 @@ function TraceStepRow({ step, isLast, forceOpen }: { step: AgentTraceStep; isLas
 
   const KindIcon = step.kind === 'tool'
     ? (toolLabel ? (TOOL_ICONS[toolLabel.icon] ?? Wrench) : Wrench)
-    : step.kind === 'llm'
-      ? Robot
-      : Pulse
+    : Robot
 
   const displayText = toolLabel
     ? toolLabel.text
     : step.kind === 'llm'
-      ? t('workspace.chat.traceLlmCall', 'Model thinking…')
-      : step.name ?? t('workspace.chat.traceTool', 'Tool')
+      ? step.status === 'running'
+        ? t('workspace.chat.traceLlmCall', 'Model thinking…')
+        : t('workspace.chat.traceLlmDone', 'Completed')
+      : step.name
+        ? humanizeIdentifier(step.name)
+        : t('workspace.chat.traceTool', 'Tool')
+
+  const kindLabel = step.kind === 'llm'
+    ? t('workspace.chat.traceLlm', 'Model')
+    : t('workspace.chat.traceTool', 'Tool')
 
   return (
-    <div className="trace-fade-in relative flex gap-2 pl-0.5">
-      <div className="flex flex-col items-center">
-        <StatusIcon
-          className={`h-3.5 w-3.5 shrink-0 ${statusColor} ${step.status === 'running' ? 'animate-spin' : ''}`}
-        />
-        {!isLast && <div className="mt-0.5 w-px flex-1 bg-border/50" />}
-      </div>
-      <div className={`min-w-0 flex-1 ${isLast ? 'pb-0' : 'pb-2'}`}>
+    <div className={`agent-trace-step trace-fade-in ${compact ? 'agent-trace-step-compact' : ''}`}>
+      {!compact && (
+        <div className="agent-trace-rail">
+          <span className={`agent-trace-status-dot agent-trace-status-${step.status}`}>
+            <StatusIcon
+              className={`h-3.5 w-3.5 shrink-0 ${statusColor} ${step.status === 'running' ? 'animate-spin' : ''}`}
+            />
+          </span>
+          {!isLast && <div className="agent-trace-connector" />}
+        </div>
+      )}
+      <div className={`min-w-0 flex-1 ${isLast ? '' : 'pb-2'}`}>
         <button
           type="button"
-          className="flex w-full items-center gap-1.5 py-0.5 text-left"
+          className={`agent-trace-step-trigger ${hasBody ? 'agent-trace-step-trigger-interactive' : ''}`}
           onClick={() => hasBody && setOpen((v) => !v)}
           disabled={!hasBody}
           aria-expanded={open}
           title={statusTitle}
         >
-          {hasBody ? (
-            open ? (
-              <CaretDown className="h-3 w-3 shrink-0 text-muted" />
-            ) : (
-              <CaretRight className="h-3 w-3 shrink-0 text-muted" />
-            )
-          ) : (
-            <span className="w-3 shrink-0" />
-          )}
-          <KindIcon className={`h-3 w-3 shrink-0 ${step.kind === 'tool' && toolLabel ? (TOOL_COLORS[toolLabel.icon] ?? 'text-muted') : 'text-muted'}`} />
-          <span className="min-w-0 flex-1 truncate text-xs text-foreground">
-            <span className="font-medium">{displayText}</span>
-          </span>
-          {step.kind === 'llm' && step.totalTokens != null && (
-            <span
-              className="shrink-0 text-label text-muted"
-              title={t('workspace.chat.tokenUsage', 'Tokens')}
-            >
-              <ArrowUp className="mr-0.5 inline h-2.5 w-2.5" />{step.inputTokens ?? 0} <ArrowDown className="mx-0.5 inline h-2.5 w-2.5" />{step.outputTokens ?? 0}
+          {(!compact || step.kind === 'tool') && (
+            <span className="agent-trace-kind-icon">
+              <KindIcon className="h-3.5 w-3.5 text-muted" />
             </span>
           )}
-          {duration && <span className="shrink-0 text-label text-muted">{duration}</span>}
+          <span className="agent-trace-step-copy min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="agent-trace-step-title truncate text-xs font-medium text-foreground">{displayText}</span>
+              {(!compact || step.status !== 'done') && (
+                <span className={`agent-trace-status-label agent-trace-status-label-${step.status}`}>
+                  {statusTitle}
+                </span>
+              )}
+            </span>
+            {!compact && (
+              <span className="agent-trace-kind-label mt-0.5 block text-caption text-muted">{kindLabel}</span>
+            )}
+          </span>
+          {!compact && step.kind === 'llm' && step.totalTokens != null && (
+            <span
+              className="agent-trace-metric"
+              title={t('workspace.chat.tokenUsage', 'Tokens')}
+            >
+              {formatTokenCount(step.inputTokens ?? 0)}
+              <span aria-hidden="true">/</span>
+              {formatTokenCount(step.outputTokens ?? 0)}
+            </span>
+          )}
+          {duration && (!compact || step.kind === 'llm') && (
+            <span className="agent-trace-metric">{duration}</span>
+          )}
+          {hasBody && (
+            <CaretDown
+              className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${compact ? (open ? 'rotate-180' : '') : (open ? '' : '-rotate-90')}`}
+            />
+          )}
         </button>
         {open && hasBody && (
-          <div className="mt-1 space-y-1.5 pl-1">
+          <div className="agent-trace-details">
             {step.input && (
-              <div>
-                <p className="mb-0.5 text-label font-medium uppercase tracking-wide text-muted">
+              <div className="agent-trace-detail-card">
+                <p className="agent-trace-detail-label">
                   {t('workspace.chat.traceInput', 'Input')}
                 </p>
-                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-label text-foreground">
-                  {step.input}
+                <pre className="agent-trace-detail-value">
+                  {formatTraceValue(step.input)}
                 </pre>
               </div>
             )}
             {step.output && (
-              <div>
-                <p className="mb-0.5 text-label font-medium uppercase tracking-wide text-muted">
+              <div className="agent-trace-detail-card">
+                <p className="agent-trace-detail-label">
                   {t('workspace.chat.traceOutput', 'Output')}
                 </p>
-                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 px-1.5 py-1 text-label text-foreground">
-                  {step.output}
+                <pre className="agent-trace-detail-value">
+                  {formatTraceValue(step.output)}
                 </pre>
               </div>
             )}
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+export function AgentTraceStepItem({ step }: { step: AgentTraceStep }) {
+  if (step.kind !== 'llm' && step.kind !== 'tool') return null
+  return (
+    <div className="agent-trace-inline-step" data-timeline-kind={step.kind}>
+      <TraceStepRow step={step} isLast compact />
     </div>
   )
 }
@@ -225,10 +321,10 @@ export function AgentTracePanel({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [expandAll, setExpandAll] = useState<boolean | null>(null)
-  const visible = steps.filter((s) => s.kind !== 'run')
+  const visible = steps.filter((s) => s.kind === 'llm' || s.kind === 'tool')
   const totalTokensSum = visible.reduce((sum, s) => sum + (s.totalTokens ?? 0), 0)
   const hasTokenData = visible.some((s) => s.totalTokens != null)
-  const isRunning = visible.some((s) => s.status === 'running')
+  const isRunning = streaming || visible.some((s) => s.status === 'running')
   const hasError = visible.some((s) => s.status === 'error')
 
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -267,39 +363,54 @@ export function AgentTracePanel({
       : null
 
   return (
-    <div className="rounded-xl border border-border bg-panel-2/80">
-      <div className="flex items-center">
+    <section className={`agent-trace-panel agent-trace-panel-${isRunning ? 'running' : hasError ? 'error' : 'done'}`}>
+      <div className="agent-trace-panel-header">
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-4 py-1.5 text-left"
+          className="agent-trace-panel-toggle"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
         >
-          <SummaryIcon
-            className={`h-3.5 w-3.5 shrink-0 ${summaryColor} ${isRunning ? 'animate-spin' : ''}`}
-          />
-          <span className="text-xs font-medium text-foreground">
-            {t('workspace.chat.trace', 'Agent steps')}
+          <span className={`agent-trace-summary-icon ${isRunning ? 'agent-trace-summary-icon-running' : ''}`}>
+            <SummaryIcon
+              className={`h-3.5 w-3.5 shrink-0 ${summaryColor} ${isRunning ? 'animate-spin' : ''}`}
+            />
           </span>
-          <span className="text-label text-muted">
-            {visible.length > 0 ? visible.length : streaming ? '…' : 0}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-foreground">
+                {t('workspace.chat.trace', 'Agent activity')}
+              </span>
+              <span className="agent-trace-count">
+                {visible.length > 0 ? visible.length : streaming ? '…' : 0}
+              </span>
+            </span>
+            <span className="mt-0.5 block truncate text-caption text-muted">
+              {isRunning
+                ? t('workspace.chat.traceFollowing', 'Following the current run')
+                : hasError
+                  ? t('workspace.chat.traceCompletedError', 'Completed with an error')
+                  : t('workspace.chat.traceCompleted', 'Run details')}
+            </span>
           </span>
           {summaryLabel && (
-            <span className="text-label text-muted">· {summaryLabel}</span>
+            <span className={`agent-trace-summary-badge ${isRunning ? 'agent-trace-summary-badge-running' : ''}`}>
+              {summaryLabel}
+            </span>
           )}
           {hasTokenData && !isRunning && (
-            <span className="text-label text-muted">
-              · {t('workspace.chat.tokenTotal', { count: totalTokensSum, defaultValue: 'Total: {{count}} tokens' })}
+            <span className="agent-trace-summary-badge">
+              {t('workspace.chat.tokenTotal', { count: totalTokensSum })}
             </span>
           )}
           <CaretDown
-            className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'}`}
+            className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'}`}
           />
         </button>
         {visible.length > 0 && open && (
           <button
             type="button"
-            className="mr-4 shrink-0 text-label text-muted transition-colors duration-150 hover:text-foreground"
+            className="agent-trace-expand-all"
             onClick={() => setExpandAll(expandAll === null ? true : !expandAll)}
           >
             {expandAll ? t('workspace.chat.collapseAll', 'Collapse all') : t('workspace.chat.expandAll', 'Expand all')}
@@ -307,9 +418,9 @@ export function AgentTracePanel({
         )}
       </div>
       {open && (
-        <div ref={contentRef} className="flex flex-col gap-0 px-4 pb-2 pt-0.5">
+        <div ref={contentRef} className="agent-trace-steps">
           {visible.length === 0 ? (
-            <p className="px-1 py-1 text-xs text-muted">
+            <p className="px-1 py-2 text-xs text-muted">
               {t('workspace.chat.traceEmpty', 'No tool or model steps yet.')}
             </p>
           ) : (
@@ -325,6 +436,6 @@ export function AgentTracePanel({
           )}
         </div>
       )}
-    </div>
+    </section>
   )
 }

@@ -48,6 +48,7 @@ export function useChatStream({
   const threadIdRef = useRef<string | null>(null)
   const streamingTextRef = useRef('')
   const streamingReasoningRef = useRef('')
+  const streamingStepOutputRef = useRef(new Map<string, string>())
   const streamingStartTimeRef = useRef<number | null>(null)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cancelledRef = useRef(false)
@@ -71,6 +72,7 @@ export function useChatStream({
       setCanRetry(false)
       streamingTextRef.current = ''
       streamingReasoningRef.current = ''
+      streamingStepOutputRef.current.clear()
       setStreamingText('')
       setStreamingReasoning('')
       setStreaming(false)
@@ -114,6 +116,14 @@ export function useChatStream({
       rafIdRef.current = null
       setStreamingText(streamingTextRef.current)
       setStreamingReasoning(streamingReasoningRef.current)
+      if (streamingStepOutputRef.current.size > 0) {
+        setTraceSteps((prev) =>
+          prev.map((step) => {
+            const output = streamingStepOutputRef.current.get(step.id)
+            return output === undefined ? step : { ...step, output }
+          })
+        )
+      }
     })
   }, [])
 
@@ -131,11 +141,19 @@ export function useChatStream({
       onToken: (payload: ChatTokenEvent) => {
         if (payload.threadId !== threadIdRef.current) return
         streamingTextRef.current += payload.token
+        if (payload.stepId) {
+          const current = streamingStepOutputRef.current.get(payload.stepId) ?? ''
+          streamingStepOutputRef.current.set(payload.stepId, current + payload.token)
+        }
         scheduleStreamingFlush()
       },
       onReasoning: (payload: ChatReasoningEvent) => {
         if (payload.threadId !== threadIdRef.current) return
         streamingReasoningRef.current += payload.token
+        if (payload.stepId) {
+          const current = streamingStepOutputRef.current.get(payload.stepId) ?? ''
+          streamingStepOutputRef.current.set(payload.stepId, current + payload.token)
+        }
         scheduleStreamingFlush()
       },
       onDone: (payload: ChatDoneEvent) => {
@@ -158,6 +176,7 @@ export function useChatStream({
           setCanRetry(false)
           streamingTextRef.current = ''
           streamingReasoningRef.current = ''
+          streamingStepOutputRef.current.clear()
           setStreamingText('')
           setStreamingReasoning('')
           setStreaming(false)
@@ -178,6 +197,7 @@ export function useChatStream({
         ])
         streamingTextRef.current = ''
         streamingReasoningRef.current = ''
+        streamingStepOutputRef.current.clear()
         setStreamingText('')
         setStreamingReasoning('')
         setStreaming(false)
@@ -195,12 +215,19 @@ export function useChatStream({
         setError(payload.message)
         streamingTextRef.current = ''
         streamingReasoningRef.current = ''
+        streamingStepOutputRef.current.clear()
         setStreamingText('')
         setStreamingReasoning('')
         setStreaming(false)
       },
       onTrace: (payload: ChatTraceEvent) => {
         if (payload.threadId !== threadIdRef.current) return
+        if (payload.step.kind === 'reasoning' || payload.step.kind === 'message') {
+          const current = streamingStepOutputRef.current.get(payload.step.id)
+          if (payload.step.output != null || current === undefined) {
+            streamingStepOutputRef.current.set(payload.step.id, payload.step.output ?? '')
+          }
+        }
         setTraceSteps((prev) => mergeTraceStep(prev, payload.step))
       },
       onTitleUpdated: (payload: ChatTitleUpdatedEvent) => {
@@ -287,6 +314,7 @@ export function useChatStream({
     isSendingRef.current = true
     streamingTextRef.current = ''
     streamingReasoningRef.current = ''
+    streamingStepOutputRef.current.clear()
     setStreamingText('')
     setStreamingReasoning('')
     setError(null)

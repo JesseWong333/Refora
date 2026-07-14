@@ -1,19 +1,18 @@
-import { useState, useEffect, useMemo, memo, Fragment } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Check,
   Copy,
   ArrowCounterClockwise,
-  Robot,
-  Sparkle,
-  ArrowDown
+  ArrowDown,
+  CaretDown
 } from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, createMarkdownComponents, urlTransform } from '../../utils/markdown'
 import { useDocumentStore } from '../../store/documentStore'
 import { api } from '../../ipc'
 import { Button as UiButton } from '../ui'
-import { AgentTracePanel } from './AgentTrace'
+import { AgentTraceStepItem } from './AgentTrace'
 import type { AgentTraceStep, AiProvider, ChatMessage } from '../../../shared/ipc-types'
 
 function safeDecode(s: string): string {
@@ -78,15 +77,19 @@ const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content
 })
 
 function CopyButton({ text, className }: { text: string; className?: string }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const copyLabel = copied
+    ? t('workspace.chat.copied', 'Copied')
+    : t('workspace.chat.copy', 'Copy')
   return (
     <button
       type="button"
-      className={`shrink-0 rounded p-1 transition-opacity hover:text-foreground hover:opacity-100 ${
-        className ?? 'text-muted opacity-40'
+      className={`chat-message-action ${
+        className ?? 'text-muted opacity-60'
       }`}
-      title="Copy"
-      aria-label="Copy"
+      title={copyLabel}
+      aria-label={copyLabel}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
           setCopied(true)
@@ -97,6 +100,205 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
     </button>
   )
+}
+
+function ReasoningPanel({
+  content,
+  streaming = false
+}: {
+  content: string
+  streaming?: boolean
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(streaming)
+  useEffect(() => {
+    if (streaming) setOpen(true)
+  }, [streaming])
+  const toggleLabel = open
+    ? t('workspace.chat.reasoningCollapse', 'Hide reasoning')
+    : t('workspace.chat.reasoningExpand', 'Show reasoning')
+
+  return (
+    <section className="chat-reasoning-panel" data-timeline-kind="reasoning">
+      <button
+        type="button"
+        className="chat-reasoning-toggle"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-label={toggleLabel}
+        title={toggleLabel}
+      >
+        <span className="chat-reasoning-label min-w-0 truncate text-left">
+          {t('workspace.chat.deepThinking', 'Deep Thinking')}
+        </span>
+        <CaretDown
+          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'}`}
+        />
+      </button>
+      {open && (
+        <div className="chat-reasoning-content chat-markdown-muted">
+          <StreamingMarkdown content={content} />
+        </div>
+      )}
+    </section>
+  )
+}
+
+function AnswerSegment({ content, streaming = false }: { content: string; streaming?: boolean }) {
+  const { t } = useTranslation()
+  const cancelled =
+    content.includes('[Response cancelled by user]') ||
+    content.includes('[Response interrupted')
+
+  return (
+    <section className="chat-timeline-answer" data-timeline-kind="message">
+      <div
+        className={`chat-assistant-content ${streaming ? 'chat-streaming-content ' : ''}chat-markdown`}
+        aria-label={streaming ? t('workspace.chat.streamingResponse', 'AI response') : undefined}
+      >
+        {cancelled ? (
+          <span className="italic text-muted">{content}</span>
+        ) : (
+          <StreamingMarkdown content={content} />
+        )}
+      </div>
+    </section>
+  )
+}
+
+function RunTimeline({
+  steps,
+  fallbackAnswer,
+  fallbackReasoning,
+  streaming,
+  elapsedSeconds
+}: {
+  steps: AgentTraceStep[]
+  fallbackAnswer: string
+  fallbackReasoning: string
+  streaming: boolean
+  elapsedSeconds: number
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(true)
+  useEffect(() => {
+    if (streaming) setOpen(true)
+  }, [streaming])
+  const ordered = [...steps]
+    .filter((step) => step.kind !== 'run')
+    .sort((a, b) => a.seq - b.seq)
+  const hasReasoningStep = ordered.some((step) => step.kind === 'reasoning')
+  const messageSteps = ordered.filter((step) => step.kind === 'message')
+  const finalMessageStep = messageSteps.at(-1)
+  const timelineSteps = ordered.filter(
+    (step) => step.kind !== 'llm' && step.id !== finalMessageStep?.id
+  )
+  const tracedAnswer = messageSteps.map((step) => step.output ?? '').join('')
+  const answerRemainder = messageSteps.length === 0
+    ? fallbackAnswer
+    : fallbackAnswer.startsWith(tracedAnswer)
+      ? fallbackAnswer.slice(tracedAnswer.length)
+      : ''
+  const finalAnswer = `${finalMessageStep?.output ?? ''}${answerRemainder}`
+  const hasCollapsibleContent = timelineSteps.some((step) => {
+    if (step.kind === 'reasoning') return !!step.output || step.status === 'running'
+    if (step.kind === 'message') return !!step.output
+    return true
+  }) || (!hasReasoningStep && !!fallbackReasoning)
+  const runStep = steps.find((step) => step.kind === 'run')
+  const completedSteps = steps.filter((step) => step.endedAt != null)
+  const startedAt = runStep?.startedAt ?? (steps.length > 0 ? Math.min(...steps.map((step) => step.startedAt)) : null)
+  const endedAt = runStep?.endedAt ?? (completedSteps.length > 0 ? Math.max(...completedSteps.map((step) => step.endedAt!)) : null)
+  const duration = streaming
+    ? formatElapsed(elapsedSeconds)
+    : startedAt != null && endedAt != null
+      ? formatRunDuration(endedAt - startedAt)
+      : null
+  const hasError = steps.some((step) => step.status === 'error')
+  const runLabel = streaming
+    ? t('workspace.chat.traceRunningLabel', 'Running…')
+    : hasError
+      ? t('workspace.chat.traceCompletedError', 'Completed with an error')
+      : t('workspace.chat.traceLlmDone', 'Completed')
+  const toggleLabel = open
+    ? t('workspace.chat.traceCollapse', 'Hide details')
+    : t('workspace.chat.traceExpand', 'Show details')
+
+  return (
+    <>
+      <div className="chat-run-timeline">
+        <button
+          type="button"
+          className="chat-run-toggle"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+        >
+          <span className="chat-run-label">{runLabel}</span>
+          {duration && <span className="chat-run-duration">{duration}</span>}
+          <CaretDown
+            className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? '' : '-rotate-90'}`}
+          />
+        </button>
+        {open && (
+          <div className="chat-agent-timeline">
+            {timelineSteps.map((step) => {
+              if (step.kind === 'reasoning') {
+                if (!step.output && step.status !== 'running') return null
+                return (
+                  <ReasoningPanel
+                    key={step.id}
+                    content={step.output ?? ''}
+                    streaming={streaming && step.status === 'running'}
+                  />
+                )
+              }
+              if (step.kind === 'message') {
+                if (!step.output) return null
+                return (
+                  <AnswerSegment
+                    key={step.id}
+                    content={step.output}
+                    streaming={streaming && step.status === 'running'}
+                  />
+                )
+              }
+              return <AgentTraceStepItem key={step.id} step={step} />
+            })}
+            {!hasReasoningStep && fallbackReasoning && (
+              <ReasoningPanel
+                content={fallbackReasoning}
+                streaming={streaming}
+              />
+            )}
+            {streaming && !hasCollapsibleContent && !finalAnswer && (
+              <div className="chat-thinking-state">
+                <span className="thinking-dot" />
+                <span className="thinking-dot" />
+                <span className="thinking-dot" />
+                <span className="ml-1 text-xs text-muted">
+                  {t('workspace.chat.thinking', 'Thinking…')} · {formatElapsed(elapsedSeconds)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {finalAnswer && (
+        <AnswerSegment
+          content={finalAnswer}
+          streaming={streaming && (!finalMessageStep || finalMessageStep.status === 'running')}
+        />
+      )}
+    </>
+  )
+}
+
+function formatRunDuration(ms: number): string {
+  const duration = Math.max(0, ms)
+  if (duration < 1000) return `${duration}ms`
+  return `${(duration / 1000).toFixed(duration < 10000 ? 1 : 0)}s`
 }
 
 function formatElapsed(seconds: number): string {
@@ -141,7 +343,7 @@ export default function ChatMessages({
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const displayMessages = useMemo(() => messages.filter((m) => m.role !== 'tool'), [messages])
-  const showEmpty = displayMessages.length === 0 && !streamingText && !streamingReasoning
+  const showEmpty = displayMessages.length === 0 && !streaming && !streamingText && !streamingReasoning
 
   const runTraceGroups = useMemo(() => {
     const sorted = [...traceSteps].sort((a, b) => a.seq - b.seq)
@@ -217,10 +419,9 @@ export default function ChatMessages({
             ))}
           </div>
         ) : showEmpty ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
             {providers.length === 0 ? (
               <>
-                <Robot className="h-10 w-10 text-muted/50" />
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">
                     {t('workspace.chat.noProviderTitle', 'No AI Provider')}
@@ -241,7 +442,6 @@ export default function ChatMessages({
               </>
             ) : (
               <>
-                <Sparkle className="h-8 w-8 text-accent/60" />
                 <p className="text-xs text-muted">
                   {t('workspace.chatPlaceholder', 'Ask anything about the papers in this workspace.')}
                 </p>
@@ -269,88 +469,56 @@ export default function ChatMessages({
             {displayMessages.map((m, idx) => {
               const runId = assistantRunForIdx[idx]
               const runSteps = runId ? (runTraceGroups.map.get(runId) ?? []) : []
-              const showTraceHere = runSteps.length > 0
-              const isCancelled =
-                m.role === 'assistant' &&
-                (m.content.includes('[Response cancelled by user]') ||
-                  m.content.includes('[Response interrupted'))
               const showRegenerate =
                 m.role === 'assistant' && idx === lastAssistantIdx && !streaming
+
+              if (m.role === 'user') {
+                return (
+                  <div key={m.id} className="group flex w-full flex-col items-end">
+                    <div className="chat-user-message">
+                      {m.content}
+                    </div>
+                    <CopyButton text={m.content} className="mt-1 text-muted opacity-0 group-hover:opacity-100" />
+                  </div>
+                )
+              }
+
               return (
-                <Fragment key={m.id}>
-                  {showTraceHere && (
-                    <AgentTracePanel steps={runSteps} streaming={false} />
-                  )}
-                  <div
-                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    {m.role === 'user' ? (
-                      <div className="group flex w-full flex-col items-end">
-                        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-none bg-[rgb(242,242,242)] px-3 py-2 text-xs break-words text-[#1d1d1f]">
-                          {m.content}
-                        </div>
-                        <CopyButton text={m.content} className="mt-1 text-muted opacity-0 group-hover:opacity-100" />
-                      </div>
-                    ) : (
-                      <div className="group w-full break-words text-xs text-foreground chat-markdown">
-                        {isCancelled ? (
-                          <span className="italic text-muted">{m.content}</span>
-                        ) : (
-                          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS} urlTransform={urlTransform}>{m.content}</ReactMarkdown>
-                        )}
-                        <div className="mt-1 flex justify-end gap-0.5">
-                          <CopyButton text={m.content} />
-                          {showRegenerate && (
-                            <button
-                              type="button"
-                              className="shrink-0 rounded p-1 text-muted opacity-40 transition-opacity hover:text-foreground hover:opacity-100"
-                              onClick={() => onRegenerate()}
-                              title={t('workspace.chat.regenerate', 'Regenerate')}
-                              aria-label={t('workspace.chat.regenerate', 'Regenerate')}
-                            >
-                              <ArrowCounterClockwise className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                <article key={m.id} className="chat-response-group">
+                  <RunTimeline
+                    steps={runSteps}
+                    fallbackAnswer={m.content}
+                    fallbackReasoning=""
+                    streaming={false}
+                    elapsedSeconds={0}
+                  />
+                  <div className="chat-message-actions">
+                    <CopyButton text={m.content} />
+                    {showRegenerate && (
+                      <button
+                        type="button"
+                        className="chat-message-action text-muted opacity-60"
+                        onClick={() => onRegenerate()}
+                        title={t('workspace.chat.regenerate', 'Regenerate')}
+                        aria-label={t('workspace.chat.regenerate', 'Regenerate')}
+                      >
+                        <ArrowCounterClockwise className="h-3.5 w-3.5" />
+                      </button>
                     )}
                   </div>
-                </Fragment>
+                </article>
               )
             })}
             {streaming && (
-              <AgentTracePanel steps={streamingSteps} streaming={streaming} />
-            )}
-            {streamingReasoning && (
-              <div className="flex justify-start">
-                <details className="w-full text-xs" open>
-                  <summary className="cursor-pointer select-none font-medium text-muted">
-                    {t('workspace.chat.reasoning', 'Reasoning')}
-                  </summary>
-                  <div className="mt-1 text-muted chat-markdown-muted">
-                    <StreamingMarkdown content={streamingReasoning} />
-                  </div>
-                </details>
-              </div>
-            )}
-            {streamingText && (
-              <div className="flex justify-start" aria-live="polite" aria-label={t('workspace.chat.streamingResponse', 'AI response')}>
-                <div className="w-full break-words text-xs text-foreground chat-markdown">
-                  <StreamingMarkdown content={streamingText} />
-                </div>
-              </div>
-            )}
-            {streaming && !streamingText && !streamingReasoning && (
-              <div className="flex justify-start" aria-live="polite">
-                <div className="flex items-center gap-1">
-                  <span className="thinking-dot" />
-                  <span className="thinking-dot" />
-                  <span className="thinking-dot" />
-                  <span className="ml-1 text-xs text-muted">
-                    {t('workspace.chat.thinking', 'Thinking…')} ({formatElapsed(elapsedSeconds)})
-                  </span>
-                </div>
-              </div>
+              <article className="chat-response-group" aria-live="polite">
+                <RunTimeline
+                  steps={streamingSteps}
+                  fallbackAnswer={streamingText}
+                  fallbackReasoning={streamingReasoning}
+                  streaming
+                  elapsedSeconds={elapsedSeconds}
+                />
+              </article>
             )}
           </div>
         )}

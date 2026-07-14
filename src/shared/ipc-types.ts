@@ -288,7 +288,7 @@ export interface ChatSendRequest {
   attachments?: ChatAttachment[]
 }
 
-export type AgentTraceStepKind = 'llm' | 'tool' | 'run'
+export type AgentTraceStepKind = 'llm' | 'tool' | 'reasoning' | 'message' | 'run'
 export type AgentTraceStepStatus = 'running' | 'done' | 'error'
 
 export interface AgentTraceStep {
@@ -311,11 +311,15 @@ export interface AgentTraceStep {
 export interface ChatTokenEvent {
   threadId: string
   token: string
+  runId?: string
+  stepId?: string
 }
 
 export interface ChatReasoningEvent {
   threadId: string
   token: string
+  runId?: string
+  stepId?: string
 }
 
 export interface ChatDoneEvent {

@@ -6,7 +6,10 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatMessage,
-  ChatSendRequest
+  ChatReasoningEvent,
+  ChatSendRequest,
+  ChatTokenEvent,
+  ChatTraceEvent
 } from '../../src/shared/ipc-types'
 
 vi.mock('react-i18next', () => ({
@@ -24,6 +27,7 @@ const ChatPanel = ChatPanelModule.default
 const { parseReforaDocLink } = ChatPanelModule
 const { useChatStream } = await import('../../src/renderer/hooks/useChatStream')
 const { AgentTracePanel } = await import('../../src/renderer/components/workspace/AgentTrace')
+const ChatMessages = (await import('../../src/renderer/components/workspace/ChatMessages')).default
 
 const mockChatHistory = vi.fn()
 const mockChatSend = vi.fn()
@@ -31,6 +35,9 @@ const mockChatCancel = vi.fn()
 const mockOpenPdf = vi.fn()
 let chatDoneHandler: ((payload: ChatDoneEvent) => void) | undefined
 let chatErrorHandler: ((payload: ChatErrorEvent) => void) | undefined
+let chatTokenHandler: ((payload: ChatTokenEvent) => void) | undefined
+let chatReasoningHandler: ((payload: ChatReasoningEvent) => void) | undefined
+let chatTraceHandler: ((payload: ChatTraceEvent) => void) | undefined
 
 const TEST_PROVIDER: AiProvider = {
   id: 'p1',
@@ -74,6 +81,15 @@ function setupApi(messages: ChatMessage[]): void {
   w.api.events.onAiChatError = (handler: (payload: ChatErrorEvent) => void) => {
     chatErrorHandler = handler
   }
+  w.api.events.onAiChatToken = (handler: (payload: ChatTokenEvent) => void) => {
+    chatTokenHandler = handler
+  }
+  w.api.events.onAiChatReasoning = (handler: (payload: ChatReasoningEvent) => void) => {
+    chatReasoningHandler = handler
+  }
+  w.api.events.onAiChatTrace = (handler: (payload: ChatTraceEvent) => void) => {
+    chatTraceHandler = handler
+  }
   mockChatHistory.mockResolvedValue(messages)
   mockChatSend.mockResolvedValue({ threadId: 'thread-1' })
   mockChatCancel.mockResolvedValue(undefined)
@@ -101,6 +117,9 @@ beforeEach(() => {
   mockOpenPdf.mockReset()
   chatDoneHandler = undefined
   chatErrorHandler = undefined
+  chatTokenHandler = undefined
+  chatReasoningHandler = undefined
+  chatTraceHandler = undefined
   mockOpenPdf.mockResolvedValue(null)
   setupStore()
 })
@@ -246,6 +265,116 @@ describe('ChatPanel tool message filtering', () => {
   })
 })
 
+function renderMessages(overrides: Partial<Parameters<typeof ChatMessages>[0]> = {}) {
+  return render(
+    <ChatMessages
+      messages={[]}
+      traceSteps={[]}
+      streaming
+      streamingText=""
+      streamingReasoning=""
+      elapsedSeconds={4}
+      loadingHistory={false}
+      providers={[]}
+      onRegenerate={vi.fn()}
+      onSuggestionClick={vi.fn()}
+      scrollRef={{ current: null }}
+      inputAreaHeight={0}
+      stickToBottomRef={{ current: true }}
+      {...overrides}
+    />
+  )
+}
+
+describe('ChatMessages presentation', () => {
+  it('renders live reasoning in a collapsible activity panel', () => {
+    renderMessages({ streamingReasoning: 'Comparing the cited methods.' })
+
+    expect(screen.getByText('workspace.chat.deepThinking')).toBeInTheDocument()
+    expect(screen.getByText('Comparing the cited methods.')).toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: 'workspace.chat.reasoningCollapse' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle.querySelector('svg')).not.toBeNull()
+
+    fireEvent.click(toggle)
+    expect(screen.queryByText('Comparing the cited methods.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.chat.reasoningExpand' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('renders a completed assistant answer without extra header chrome', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', threadId: 't1', role: 'user', content: 'Compare them', createdAt: 1 },
+      { id: 'a1', threadId: 't1', role: 'assistant', content: 'The methods differ.', createdAt: 2 }
+    ]
+
+    const { container } = renderMessages({ messages, streaming: false })
+
+    expect(container.querySelector('.chat-user-message')).toHaveTextContent('Compare them')
+    expect(container.querySelector('.chat-response-group')).toHaveTextContent('The methods differ.')
+    expect(container.querySelector('.chat-assistant-header')).toBeNull()
+    expect(screen.getAllByText('workspace.chat.traceLlmDone')).toHaveLength(1)
+
+    const runToggle = container.querySelector('.chat-run-toggle') as HTMLButtonElement
+    expect(runToggle).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(runToggle)
+    expect(runToggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText('The methods differ.')).toBeInTheDocument()
+  })
+
+  it('renders reasoning, tools, and answer segments in trace order', () => {
+    const messages: ChatMessage[] = [
+      { id: 'a1', threadId: 't1', role: 'assistant', content: 'Final answer', createdAt: 2 }
+    ]
+    const base = {
+      threadId: 't1',
+      runId: 'run-1',
+      input: null,
+      status: 'done' as const,
+      startedAt: 1,
+      endedAt: 2,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null
+    }
+    const traceSteps: AgentTraceStep[] = [
+      { ...base, id: 'llm', kind: 'llm', name: 'model_call', input: '{}', output: '', seq: 0 },
+      { ...base, id: 'reasoning', kind: 'reasoning', name: 'model_reasoning', output: 'Inspect sources', seq: 1 },
+      { ...base, id: 'progress', kind: 'message', name: 'assistant_message', output: 'Checking sources.', seq: 2 },
+      { ...base, id: 'tool', kind: 'tool', name: 'search_library', output: '[]', seq: 3 },
+      { ...base, id: 'answer', kind: 'message', name: 'assistant_message', output: 'Final answer', seq: 4 }
+    ]
+
+    const { container } = renderMessages({ messages, traceSteps, streaming: false })
+    const kinds = [...container.querySelectorAll('[data-timeline-kind]')].map(
+      (element) => element.getAttribute('data-timeline-kind')
+    )
+
+    expect(kinds).toEqual(['reasoning', 'message', 'tool', 'message'])
+    expect(container.querySelector('.chat-assistant-avatar')).toBeNull()
+    expect(container.querySelector('.chat-reasoning-icon')).toBeNull()
+    expect(container.querySelector('.chat-timeline-answer-label')).toBeNull()
+    expect(container.querySelector('[data-timeline-kind="llm"]')).toBeNull()
+    expect(container.querySelector('[data-timeline-kind="tool"] .agent-trace-kind-icon')).not.toBeNull()
+    expect(screen.getAllByText('workspace.chat.traceLlmDone')).toHaveLength(1)
+    expect(screen.getByText('workspace.chat.deepThinking')).toBeInTheDocument()
+    expect(screen.queryByText('Inspect sources')).not.toBeInTheDocument()
+    const reasoningToggle = screen.getByRole('button', { name: 'workspace.chat.reasoningExpand' })
+    expect(reasoningToggle).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(reasoningToggle)
+    expect(screen.getByText('Inspect sources')).toBeInTheDocument()
+    expect(screen.getByText('Checking sources.')).toBeInTheDocument()
+    expect(screen.getByText('workspace.chat.toolSearchLibraryDone')).toBeInTheDocument()
+    expect(screen.getByText('Final answer')).toBeInTheDocument()
+
+    const runToggle = container.querySelector('.chat-run-toggle') as HTMLButtonElement
+    fireEvent.click(runToggle)
+    expect(screen.queryByText('workspace.chat.deepThinking')).not.toBeInTheDocument()
+    expect(screen.queryByText('Checking sources.')).not.toBeInTheDocument()
+    expect(screen.queryByText('workspace.chat.toolSearchLibraryDone')).not.toBeInTheDocument()
+    expect(screen.getByText('Final answer')).toBeInTheDocument()
+  })
+})
+
 function renderChatStream(activeThreadId: string | null = 'thread-1') {
   setupApi([])
   return renderHook(() =>
@@ -263,6 +392,52 @@ function renderChatStream(activeThreadId: string | null = 'thread-1') {
 }
 
 describe('useChatStream lifecycle', () => {
+  it('merges live reasoning and answer tokens into their timeline steps', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+
+    await act(async () => {
+      await result.current.sendText('Compare these papers', [], 'thread-1')
+    })
+
+    const reasoningStep: AgentTraceStep = {
+      id: 'reasoning-1',
+      threadId: 'thread-1',
+      runId: 'run-1',
+      kind: 'reasoning',
+      name: 'model_reasoning',
+      input: null,
+      output: null,
+      status: 'running',
+      startedAt: 1,
+      endedAt: null,
+      seq: 0,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null
+    }
+    const messageStep: AgentTraceStep = {
+      ...reasoningStep,
+      id: 'message-1',
+      kind: 'message',
+      name: 'assistant_message',
+      seq: 1
+    }
+
+    act(() => {
+      chatTraceHandler?.({ threadId: 'thread-1', runId: 'run-1', step: reasoningStep })
+      chatReasoningHandler?.({ threadId: 'thread-1', runId: 'run-1', stepId: 'reasoning-1', token: 'Inspect ' })
+      chatReasoningHandler?.({ threadId: 'thread-1', runId: 'run-1', stepId: 'reasoning-1', token: 'sources' })
+      chatTraceHandler?.({ threadId: 'thread-1', runId: 'run-1', step: messageStep })
+      chatTokenHandler?.({ threadId: 'thread-1', runId: 'run-1', stepId: 'message-1', token: 'Answer' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.traceSteps.find((step) => step.id === 'reasoning-1')?.output).toBe('Inspect sources')
+      expect(result.current.traceSteps.find((step) => step.id === 'message-1')?.output).toBe('Answer')
+    })
+  })
+
   it('keeps failed send context available for retry after a stream error', async () => {
     const { result } = renderChatStream()
     await waitFor(() => expect(result.current.loadingHistory).toBe(false))
@@ -361,5 +536,31 @@ describe('AgentTracePanel structure', () => {
     fireEvent.click(panelToggle)
     expect(panelToggle.querySelector('button')).toBeNull()
     expect(screen.getByRole('button', { name: 'workspace.chat.expandAll' })).toBeInTheDocument()
+  })
+
+  it('uses completed tool labels and pretty prints JSON details', () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    const traceStep: AgentTraceStep = {
+      id: 'step-1',
+      threadId: 'thread-1',
+      runId: 'run-1',
+      kind: 'tool',
+      name: 'search_library',
+      input: '{"query":"graph","limit":3}',
+      output: null,
+      status: 'done',
+      startedAt: 0,
+      endedAt: 10,
+      seq: 0,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null
+    }
+    render(<AgentTracePanel steps={[traceStep]} streaming={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /workspace.chat.trace/ }))
+    fireEvent.click(screen.getByText('workspace.chat.toolSearchLibraryDone'))
+
+    expect(screen.getByText(/"query": "graph"/)).toBeInTheDocument()
   })
 })
