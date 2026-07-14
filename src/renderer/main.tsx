@@ -11,6 +11,10 @@ import './styles/index.css'
 const IS_MAC = navigator.platform.toLowerCase().includes('mac')
 if (IS_MAC) {
   document.documentElement.dataset.platform = 'mac'
+  document.documentElement.dataset.windowFocused = 'false'
+  window.api.events.onWindowFocusChanged((focused) => {
+    document.documentElement.dataset.windowFocused = focused ? 'true' : 'false'
+  })
 }
 
 const rootElement = document.getElementById('root')

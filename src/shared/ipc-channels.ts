@@ -78,6 +78,7 @@ export const IpcChannel = {
   AiReportsUpdate: 'ai:reports:update',
 
   EventDocumentUpdated: 'document:updated',
+  EventWindowFocusChanged: 'window:focus-changed',
   EventImportProgress: 'import:progress',
   EventImportToast: 'import:toast',
   EventMenuExportBibtex: 'menu:export-bibtex',

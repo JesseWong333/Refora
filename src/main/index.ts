@@ -22,6 +22,7 @@ import { writeExportFile, importFromJsonFile } from './services/export'
 import { emitImportProgress, emitLibraryScanning, emitLibrarySwitched } from './ipc/events'
 import { dbPathForLibraryFolder, dbExistsInLibraryFolder, DB_FILE_NAME } from './db/dbPath'
 import { readLibraryFolderPath, writeLibraryFolderPath } from './services/prefs'
+import { IpcChannel } from '../shared/ipc-channels'
 import type { LibrarySwitchResult } from '../shared/ipc-types'
 
 let isDev = false
@@ -182,7 +183,7 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     ...(IS_MAC && {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 22, y: 22 },
-      vibrancy: 'sidebar',
+      vibrancy: 'header',
       visualEffectState: 'followWindow'
     }),
     webPreferences: {
@@ -193,7 +194,18 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     }
   })
 
-  bw.webContents.on('did-finish-load', () => bw.show())
+  const sendWindowFocus = (focused: boolean) => {
+    if (!bw.isDestroyed() && !bw.webContents.isDestroyed()) {
+      bw.webContents.send(IpcChannel.EventWindowFocusChanged, focused)
+    }
+  }
+
+  bw.webContents.on('did-finish-load', () => {
+    bw.show()
+    sendWindowFocus(bw.isFocused())
+  })
+  bw.on('focus', () => sendWindowFocus(true))
+  bw.on('blur', () => sendWindowFocus(false))
 
   let saveBoundsTimeout: ReturnType<typeof setTimeout> | null = null
   const saveBounds = () => {

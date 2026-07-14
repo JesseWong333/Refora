@@ -62,6 +62,7 @@ function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 const subscriptions = new Map<unknown, { channel: string; ipcListener: (...args: unknown[]) => void }>()
 
 const SINGLE_SUBSCRIBER_CHANNELS = new Set([
+  IpcChannel.EventWindowFocusChanged,
   'ai:chat:token',
   'ai:chat:reasoning',
   'ai:chat:done',
@@ -225,6 +226,8 @@ const api: ReforaApi = {
   events: {
     onDocumentUpdated: (cb: (doc: Document) => void) =>
       subscribe(IpcChannel.EventDocumentUpdated, cb),
+    onWindowFocusChanged: (cb: (focused: boolean) => void) =>
+      subscribe(IpcChannel.EventWindowFocusChanged, cb),
     onImportProgress: (cb: (payload: ImportProgress) => void) =>
       subscribe(IpcChannel.EventImportProgress, cb),
     onImportToast: (cb: (message: string) => void) =>

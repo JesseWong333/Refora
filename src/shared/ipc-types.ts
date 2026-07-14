@@ -361,6 +361,7 @@ export type EventChannel = (typeof IpcChannel)[EventChannelKey]
 
 export interface DocumentEvents {
   onDocumentUpdated(cb: (doc: Document) => void): void
+  onWindowFocusChanged(cb: (focused: boolean) => void): void
   onImportProgress(cb: (payload: ImportProgress) => void): void
   onImportToast(cb: (message: string) => void): void
   onMenuExportBibtex(cb: () => void): void

@@ -988,17 +988,22 @@
 }
 
 [data-platform='mac'] .sidebar-floating {
-  border: 0.5px solid color-mix(in srgb, var(--color-border) 48%, transparent);
-  background-color: color-mix(in srgb, var(--color-panel) 24%, transparent);
-  background-image: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0.05) 42%,
-    transparent 72%
-  );
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--sidebar-shadow);
-  -webkit-backdrop-filter: blur(24px) saturate(165%);
-  backdrop-filter: blur(24px) saturate(165%);
+  border: 0.5px solid color-mix(in srgb, var(--color-border) 32%, transparent);
+  background-color: color-mix(in srgb, var(--color-panel) 18%, transparent);
+  box-shadow: var(--sidebar-shadow);
+  transition: background-color 0.16s ease;
+}
+
+[data-platform='mac'][data-theme='light'][data-window-focused='true'] .sidebar-floating {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+[data-platform='mac'][data-theme='light'][data-window-focused='false'] .sidebar-floating {
+  background-color: rgb(247, 247, 247);
+}
+
+[data-platform='mac'][data-theme='dark'][data-window-focused='false'] .sidebar-floating {
+  background-color: var(--color-panel);
 }
 
 .sidebar-vibrancy-frame {

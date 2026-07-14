@@ -49,6 +49,7 @@ type IpcChannelValue = (typeof IpcChannel)[keyof typeof IpcChannel]
 type HandlerChannel = Exclude<
   IpcChannelValue,
   | typeof IpcChannel.EventDocumentUpdated
+  | typeof IpcChannel.EventWindowFocusChanged
   | typeof IpcChannel.EventImportProgress
   | typeof IpcChannel.EventImportToast
   | typeof IpcChannel.EventMenuExportBibtex
