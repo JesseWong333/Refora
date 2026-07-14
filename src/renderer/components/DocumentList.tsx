@@ -461,12 +461,12 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       <div className="relative z-10 flex h-14 shrink-0 items-center gap-2 drag-region">
         {sidebarCollapsed && (
           <div
-            className="no-drag flex self-stretch shrink-0"
+            className="drag-region flex self-stretch shrink-0"
             aria-hidden="true"
             style={{ width: 'var(--toolbar-preserve, 168px)' }}
           >
             <div style={{ width: 'var(--traffic-light-width, 68px)' }} />
-            <div className="drag-region h-full flex-1" />
+            <div className="h-full flex-1" />
           </div>
         )}
         <div className="mx-auto flex w-1/2 items-center gap-[10px] no-drag">

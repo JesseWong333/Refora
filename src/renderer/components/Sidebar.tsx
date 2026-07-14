@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { FilePlus, FolderPlus, ArrowLineLeft, ArrowLineRight, CircleNotch } from '@phosphor-icons/react'
 import { useDocumentStore } from '../store/documentStore'
@@ -42,44 +43,47 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
   if (collapsed) {
     const toolbarLeft = isMac ? 92 : 8
+    const toolbar = (
+      <div
+        className="sidebar-floating-toolbar drag-region"
+        style={{ left: `${toolbarLeft}px` }}
+      >
+        <UiButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={onToggleCollapse}
+          title={t('settings.sidebarCollapsed')}
+          aria-label={t('settings.sidebarCollapsed')}
+        >
+          <ArrowLineRight className="h-4 w-4" />
+        </UiButton>
+        <div className="toolbar-sep" aria-hidden="true" />
+        <UiButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={handleAddFiles}
+          title={`${t('topbar.addFile')} (⌘I)`}
+          aria-label={t('topbar.addFile')}
+        >
+          <FilePlus className="h-4 w-4" />
+        </UiButton>
+        <UiButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={handleAddFolder}
+          title={t('topbar.addFolder')}
+          aria-label={t('topbar.addFolder')}
+        >
+          <FolderPlus className="h-4 w-4" />
+        </UiButton>
+      </div>
+    )
     return (
       <>
-        <div
-          className="sidebar-floating-toolbar no-drag"
-          style={{ left: `${toolbarLeft}px` }}
-        >
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={onToggleCollapse}
-            title={t('settings.sidebarCollapsed')}
-            aria-label={t('settings.sidebarCollapsed')}
-          >
-            <ArrowLineRight className="h-4 w-4" />
-          </UiButton>
-          <div className="toolbar-sep" aria-hidden="true" />
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleAddFiles}
-            title={`${t('topbar.addFile')} (⌘I)`}
-            aria-label={t('topbar.addFile')}
-          >
-            <FilePlus className="h-4 w-4" />
-          </UiButton>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleAddFolder}
-            title={t('topbar.addFolder')}
-            aria-label={t('topbar.addFolder')}
-          >
-            <FolderPlus className="h-4 w-4" />
-          </UiButton>
-        </div>
+        {createPortal(toolbar, document.body)}
         <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
       </>
     )

@@ -295,7 +295,6 @@
     border-radius: 20px;
     background-color: var(--color-panel);
     box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.03), 0 2px 8px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.03);
-    pointer-events: auto;
   }
 
   .sidebar-floating-toolbar .toolbar-sep {
