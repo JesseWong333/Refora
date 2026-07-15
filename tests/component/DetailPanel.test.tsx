@@ -327,6 +327,44 @@ describe('DetailPanel', () => {
     })
   })
 
+  describe('refresh metadata result', () => {
+    beforeEach(() => {
+      mockStoreState.focusedDocId = '1'
+      mockStoreState.documents = [{ ...mockDoc, metadataStatus: 'pending' }]
+      mockStoreState.categories = [{ ...mockCat, count: 5 }]
+    })
+
+    it('shows failed indicator when metadata status becomes failed', async () => {
+      mockStoreState.refreshMetadata.mockResolvedValue(true)
+      const { rerender } = render(<DetailPanel />)
+
+      const refreshBtn = screen.getByText('detail.refreshMetadata')
+      await act(async () => {
+        fireEvent.click(refreshBtn)
+      })
+
+      mockStoreState.documents = [{ ...mockDoc, metadataStatus: 'failed' }]
+      rerender(<DetailPanel />)
+
+      expect(screen.getByText('detail.refreshFailed')).toBeInTheDocument()
+    })
+
+    it('shows success indicator when metadata status becomes done', async () => {
+      mockStoreState.refreshMetadata.mockResolvedValue(true)
+      const { rerender } = render(<DetailPanel />)
+
+      const refreshBtn = screen.getByText('detail.refreshMetadata')
+      await act(async () => {
+        fireEvent.click(refreshBtn)
+      })
+
+      mockStoreState.documents = [{ ...mockDoc, metadataStatus: 'done' }]
+      rerender(<DetailPanel />)
+
+      expect(screen.getByText('detail.refreshSuccess')).toBeInTheDocument()
+    })
+  })
+
   describe('empty fields shown as placeholder', () => {
     it('displays em-dash for null abstract and allows click to edit', async () => {
       const docWithNull = { ...mockDoc, abstract: null }

@@ -408,7 +408,6 @@ export interface ReforaApi {
     bulkDelete(ids: string[]): Promise<void>
     bulkCategorize(ids: string[], catId: string): Promise<void>
     bulkRefreshMetadata(ids: string[]): Promise<void>
-    countPendingMetadata(): Promise<number>
     openPdf(id: string): Promise<Document>
     openInFinder(id: string): Promise<void>
     refreshMetadata(id: string): Promise<Document>

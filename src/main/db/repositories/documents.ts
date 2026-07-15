@@ -392,13 +392,6 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     return rows.map((r) => mapDocument(r, lf))
   }
 
-  function countPendingMetadata(): number {
-    const row = db.prepare("SELECT COUNT(*) AS c FROM documents WHERE metadataStatus = 'pending'").get() as
-      | { c: number }
-      | undefined
-    return row?.c ?? 0
-  }
-
   function setRemoteValues(id: string, remoteValues: RemoteValues | null): void {
     db.prepare('UPDATE documents SET remoteValues = ?, updatedAt = ? WHERE id = ?').run(
       remoteValues === null ? null : JSON.stringify(remoteValues),
@@ -465,7 +458,6 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     setLastReadAt,
     setFileMissing,
     getResumableMetadataRows,
-    countPendingMetadata,
     setRemoteValues,
     applyMetadataFields
   }
