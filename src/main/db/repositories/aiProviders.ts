@@ -1,13 +1,23 @@
 import { randomUUID } from 'node:crypto'
-import type { AiProvider, ModelVariantFormat } from '../../../shared/ipc-types'
+import type {
+  AiApiProtocol,
+  AiProvider,
+  AiReasoningControl,
+  AiReasoningEffort,
+  ModelVariantFormat
+} from '../../../shared/ipc-types'
 import { composeModelId, parseModelId } from '../../../shared/modelVariant'
 import type { SqliteDb } from '../types'
 import { RepoError } from './errors'
 
 export interface AiProviderRawRow {
   id: string
+  presetId: string
   name: string
   baseUrl: string
+  apiProtocol: AiApiProtocol
+  reasoningControl: AiReasoningControl
+  reasoningEffort: AiReasoningEffort
   model: string
   baseModel: string
   variant: string
@@ -19,8 +29,12 @@ export interface AiProviderRawRow {
 }
 
 export interface AiProviderCreateInput {
+  presetId: string
   name: string
   baseUrl: string
+  apiProtocol: AiApiProtocol
+  reasoningControl: AiReasoningControl
+  reasoningEffort: AiReasoningEffort
   model: string
   baseModel: string
   variant: string
@@ -31,8 +45,12 @@ export interface AiProviderCreateInput {
 }
 
 export interface AiProviderUpdateInput {
+  presetId?: string
   name?: string
   baseUrl?: string
+  apiProtocol?: AiApiProtocol
+  reasoningControl?: AiReasoningControl
+  reasoningEffort?: AiReasoningEffort
   model?: string
   baseModel?: string
   variant?: string
@@ -55,8 +73,26 @@ function mapProvider(row: Record<string, unknown>): AiProvider {
   const variantFormat = asFormat(row.variantFormat)
   return {
     id: row.id as string,
+    presetId: (row.presetId as string | null) || 'custom',
     name: row.name as string,
     baseUrl: row.baseUrl as string,
+    apiProtocol:
+      row.apiProtocol === 'openai-responses' ? 'openai-responses' : 'openai-compatible',
+    reasoningControl:
+      row.reasoningControl === 'thinking' ||
+      row.reasoningControl === 'enable-thinking' ||
+      row.reasoningControl === 'none'
+        ? row.reasoningControl
+        : 'openai',
+    reasoningEffort:
+      row.reasoningEffort === 'none' ||
+      row.reasoningEffort === 'minimal' ||
+      row.reasoningEffort === 'low' ||
+      row.reasoningEffort === 'high' ||
+      row.reasoningEffort === 'xhigh' ||
+      row.reasoningEffort === 'max'
+        ? row.reasoningEffort
+        : 'medium',
     model: model || composeModelId(baseModel, variant, variantFormat),
     baseModel,
     variant,
@@ -72,8 +108,12 @@ function mapRaw(row: Record<string, unknown>): AiProviderRawRow {
   const mapped = mapProvider(row)
   return {
     id: mapped.id,
+    presetId: mapped.presetId,
     name: mapped.name,
     baseUrl: mapped.baseUrl,
+    apiProtocol: mapped.apiProtocol,
+    reasoningControl: mapped.reasoningControl,
+    reasoningEffort: mapped.reasoningEffort,
     model: mapped.model,
     baseModel: mapped.baseModel,
     variant: mapped.variant,
@@ -107,12 +147,16 @@ export function createAiProvidersRepository(db: SqliteDb) {
     const now = Date.now()
     db.prepare(
       `INSERT INTO ai_providers
-        (id, name, baseUrl, model, baseModel, variant, variantFormat, apiKeyEnc, temperature, maxTokens, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, presetId, name, baseUrl, apiProtocol, reasoningControl, reasoningEffort, model, baseModel, variant, variantFormat, apiKeyEnc, temperature, maxTokens, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
+      input.presetId,
       input.name,
       input.baseUrl,
+      input.apiProtocol,
+      input.reasoningControl,
+      input.reasoningEffort,
       input.model,
       input.baseModel,
       input.variant,
@@ -132,6 +176,10 @@ export function createAiProvidersRepository(db: SqliteDb) {
   function update(id: string, input: AiProviderUpdateInput): AiProvider {
     const sets: string[] = []
     const params: unknown[] = []
+    if (input.presetId !== undefined) {
+      sets.push('presetId = ?')
+      params.push(input.presetId)
+    }
     if (input.name !== undefined) {
       sets.push('name = ?')
       params.push(input.name)
@@ -139,6 +187,18 @@ export function createAiProvidersRepository(db: SqliteDb) {
     if (input.baseUrl !== undefined) {
       sets.push('baseUrl = ?')
       params.push(input.baseUrl)
+    }
+    if (input.apiProtocol !== undefined) {
+      sets.push('apiProtocol = ?')
+      params.push(input.apiProtocol)
+    }
+    if (input.reasoningControl !== undefined) {
+      sets.push('reasoningControl = ?')
+      params.push(input.reasoningControl)
+    }
+    if (input.reasoningEffort !== undefined) {
+      sets.push('reasoningEffort = ?')
+      params.push(input.reasoningEffort)
     }
     if (input.model !== undefined) {
       sets.push('model = ?')

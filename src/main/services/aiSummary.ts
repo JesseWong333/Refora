@@ -1,11 +1,12 @@
 import { type BrowserWindow } from 'electron'
-import { ChatOpenAI } from '@langchain/openai'
+import type { ChatOpenAI } from '@langchain/openai'
 import type { Repositories } from '../db/repositories'
 import type { AiSummaryContent } from '../../shared/ipc-types'
 import type { AiProvidersService } from './aiProviders'
 import type { PdfTextService } from './pdfText'
 import { emitAiSummaryUpdated, emitAiSummaryError } from '../ipc/events'
 import { logger } from './logger'
+import { createProviderChatModel } from './providerModel'
 
 const MAX_CONCURRENT = 2
 const CHUNK_SIZE = 3000
@@ -241,13 +242,11 @@ export function createAiSummaryService(
       return
     }
 
-    const model = new ChatOpenAI({
-      model: provider.model,
-      configuration: { baseURL: provider.baseUrl },
+    const model = createProviderChatModel({
+      provider,
       apiKey: key,
       streaming: false,
-      ...(provider.temperature != null ? { temperature: provider.temperature } : {}),
-      ...(provider.maxTokens != null ? { maxTokens: provider.maxTokens } : {})
+      deepThinking: false
     })
 
     let content: AiSummaryContent | null = null

@@ -41,8 +41,12 @@ let chatTraceHandler: ((payload: ChatTraceEvent) => void) | undefined
 
 const TEST_PROVIDER: AiProvider = {
   id: 'p1',
+  presetId: 'openai',
   name: 'Test Provider',
   baseUrl: 'http://localhost',
+  apiProtocol: 'openai-responses',
+  reasoningControl: 'openai',
+  reasoningEffort: 'medium',
   model: 'gpt-4o',
   baseModel: 'gpt-4o',
   variant: '',

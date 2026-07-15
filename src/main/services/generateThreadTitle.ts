@@ -1,8 +1,8 @@
-import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage } from '@langchain/core/messages'
 import type { AiProvider } from '../../shared/ipc-types'
 import { resolveDeepThinkingMode } from '../../shared/deepThinking'
 import { logger } from './logger'
+import { createProviderChatModel } from './providerModel'
 
 export async function generateThreadTitle(
   modelId: string,
@@ -12,11 +12,12 @@ export async function generateThreadTitle(
 ): Promise<string | null> {
   try {
     const isReasoningModel = resolveDeepThinkingMode(modelId) === 'native'
-    const llm = new ChatOpenAI({
-      model: modelId,
-      configuration: { baseURL: provider.baseUrl },
+    const llm = createProviderChatModel({
+      provider,
       apiKey,
+      modelId,
       streaming: false,
+      deepThinking: false,
       maxTokens: isReasoningModel ? 512 : 30,
       temperature: 0.3
     })

@@ -12,7 +12,8 @@ build/*
 node_modules/.tmp/
 .kilo/
 .zcode/
-tests/
+!tests/
+!tests/**
 test-results/
 coverage/
 playwright-report/

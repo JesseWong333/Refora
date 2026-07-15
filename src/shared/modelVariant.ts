@@ -1,3 +1,6 @@
+import { inferModelCapabilities, type ModelCapabilityHints } from './providerCatalog'
+import type { AiReasoningEffort } from './ipc-types'
+
 export type ModelVariantFormat = 'dash' | 'colon' | 'none'
 
 export const COMMON_VARIANTS = ['high', 'xhigh', 'max', 'fast', 'thinking'] as const
@@ -62,22 +65,32 @@ export interface ProviderModelInfo {
   id: string
   providerName?: string
   supportsVariants: boolean
+  supportsReasoning: boolean
+  reasoningEfforts: AiReasoningEffort[]
+  supportsVision: boolean
+  supportsTools: boolean
+  supportedParameters: string[]
 }
 
 export function toProviderModelInfo(
   modelId: string,
-  providerName?: string
+  providerName?: string,
+  presetId = 'custom',
+  hints: ModelCapabilityHints = {}
 ): ProviderModelInfo {
+  const capabilities = inferModelCapabilities(presetId, modelId, hints)
   return {
     id: modelId,
     providerName,
-    supportsVariants: supportsModelVariants(modelId)
+    supportsVariants: supportsModelVariants(modelId),
+    ...capabilities
   }
 }
 
 export function normalizeModelList(
   ids: string[],
-  providerName?: string
+  providerName?: string,
+  presetId = 'custom'
 ): ProviderModelInfo[] {
   const seen = new Set<string>()
   const out: ProviderModelInfo[] = []
@@ -86,7 +99,7 @@ export function normalizeModelList(
     const id = raw.trim()
     if (!id || seen.has(id)) continue
     seen.add(id)
-    out.push(toProviderModelInfo(id, providerName))
+    out.push(toProviderModelInfo(id, providerName, presetId))
   }
   return out.sort((a, b) => a.id.localeCompare(b.id))
 }

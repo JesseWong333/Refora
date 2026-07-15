@@ -189,10 +189,27 @@ export interface WorkspaceItem {
 
 export type ModelVariantFormat = 'dash' | 'colon' | 'none'
 
+export type AiApiProtocol = 'openai-responses' | 'openai-compatible'
+
+export type AiReasoningControl = 'openai' | 'thinking' | 'enable-thinking' | 'none'
+
+export type AiReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+
 export interface AiProvider {
   id: string
+  presetId: string
   name: string
   baseUrl: string
+  apiProtocol: AiApiProtocol
+  reasoningControl: AiReasoningControl
+  reasoningEffort: AiReasoningEffort
   model: string
   baseModel: string
   variant: string
@@ -204,8 +221,12 @@ export interface AiProvider {
 }
 
 export interface AiProviderInput {
+  presetId?: string
   name: string
   baseUrl: string
+  apiProtocol?: AiApiProtocol
+  reasoningControl?: AiReasoningControl
+  reasoningEffort?: AiReasoningEffort
   model: string
   baseModel?: string
   variant?: string
@@ -216,8 +237,12 @@ export interface AiProviderInput {
 }
 
 export interface AiProviderPatch {
+  presetId?: string
   name?: string
   baseUrl?: string
+  apiProtocol?: AiApiProtocol
+  reasoningControl?: AiReasoningControl
+  reasoningEffort?: AiReasoningEffort
   model?: string
   baseModel?: string
   variant?: string
@@ -231,10 +256,16 @@ export interface ProviderModelInfo {
   id: string
   providerName?: string
   supportsVariants: boolean
+  supportsReasoning: boolean
+  reasoningEfforts: AiReasoningEffort[]
+  supportsVision: boolean
+  supportsTools: boolean
+  supportedParameters: string[]
 }
 
 export interface ListModelsRequest {
   providerId?: string
+  presetId?: string
   baseUrl?: string
   apiKey?: string
 }

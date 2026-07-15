@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { type BrowserWindow } from 'electron'
-import { ChatOpenAI } from '@langchain/openai'
 import { DynamicTool, DynamicStructuredTool } from '@langchain/core/tools'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
@@ -32,11 +31,13 @@ import {
   emitWorkspaceItemsChanged
 } from '../ipc/events'
 import { logger } from './logger'
+import { createProviderChatModel } from './providerModel'
 import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
 import { generateThreadTitle } from './generateThreadTitle'
 import { historyToMessages, truncateOutput } from './chatHistoryMessages'
 import { resolveDeepThinkingMode, type DeepThinkingMode } from '../../shared/deepThinking'
+import { inferModelCapabilities } from '../../shared/providerCatalog'
 import { openPdf } from './pdfOpen'
 
 const MAX_FULLTEXT_CHARS = 8000
@@ -769,8 +770,14 @@ export function createAiAgentService(
 
       const modelId = (req.model && req.model.trim()) || provider.model
       const deepThinking = req.features?.deepThinking === true
+      const supportsNativeReasoning = inferModelCapabilities(
+        provider.presetId,
+        modelId
+      ).supportsReasoning
       const thinkingMode: DeepThinkingMode = deepThinking
-        ? resolveDeepThinkingMode(modelId)
+        ? supportsNativeReasoning
+          ? 'native'
+          : resolveDeepThinkingMode(modelId)
         : 'none'
       const workspaceContext = buildWorkspaceContext(repos, req.workspaceId)
       const systemPrompt = [
@@ -781,26 +788,12 @@ export function createAiAgentService(
         .filter((s) => s.length > 0)
         .join('\n\n')
 
-      const modelKwargs: Record<string, unknown> = {}
-      if (thinkingMode === 'native') {
-        const baseUrlLower = provider.baseUrl.toLowerCase()
-        if (/openrouter|together|siliconflow|dashscope|bigmodel|volcengine|deepseek|moonshot|zhipu|01\.ai|yi/i.test(baseUrlLower) || /thinking|reasoning/i.test(baseUrlLower)) {
-          modelKwargs.enable_thinking = true
-        }
-      }
-
-      const llm = new ChatOpenAI({
-        model: modelId,
-        configuration: { baseURL: provider.baseUrl },
+      const llm = createProviderChatModel({
+        provider,
         apiKey: key,
+        modelId,
         streaming: true,
-        ...(thinkingMode === 'native'
-          ? {}
-          : provider.temperature != null
-            ? { temperature: provider.temperature }
-            : {}),
-        ...(provider.maxTokens != null ? { maxTokens: provider.maxTokens } : {}),
-        ...(Object.keys(modelKwargs).length > 0 ? { modelKwargs } : {})
+        deepThinking
       })
 
       const tools = buildTools(req, modelId, controller.signal)
