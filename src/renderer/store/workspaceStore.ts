@@ -3,7 +3,10 @@ import type {
   Workspace,
   WorkspaceItem,
   WorkspaceItemKind,
+  WorkspaceItemPlacement,
   AiReport,
+  WorkspaceNote,
+  WorkspaceNoteType,
   ChatThread,
   WorkspaceItemsChangedEvent
 } from '../../shared/ipc-types'
@@ -20,6 +23,7 @@ interface WorkspaceState {
   chatStreaming: boolean
   items: WorkspaceItem[]
   reports: AiReport[]
+  notes: WorkspaceNote[]
   threads: ChatThread[]
   initialized: boolean
   init: () => void
@@ -39,12 +43,19 @@ interface WorkspaceState {
   closePanel: () => void
   toggleFullscreen: () => void
   fetchItems: () => Promise<void>
-  addDocs: (docIds: string[]) => Promise<void>
+  addDocs: (docIds: string[], placement?: WorkspaceItemPlacement) => Promise<void>
   removeItem: (itemId: string) => Promise<void>
+  reorderItems: (orderedIds: string[]) => Promise<void>
+  resizeItem: (itemId: string, width: number, height: number) => Promise<boolean>
+  moveItem: (itemId: string, x: number, y: number, zIndex: number) => Promise<boolean>
   fetchReports: () => Promise<void>
   deleteReport: (id: string) => Promise<void>
-  updateReport: (id: string, patch: { title?: string; contentMd?: string }) => Promise<void>
-  addItem: (kind: WorkspaceItemKind, ids: string[]) => Promise<void>
+  updateReport: (id: string, patch: { title?: string; contentMd?: string }) => Promise<boolean>
+  fetchNotes: () => Promise<void>
+  createNote: (title: string, contentMd: string, noteType: WorkspaceNoteType, placement?: WorkspaceItemPlacement) => Promise<WorkspaceNote | null>
+  deleteNote: (id: string) => Promise<void>
+  updateNote: (id: string, patch: { title?: string; contentMd?: string }) => Promise<boolean>
+  addItem: (kind: WorkspaceItemKind, ids: string[], placement?: WorkspaceItemPlacement) => Promise<void>
 }
 
 const aiSummaryUpdatedCb: Array<null | ((docId: string) => void)> = [null]
@@ -64,6 +75,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   chatStreaming: false,
   items: [],
   reports: [],
+  notes: [],
   threads: [],
   initialized: false,
 
@@ -78,7 +90,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     aiReportCreatedCb[0] = (report: AiReport) => {
       if (report.workspaceId === get().activeWorkspaceId) {
-        set((s) => ({ reports: [...s.reports, report] }))
+        set((s) => ({
+          reports: s.reports.some((current) => current.id === report.id)
+            ? s.reports.map((current) => current.id === report.id ? report : current)
+            : [...s.reports, report]
+        }))
+        void get().fetchItems()
       }
     }
     api.events.onAiReportCreated(aiReportCreatedCb[0])
@@ -154,6 +171,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 panelOpen: false,
                 items: [],
                 reports: [],
+                notes: [],
                 threads: []
               }
             : {})
@@ -166,16 +184,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveWorkspace: (id: string) => {
     if (get().chatStreaming) return
-    set({ activeWorkspaceId: id, panelOpen: true })
+    set({
+      activeWorkspaceId: id,
+      activeThreadId: null,
+      panelOpen: true,
+      items: [],
+      reports: [],
+      notes: [],
+      threads: []
+    })
     void get().fetchItems()
     void get().fetchReports()
-    void api.ai.chatThreads(id).then((threads) => {
-      if (get().activeWorkspaceId !== id) return
-      const latest = threads.length > 0 ? threads[0] : null
-      set({ activeThreadId: latest ? latest.id : null })
-    }).catch(() => {
-      set({ activeThreadId: null })
-    })
+    void get().fetchNotes()
+    void get().fetchThreads()
   },
 
   setActiveThreadId: (id: string | null) => {
@@ -213,14 +234,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   fetchThreads: async () => {
     const id = get().activeWorkspaceId
     if (!id) {
-      set({ threads: [] })
+      set({ threads: [], activeThreadId: null })
       return
     }
     try {
       const list = await api.ai.chatThreads(id)
-      set({ threads: list })
+      if (get().activeWorkspaceId !== id) return
+      const latest = list.length > 0 ? list[0] : null
+      set({ threads: list, activeThreadId: latest ? latest.id : null })
     } catch {
-      set({ threads: [] })
+      if (get().activeWorkspaceId !== id) return
+      set({ threads: [], activeThreadId: null })
     }
   },
 
@@ -248,28 +272,33 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
     try {
       const list = await api.workspaceItems.list(id)
+      if (get().activeWorkspaceId !== id) return
       set({ items: list })
     } catch (e) {
+      if (get().activeWorkspaceId !== id) return
       toast(errorMessage(e, 'Failed to load workspace items'))
     }
   },
 
-  addDocs: async (docIds: string[]) => {
+  addDocs: async (docIds: string[], placement?: WorkspaceItemPlacement) => {
     const id = get().activeWorkspaceId
     if (!id || docIds.length === 0) return
     try {
-      await api.workspaceItems.add(id, 'document', docIds)
+      if (placement) await api.workspaceItems.add(id, 'document', docIds, placement)
+      else await api.workspaceItems.add(id, 'document', docIds)
       await get().fetchItems()
     } catch (e) {
       toast(errorMessage(e, 'Failed to add documents to workspace'))
+      throw e
     }
   },
 
-  addItem: async (kind: WorkspaceItemKind, ids: string[]) => {
+  addItem: async (kind: WorkspaceItemKind, ids: string[], placement?: WorkspaceItemPlacement) => {
     const id = get().activeWorkspaceId
     if (!id || ids.length === 0) return
     try {
-      await api.workspaceItems.add(id, kind, ids)
+      if (placement) await api.workspaceItems.add(id, kind, ids, placement)
+      else await api.workspaceItems.add(id, kind, ids)
       await get().fetchItems()
     } catch (e) {
       toast(errorMessage(e, 'Failed to add items to workspace'))
@@ -285,6 +314,70 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  reorderItems: async (orderedIds: string[]) => {
+    const workspaceId = get().activeWorkspaceId
+    if (!workspaceId) return
+    const previous = get().items
+    const byId = new Map(previous.map((item) => [item.id, item]))
+    const reordered = orderedIds
+      .map((id, index) => {
+        const item = byId.get(id)
+        return item ? { ...item, sortOrder: index } : null
+      })
+      .filter((item): item is WorkspaceItem => item !== null)
+    if (reordered.length !== previous.length) return
+    set({ items: reordered })
+    try {
+      const saved = await api.workspaceItems.reorder(workspaceId, orderedIds)
+      if (get().activeWorkspaceId === workspaceId) set({ items: saved })
+    } catch (e) {
+      if (get().activeWorkspaceId === workspaceId) set({ items: previous })
+      toast(errorMessage(e, 'Failed to reorder workspace items'))
+    }
+  },
+
+  resizeItem: async (itemId: string, width: number, height: number) => {
+    const workspaceId = get().activeWorkspaceId
+    if (!workspaceId) return false
+    const previous = get().items
+    set((s) => ({
+      items: s.items.map((item) => item.id === itemId ? { ...item, width, height } : item)
+    }))
+    try {
+      const saved = await api.workspaceItems.resize(itemId, width, height)
+      if (get().activeWorkspaceId !== workspaceId) return true
+      set((s) => ({
+        items: s.items.map((item) => item.id === itemId ? saved : item)
+      }))
+      return true
+    } catch (e) {
+      if (get().activeWorkspaceId === workspaceId) set({ items: previous })
+      toast(errorMessage(e, 'Failed to save card size'))
+      return false
+    }
+  },
+
+  moveItem: async (itemId: string, x: number, y: number, zIndex: number) => {
+    const workspaceId = get().activeWorkspaceId
+    if (!workspaceId) return false
+    const previous = get().items
+    set((s) => ({
+      items: s.items.map((item) => item.id === itemId ? { ...item, x, y, zIndex } : item)
+    }))
+    try {
+      const saved = await api.workspaceItems.move(itemId, x, y, zIndex)
+      if (get().activeWorkspaceId !== workspaceId) return true
+      set((s) => ({
+        items: s.items.map((item) => item.id === itemId ? saved : item)
+      }))
+      return true
+    } catch (e) {
+      if (get().activeWorkspaceId === workspaceId) set({ items: previous })
+      toast(errorMessage(e, 'Failed to save card position'))
+      return false
+    }
+  },
+
   fetchReports: async () => {
     const id = get().activeWorkspaceId
     if (!id) {
@@ -293,31 +386,115 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
     try {
       const list = await api.reports.list(id)
+      if (get().activeWorkspaceId !== id) return
       set({ reports: list })
     } catch (e) {
+      if (get().activeWorkspaceId !== id) return
       toast(errorMessage(e, 'Failed to load reports'))
     }
   },
 
   deleteReport: async (id: string) => {
-    const prev = get().reports
-    set((s) => ({ reports: s.reports.filter((r) => r.id !== id) }))
+    const workspaceId = get().activeWorkspaceId
+    const previousReports = get().reports
+    const previousItems = get().items
+    set((s) => ({
+      reports: s.reports.filter((r) => r.id !== id),
+      items: s.items.filter((item) => item.reportId !== id)
+    }))
     try {
       await api.reports.delete(id)
     } catch (e) {
-      set({ reports: prev })
+      if (get().activeWorkspaceId === workspaceId) {
+        set({ reports: previousReports, items: previousItems })
+      }
       toast(errorMessage(e, 'Failed to delete report'))
     }
   },
 
   updateReport: async (id: string, patch: { title?: string; contentMd?: string }) => {
+    const workspaceId = get().activeWorkspaceId
     const prev = get().reports
     try {
       const updated = await api.reports.update(id, patch)
+      if (get().activeWorkspaceId !== workspaceId) return true
       set((s) => ({ reports: s.reports.map((r) => (r.id === id ? updated : r)) }))
+      return true
     } catch (e) {
       toast(errorMessage(e, 'Failed to update report'))
       set({ reports: prev })
+      return false
+    }
+  },
+
+  fetchNotes: async () => {
+    const id = get().activeWorkspaceId
+    if (!id) {
+      set({ notes: [] })
+      return
+    }
+    try {
+      const list = await api.workspaceNotes.list(id)
+      if (get().activeWorkspaceId !== id) return
+      set({ notes: list })
+    } catch (e) {
+      if (get().activeWorkspaceId !== id) return
+      toast(errorMessage(e, 'Failed to load workspace notes'))
+    }
+  },
+
+  createNote: async (
+    title: string,
+    contentMd: string,
+    noteType: WorkspaceNoteType,
+    placement?: WorkspaceItemPlacement
+  ) => {
+    const workspaceId = get().activeWorkspaceId
+    if (!workspaceId) return null
+    try {
+      const note = placement
+        ? await api.workspaceNotes.create(workspaceId, title, contentMd, noteType, placement)
+        : await api.workspaceNotes.create(workspaceId, title, contentMd, noteType)
+      if (get().activeWorkspaceId !== workspaceId) return null
+      set((s) => ({ notes: [...s.notes, note] }))
+      await get().fetchItems()
+      return note
+    } catch (e) {
+      toast(errorMessage(e, 'Failed to create workspace note'))
+      return null
+    }
+  },
+
+  deleteNote: async (id: string) => {
+    const workspaceId = get().activeWorkspaceId
+    const previousNotes = get().notes
+    const previousItems = get().items
+    set((s) => ({
+      notes: s.notes.filter((note) => note.id !== id),
+      items: s.items.filter((item) => item.noteId !== id)
+    }))
+    try {
+      await api.workspaceNotes.delete(id)
+    } catch (e) {
+      if (get().activeWorkspaceId === workspaceId) {
+        set({ notes: previousNotes, items: previousItems })
+      }
+      toast(errorMessage(e, 'Failed to delete workspace note'))
+    }
+  },
+
+  updateNote: async (id: string, patch: { title?: string; contentMd?: string }) => {
+    const workspaceId = get().activeWorkspaceId
+    const previous = get().notes
+    try {
+      const updated = await api.workspaceNotes.update(id, patch)
+      if (get().activeWorkspaceId !== workspaceId) return true
+      set((s) => ({ notes: s.notes.map((note) => note.id === id ? updated : note) }))
+      return true
+    } catch (e) {
+      set({ notes: previous })
+      toast(errorMessage(e, 'Failed to update workspace note'))
+      return false
     }
   }
 }))

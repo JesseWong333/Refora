@@ -55,6 +55,16 @@ export const IpcChannel = {
   WorkspaceItemsAdd: 'workspaceItems:add',
   WorkspaceItemsRemove: 'workspaceItems:remove',
   WorkspaceItemsReorder: 'workspaceItems:reorder',
+  WorkspaceItemsResize: 'workspaceItems:resize',
+  WorkspaceItemsMove: 'workspaceItems:move',
+
+  WorkspaceCanvasGet: 'workspaceCanvas:get',
+  WorkspaceCanvasUpdate: 'workspaceCanvas:update',
+
+  WorkspaceNotesList: 'workspaceNotes:list',
+  WorkspaceNotesCreate: 'workspaceNotes:create',
+  WorkspaceNotesUpdate: 'workspaceNotes:update',
+  WorkspaceNotesDelete: 'workspaceNotes:delete',
 
   AiProvidersList: 'ai:providers:list',
   AiProvidersCreate: 'ai:providers:create',

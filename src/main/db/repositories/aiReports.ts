@@ -43,12 +43,17 @@ export function createAiReportsRepository(db: SqliteDb) {
   }
 
   function create(input: AiReportCreateInput): AiReport {
+    const title = input.title.trim()
+    if (!title) throw new RepoError('invalid_title', 'report title cannot be empty')
+    const workspace = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(input.workspaceId)
+    if (!workspace) throw new RepoError('not_found', `workspace not found: ${input.workspaceId}`)
     const id = randomUUID()
     const now = Date.now()
     db.prepare(
       `INSERT INTO ai_reports (id, workspaceId, title, contentMd, sourceDocIds, model, createdAt)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, input.workspaceId, input.title, input.contentMd, JSON.stringify(input.sourceDocIds), input.model, now)
+    ).run(id, input.workspaceId, title, input.contentMd, JSON.stringify(input.sourceDocIds), input.model, now)
+    db.prepare('UPDATE workspaces SET updatedAt = ? WHERE id = ?').run(now, input.workspaceId)
     const row = db.prepare('SELECT * FROM ai_reports WHERE id = ?').get(id) as Record<
       string,
       unknown
@@ -59,16 +64,23 @@ export function createAiReportsRepository(db: SqliteDb) {
   function update(id: string, patch: { title?: string; contentMd?: string }): AiReport {
     const existing = db.prepare('SELECT * FROM ai_reports WHERE id = ?').get(id) as Record<string, unknown> | undefined
     if (!existing) throw new RepoError('not_found', `report not found: ${id}`)
-    const title = patch.title !== undefined ? patch.title : (existing.title as string)
+    const title = patch.title !== undefined ? patch.title.trim() : (existing.title as string)
+    if (!title) throw new RepoError('invalid_title', 'report title cannot be empty')
     const contentMd = patch.contentMd !== undefined ? patch.contentMd : (existing.contentMd as string)
     db.prepare('UPDATE ai_reports SET title = ?, contentMd = ? WHERE id = ?').run(title, contentMd, id)
+    db.prepare('UPDATE workspaces SET updatedAt = ? WHERE id = ?').run(Date.now(), existing.workspaceId)
     const row = db.prepare('SELECT * FROM ai_reports WHERE id = ?').get(id) as Record<string, unknown>
     return mapReport(row)
   }
 
   function remove(id: string): void {
+    const existing = db.prepare('SELECT workspaceId FROM ai_reports WHERE id = ?').get(id) as
+      | { workspaceId: string }
+      | undefined
+    if (!existing) throw new RepoError('not_found', `report not found: ${id}`)
     const result = db.prepare('DELETE FROM ai_reports WHERE id = ?').run(id)
     if (result.changes === 0) throw new RepoError('not_found', `report not found: ${id}`)
+    db.prepare('UPDATE workspaces SET updatedAt = ? WHERE id = ?').run(Date.now(), existing.workspaceId)
   }
 
   function removeDocFromSources(docId: string): void {

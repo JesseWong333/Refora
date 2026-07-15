@@ -70,13 +70,17 @@ export default function PaperCard({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className={cardClassName('default', true, 'group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
+        data-card-kind="document"
+        className={cardClassName('default', false, 'workspace-content-card workspace-content-card--document group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
         onClick={() => setModalOpen(true)}
         onContextMenu={handleContextMenu}
       >
         <div className="flex shrink-0 items-start gap-2">
-          <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <span className="workspace-card-type-icon">
+            <BookOpen className="h-4 w-4" />
+          </span>
           <div className="min-w-0 flex-1">
+            <span className="workspace-card-type-label">{t('workspace.cardTypePaper')}</span>
             <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{title}</h3>
             {authors && <p className="mt-0.5 truncate text-xs text-muted">{authors}</p>}
           </div>

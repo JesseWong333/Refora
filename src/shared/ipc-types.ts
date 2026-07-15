@@ -168,7 +168,17 @@ export interface IdentifierImportResult {
   message?: string
 }
 
-export type WorkspaceItemKind = 'document' | 'report'
+export const WORKSPACE_CARD_MIN_WIDTH = 220
+export const WORKSPACE_CARD_MIN_HEIGHT = 140
+export const WORKSPACE_CARD_MAX_WIDTH = 640
+export const WORKSPACE_CARD_MAX_HEIGHT = 520
+export const WORKSPACE_CARD_DEFAULT_WIDTH = 300
+export const WORKSPACE_CARD_DEFAULT_HEIGHT = 200
+export const WORKSPACE_CANVAS_MIN_ZOOM = 0.25
+export const WORKSPACE_CANVAS_MAX_ZOOM = 2.5
+export const WORKSPACE_CANVAS_DEFAULT_ZOOM = 1
+
+export type WorkspaceItemKind = 'document' | 'report' | 'note'
 
 export interface Workspace {
   id: string
@@ -183,8 +193,25 @@ export interface WorkspaceItem {
   kind: WorkspaceItemKind
   docId: string | null
   reportId: string | null
+  noteId: string | null
   sortOrder: number
+  width: number
+  height: number
+  x: number
+  y: number
+  zIndex: number
   addedAt: number
+}
+
+export interface WorkspaceItemPlacement {
+  x: number
+  y: number
+}
+
+export interface WorkspaceCanvasViewport {
+  panX: number
+  panY: number
+  zoom: number
 }
 
 export type ModelVariantFormat = 'dash' | 'colon' | 'none'
@@ -299,6 +326,23 @@ export interface AiReport {
   sourceDocIds: string[]
   model: string | null
   createdAt: number
+}
+
+export interface WorkspaceNote {
+  id: string
+  workspaceId: string
+  noteType: WorkspaceNoteType
+  title: string
+  contentMd: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type WorkspaceNoteType = 'markdown' | 'plain'
+
+export interface WorkspaceNotePatch {
+  title?: string
+  contentMd?: string
 }
 
 export interface ChatThread {
@@ -493,9 +537,21 @@ export interface ReforaApi {
   }
   workspaceItems: {
     list(workspaceId: string): Promise<WorkspaceItem[]>
-    add(workspaceId: string, kind: WorkspaceItemKind, ids: string[]): Promise<WorkspaceItem[]>
+    add(workspaceId: string, kind: WorkspaceItemKind, ids: string[], placement?: WorkspaceItemPlacement): Promise<WorkspaceItem[]>
     remove(itemId: string): Promise<void>
-    reorder(workspaceId: string, orderedIds: string[]): Promise<void>
+    reorder(workspaceId: string, orderedIds: string[]): Promise<WorkspaceItem[]>
+    resize(itemId: string, width: number, height: number): Promise<WorkspaceItem>
+    move(itemId: string, x: number, y: number, zIndex: number): Promise<WorkspaceItem>
+  }
+  workspaceNotes: {
+    list(workspaceId: string): Promise<WorkspaceNote[]>
+    create(workspaceId: string, title: string, contentMd: string, noteType: WorkspaceNoteType, placement?: WorkspaceItemPlacement): Promise<WorkspaceNote>
+    update(id: string, patch: WorkspaceNotePatch): Promise<WorkspaceNote>
+    delete(id: string): Promise<void>
+  }
+  workspaceCanvas: {
+    get(workspaceId: string): Promise<WorkspaceCanvasViewport>
+    update(workspaceId: string, viewport: WorkspaceCanvasViewport): Promise<WorkspaceCanvasViewport>
   }
   aiProviders: {
     list(): Promise<AiProvider[]>

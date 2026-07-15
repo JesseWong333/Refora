@@ -26,8 +26,13 @@ import type {
   SearchResult,
   WatchFolder,
   Workspace,
+  WorkspaceCanvasViewport,
   WorkspaceItem,
-  WorkspaceItemKind
+  WorkspaceItemKind,
+  WorkspaceItemPlacement,
+  WorkspaceNote,
+  WorkspaceNotePatch,
+  WorkspaceNoteType
 } from '../../shared/ipc-types'
 import type { Repositories } from '../db/repositories'
 import type { SqliteDb } from '../db/types'
@@ -544,12 +549,57 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.WorkspaceItemsAdd]: (
       workspaceId: string,
       kind: WorkspaceItemKind,
-      ids: string[]
-    ): Result<WorkspaceItem[]> => wrap(() => repos().workspaceItems.add(workspaceId, kind, ids)),
+      ids: string[],
+      placement?: WorkspaceItemPlacement
+    ): Result<WorkspaceItem[]> => wrap(() => {
+      const rt = repos()
+      return rt.transaction(() => rt.workspaceItems.add(workspaceId, kind, ids, placement))
+    }),
     [IpcChannel.WorkspaceItemsRemove]: (itemId: string): Result<void> =>
       wrap(() => repos().workspaceItems.remove(itemId)),
-    [IpcChannel.WorkspaceItemsReorder]: (workspaceId: string, orderedIds: string[]): Result<void> =>
-      wrap(() => repos().workspaceItems.reorder(workspaceId, orderedIds)),
+    [IpcChannel.WorkspaceItemsReorder]: (workspaceId: string, orderedIds: string[]): Result<WorkspaceItem[]> =>
+      wrap(() => {
+        const rt = repos()
+        return rt.transaction(() => rt.workspaceItems.reorder(workspaceId, orderedIds))
+      }),
+    [IpcChannel.WorkspaceItemsResize]: (itemId: string, width: number, height: number): Result<WorkspaceItem> =>
+      wrap(() => repos().workspaceItems.resize(itemId, width, height)),
+    [IpcChannel.WorkspaceItemsMove]: (itemId: string, x: number, y: number, zIndex: number): Result<WorkspaceItem> =>
+      wrap(() => repos().workspaceItems.move(itemId, x, y, zIndex)),
+
+    [IpcChannel.WorkspaceCanvasGet]: (workspaceId: string): Result<WorkspaceCanvasViewport> =>
+      wrap(() => repos().workspaceCanvas.get(workspaceId)),
+    [IpcChannel.WorkspaceCanvasUpdate]: (
+      workspaceId: string,
+      viewport: WorkspaceCanvasViewport
+    ): Result<WorkspaceCanvasViewport> => wrap(() => repos().workspaceCanvas.update(workspaceId, viewport)),
+
+    [IpcChannel.WorkspaceNotesList]: (workspaceId: string): Result<WorkspaceNote[]> =>
+      wrap(() => repos().workspaceNotes.list(workspaceId)),
+    [IpcChannel.WorkspaceNotesCreate]: (
+      workspaceId: string,
+      title: string,
+      contentMd: string,
+      noteType: WorkspaceNoteType,
+      placement?: WorkspaceItemPlacement
+    ): Result<WorkspaceNote> => wrap(() => {
+      const rt = repos()
+      return rt.transaction(() => {
+        const note = rt.workspaceNotes.create(workspaceId, title, contentMd, noteType)
+        rt.workspaceItems.add(workspaceId, 'note', [note.id], placement)
+        return note
+      })
+    }),
+    [IpcChannel.WorkspaceNotesUpdate]: (id: string, patch: WorkspaceNotePatch): Result<WorkspaceNote> =>
+      wrap(() => repos().workspaceNotes.update(id, patch)),
+    [IpcChannel.WorkspaceNotesDelete]: (id: string): Result<void> =>
+      wrap(() => {
+        const rt = repos()
+        return rt.transaction(() => {
+          rt.workspaceItems.removeByNoteId(id)
+          rt.workspaceNotes.delete(id)
+        })
+      }),
 
     [IpcChannel.AiProvidersList]: (): Result<AiProvider[]> => {
       const rt = deps.getRuntime()
@@ -658,9 +708,18 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),
     [IpcChannel.AiReportsDelete]: (id: string): Result<void> =>
-      wrap(() => repos().aiReports.delete(id)),
+      wrap(() => {
+        const rt = repos()
+        return rt.transaction(() => {
+          rt.workspaceItems.removeByReportId(id)
+          rt.aiReports.delete(id)
+        })
+      }),
     [IpcChannel.AiReportsUpdate]: (id: string, patch: { title?: string; contentMd?: string }): Result<AiReport> =>
-      wrap(() => repos().aiReports.update(id, patch))
+      wrap(() => {
+        const rt = repos()
+        return rt.transaction(() => rt.aiReports.update(id, patch))
+      })
   } satisfies Record<HandlerChannel, (...args: never[]) => unknown>
 
   return handlers
