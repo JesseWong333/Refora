@@ -45,6 +45,10 @@ vi.mock('../../src/main/services/logger', () => ({
   }
 }))
 
+vi.mock('../../src/main/services/pdfPath', () => ({
+  resolvePdfFilePath: (filePath: string) => filePath
+}))
+
 function ids(docs: { id: string }[]): string[] {
   return docs.map((d) => d.id)
 }
@@ -177,6 +181,27 @@ describe('IPC handlers (data layer)', () => {
       expect.objectContaining({ ok: true, data: expect.objectContaining({ id: 'd1' }) })
     )
     expect(metadataService.refreshMetadata).toHaveBeenCalledWith('d1')
+  })
+
+  it('wraps synchronous metadata service failures in a Result envelope', () => {
+    const metadataService = {
+      enqueue: vi.fn(),
+      refreshMetadata: vi.fn(),
+      bulkRefreshMetadata: vi.fn(() => {
+        throw new Error('metadata unavailable')
+      }),
+      resumeOnStartup: vi.fn(),
+      destroy: vi.fn()
+    }
+    const localHandlers = createIpcHandlers({
+      getWin: () => null,
+      getRuntime: () => ({ repos, metadataService })
+    })
+
+    expect(localHandlers[IpcChannel.DocumentsBulkRefreshMetadata](['d1'])).toEqual({
+      ok: false,
+      error: { code: 'internal_error', message: 'metadata unavailable' }
+    })
   })
 
   it('returns the current document when relocation selection is cancelled', async () => {
@@ -313,12 +338,16 @@ describe('IPC handlers (data layer)', () => {
     })
 
     const explicit = await localHandlers[IpcChannel.ImportAddFiles](['/tmp/paper.pdf'])
-    expect(explicit).toEqual({ ok: true, data: ['doc-1'] })
+    expect(explicit).toEqual({
+      ok: true,
+      data: { added: ['doc-1'], skipped: [], errors: [] }
+    })
     expect(importer.importFiles).toHaveBeenCalledWith(['/tmp/paper.pdf'], false)
 
     electronMocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
-    expect(await localHandlers[IpcChannel.ImportAddFiles]([])).toEqual({ ok: true, data: [] })
-    expect(await localHandlers[IpcChannel.ImportAddFolder]('')).toEqual({ ok: true, data: [] })
+    const emptyImport = { added: [], skipped: [], errors: [] }
+    expect(await localHandlers[IpcChannel.ImportAddFiles]([])).toEqual({ ok: true, data: emptyImport })
+    expect(await localHandlers[IpcChannel.ImportAddFolder]('')).toEqual({ ok: true, data: emptyImport })
     expect(await localHandlers[IpcChannel.ImportFromJson]('')).toEqual({ ok: true, data: 0 })
     expect(await localHandlers[IpcChannel.ImportFromZotero]()).toEqual({
       ok: true,
@@ -327,6 +356,37 @@ describe('IPC handlers (data layer)', () => {
     expect(await localHandlers[IpcChannel.ImportFromMendeley]()).toEqual({
       ok: true,
       data: { added: 0, skipped: 0, errors: [] }
+    })
+  })
+
+  it('returns Result envelopes when import dialogs have no active window or reject', async () => {
+    const importer = {
+      importFiles: vi.fn().mockResolvedValue({ added: [], skipped: [], errors: [] }),
+      destroy: vi.fn()
+    }
+    const noWindowHandlers = createIpcHandlers({
+      getWin: () => null,
+      getRuntime: () => ({ repos, importer })
+    })
+
+    await expect(noWindowHandlers[IpcChannel.ImportAddFiles]([])).resolves.toEqual({
+      ok: false,
+      error: { code: 'internal_error', message: 'No active window' }
+    })
+    await expect(noWindowHandlers[IpcChannel.ImportAddFolder]('')).resolves.toEqual({
+      ok: false,
+      error: { code: 'internal_error', message: 'No active window' }
+    })
+
+    const win = { isDestroyed: vi.fn(() => false), focus: vi.fn() }
+    const dialogHandlers = createIpcHandlers({
+      getWin: () => win as never,
+      getRuntime: () => ({ repos, importer })
+    })
+    electronMocks.showOpenDialog.mockRejectedValueOnce(new Error('dialog failed'))
+    await expect(dialogHandlers[IpcChannel.ImportAddFiles]([])).resolves.toEqual({
+      ok: false,
+      error: { code: 'internal_error', message: 'dialog failed' }
     })
   })
 

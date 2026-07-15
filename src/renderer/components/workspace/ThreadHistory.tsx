@@ -136,7 +136,9 @@ export default function ThreadHistory({
                           cancelText: t('common.cancel'),
                           danger: true,
                           onConfirm: () => {
-                            void deleteThread(th.id).then(() => void fetchThreads())
+                            void deleteThread(th.id).then(() =>
+                              void fetchThreads({ selectLatestIfNone: true })
+                            )
                           }
                         })
                       }}

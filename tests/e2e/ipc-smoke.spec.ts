@@ -13,7 +13,11 @@ type ElectronApi = Record<string, unknown> & {
     get(key: string, defaultValue: unknown): Promise<unknown>
   }
   import: {
-    addFiles(paths: string[]): Promise<string[]>
+    addFiles(paths: string[]): Promise<{
+      added: string[]
+      skipped: string[]
+      errors: Array<{ path: string; message: string }>
+    }>
   }
   documents: {
     update(id: string, patch: Record<string, unknown>): Promise<Record<string, unknown>>
@@ -80,10 +84,11 @@ test.describe('IPC Smoke', () => {
 
   test('document:updated event fires on update', async () => {
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
-    const ids = await electronPage.evaluate(
+    const result = await electronPage.evaluate(
       async (absPath: string) => api(window).import.addFiles([absPath]),
       pdfPath,
     )
+    const ids = result.added
     expect(ids.length).toBeGreaterThan(0)
     const docId: string = ids[0]
 

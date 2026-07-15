@@ -1,8 +1,8 @@
 import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage } from 'electron'
-import { join } from 'node:path'
+import { join, resolve as resolvePath } from 'node:path'
 import { existsSync, statSync } from 'node:fs'
 import { initLogger, logger } from './services/logger'
-import { openDatabase, seedSettings, closeDatabase, getSetting } from './db/connection'
+import { openDatabase, seedSettings, closeDatabase, getSetting, getSearchMode } from './db/connection'
 import { createRepositories } from './db/repositories'
 import { RepoError } from './db/repositories/errors'
 import { registerIpcHandlers, validateProxyUrl, type RuntimeRef } from './ipc/handlers'
@@ -19,11 +19,14 @@ import { createAiAgentService } from './services/aiAgent'
 import type { AiAgentService } from './services/aiAgent'
 import { checkMissing, findPdfsRecursively } from './services/files'
 import { writeExportFile, importFromJsonFile } from './services/export'
-import { emitImportProgress, emitLibraryScanning, emitLibrarySwitched } from './ipc/events'
+import { emitLibraryScanning, emitLibrarySwitched } from './ipc/events'
 import { dbPathForLibraryFolder, dbExistsInLibraryFolder, DB_FILE_NAME } from './db/dbPath'
 import { readLibraryFolderPath, writeLibraryFolderPath } from './services/prefs'
 import { IpcChannel } from '../shared/ipc-channels'
 import type { LibrarySwitchResult } from '../shared/ipc-types'
+import { createExclusiveTask } from './services/exclusiveTask'
+import { runMenuAction } from './services/menuAction'
+import { prepareReplacement } from './services/resourceReplacement'
 
 let isDev = false
 const IS_MAC = process.platform === 'darwin'
@@ -35,6 +38,8 @@ interface Runtime extends RuntimeRef {
   metadataService: ReturnType<typeof createMetadataService>
   watcher: ReturnType<typeof createWatcher>
   missingCheckInterval: ReturnType<typeof setInterval> | null
+  missingCheckAbort: AbortController
+  activated: boolean
   aiProvidersService: AiProvidersService
   pdfTextService: PdfTextService
   aiSummaryService: AiSummaryService
@@ -43,8 +48,6 @@ interface Runtime extends RuntimeRef {
 let runtime: Runtime | null = null
 let win: BrowserWindow | null = null
 let isQuitting = false
-let switchPromise: Promise<LibrarySwitchResult> | null = null
-let missingCheckAbort: AbortController | null = null
 
 function detectLanguage(): 'zh' | 'en' {
   try {
@@ -53,6 +56,12 @@ function detectLanguage(): 'zh' | 'en' {
   } catch {
     return 'en'
   }
+}
+
+function reportMenuError(action: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error)
+  logger.error(`${action}: ${message}`)
+  dialog.showErrorBox(`${action} Failed`, message)
 }
 
 function applyCsp(): void {
@@ -105,42 +114,49 @@ function buildMenu(): Menu {
         },
         {
           label: 'Add Folder',
-          click: async () => {
-            const w = getWin()
-            if (!w || !runtime) return
-            const result = await dialog.showOpenDialog(w, {
-              title: 'Add Folder',
-              properties: ['openDirectory']
-            })
-            if (result.canceled) return
-            const dir = result.filePaths[0]
-            void runtime.importer.importFiles(findPdfsRecursively(dir), false)
+          click: () => {
+            void runMenuAction(async () => {
+              const w = getWin()
+              const current = runtime
+              if (!w || !current) return
+              const result = await dialog.showOpenDialog(w, {
+                title: 'Add Folder',
+                properties: ['openDirectory']
+              })
+              if (result.canceled) return
+              const dir = result.filePaths[0]
+              const pdfs = await findPdfsRecursively(dir)
+              await current.importer.importFiles(pdfs, false)
+            }, (error) => reportMenuError('add folder', error))
           }
         },
         { type: 'separator' },
         {
           label: 'Import JSON\u2026',
-          click: async () => {
-            const w = getWin()
-            if (!w || !runtime) return
-            const result = await dialog.showOpenDialog(w, {
-              title: 'Import JSON',
-              properties: ['openFile'],
-              filters: [{ name: 'JSON files', extensions: ['json'] }]
-            })
-            if (result.canceled || result.filePaths.length === 0) return
-            const modeChoice = await dialog.showMessageBox(w, {
-              type: 'question',
-              title: 'Import Mode',
-              message: 'How should the import handle existing data?',
-              buttons: ['Merge (keep existing, add new)', 'Replace (clear all, import)', 'Cancel'],
-              defaultId: 0,
-              cancelId: 2
-            })
-            if (modeChoice.response === 2) return
-            const mode = modeChoice.response === 1 ? 'replace' : 'merge'
-            const count = importFromJsonFile(runtime.repos, result.filePaths[0], mode, runtime.db)
-            logger.info(`import:json ${count} documents`)
+          click: () => {
+            void runMenuAction(async () => {
+              const w = getWin()
+              const current = runtime
+              if (!w || !current) return
+              const result = await dialog.showOpenDialog(w, {
+                title: 'Import JSON',
+                properties: ['openFile'],
+                filters: [{ name: 'JSON files', extensions: ['json'] }]
+              })
+              if (result.canceled || result.filePaths.length === 0) return
+              const modeChoice = await dialog.showMessageBox(w, {
+                type: 'question',
+                title: 'Import Mode',
+                message: 'How should the import handle existing data?',
+                buttons: ['Merge (keep existing, add new)', 'Replace (clear all, import)', 'Cancel'],
+                defaultId: 0,
+                cancelId: 2
+              })
+              if (modeChoice.response === 2) return
+              const mode = modeChoice.response === 1 ? 'replace' : 'merge'
+              const count = importFromJsonFile(current.repos, result.filePaths[0], mode, current.db)
+              logger.info(`import:json ${count} documents`)
+            }, (error) => reportMenuError('Import JSON', error))
           }
         },
         { type: 'separator' },
@@ -162,16 +178,19 @@ function buildMenu(): Menu {
         {
           label: 'Export JSON\u2026',
           accelerator: 'Cmd+E',
-          click: async () => {
-            const w = getWin()
-            if (!w || !runtime) return
-            const result = await dialog.showSaveDialog(w, {
-              title: 'Export JSON',
-              defaultPath: `refora-export-${new Date().toISOString().slice(0, 10)}.json`,
-              filters: [{ name: 'JSON files', extensions: ['json'] }]
-            })
-            if (result.canceled || !result.filePath) return
-            writeExportFile(runtime.repos, result.filePath)
+          click: () => {
+            void runMenuAction(async () => {
+              const w = getWin()
+              const current = runtime
+              if (!w || !current) return
+              const result = await dialog.showSaveDialog(w, {
+                title: 'Export JSON',
+                defaultPath: `refora-export-${new Date().toISOString().slice(0, 10)}.json`,
+                filters: [{ name: 'JSON files', extensions: ['json'] }]
+              })
+              if (result.canceled || !result.filePath) return
+              writeExportFile(current.repos, result.filePath)
+            }, (error) => reportMenuError('Export JSON', error))
           }
         },
         {
@@ -288,88 +307,104 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
   return bw
 }
 
+function destroyRuntime(target: Runtime): void {
+  target.missingCheckAbort.abort()
+  if (target.missingCheckInterval) {
+    clearInterval(target.missingCheckInterval)
+    target.missingCheckInterval = null
+  }
+  target.activated = false
+  target.metadataService.destroy()
+  target.watcher.destroy()
+  target.importer.destroy()
+  target.aiSummaryService.destroy()
+  target.aiAgentService.destroy()
+  target.pdfTextService.destroy()
+  closeDatabase(target.db)
+}
+
 function teardownRuntime(): void {
-  if (!runtime) return
-  if (missingCheckAbort) {
-    missingCheckAbort.abort()
-    missingCheckAbort = null
-  }
-  if (runtime.missingCheckInterval) {
-    clearInterval(runtime.missingCheckInterval)
-    runtime.missingCheckInterval = null
-  }
-  runtime.metadataService.destroy()
-  runtime.watcher.destroy()
-  runtime.importer.destroy()
-  runtime.aiSummaryService.destroy()
-  runtime.aiAgentService.destroy()
-  runtime.pdfTextService.destroy()
-  closeDatabase(runtime.db)
+  const current = runtime
   runtime = null
+  if (current) destroyRuntime(current)
 }
 
 function buildRuntime(dbPath: string): Runtime {
   const db = openDatabase(dbPath)
-  seedSettings(db, detectLanguage())
-  const repos = createRepositories(db)
-  const traceTtlMs = 30 * 24 * 60 * 60 * 1000
-  const pruned = repos.agentTraces.deleteOlderThan(Date.now() - traceTtlMs)
-  if (pruned > 0) logger.info(`startup:pruned ${pruned} trace steps older than 30 days`)
-  const importer = createImporter(repos, () => win)
-  const metadataService = createMetadataService(repos, () => win)
-  const aiProvidersService = createAiProvidersService(repos)
-  const pdfTextService = createPdfTextService(repos, () => win)
-  const aiSummaryService = createAiSummaryService(
-    repos,
-    () => win,
-    aiProvidersService,
-    pdfTextService
-  )
-  const aiAgentService = createAiAgentService(repos, () => win, aiProvidersService, pdfTextService, aiSummaryService)
-  const watcher = createWatcher({
-    importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
-    getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', '')
-  })
+  try {
+    seedSettings(db, detectLanguage())
+    const repos = createRepositories(db, { getSearchMode: () => getSearchMode(db) })
+    const traceTtlMs = 30 * 24 * 60 * 60 * 1000
+    const pruned = repos.agentTraces.deleteOlderThan(Date.now() - traceTtlMs)
+    if (pruned > 0) logger.info(`startup:pruned ${pruned} trace steps older than 30 days`)
+    const importer = createImporter(repos, () => win)
+    const metadataService = createMetadataService(repos, () => win)
+    const aiProvidersService = createAiProvidersService(repos)
+    const pdfTextService = createPdfTextService(repos, () => win)
+    const aiSummaryService = createAiSummaryService(
+      repos,
+      () => win,
+      aiProvidersService,
+      pdfTextService
+    )
+    const aiAgentService = createAiAgentService(repos, () => win, aiProvidersService, pdfTextService, aiSummaryService)
+    const watcher = createWatcher({
+      importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
+      getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', '')
+    })
 
-  importer.onComplete((result) => {
-    if (result.errors.length > 0 && win && !win.isDestroyed()) {
-      for (const err of result.errors) {
-        logger.warn(`import:error ${err.path}: ${err.message}`)
-        win.webContents.send('import:toast', err.message)
+    importer.onComplete((result) => {
+      if (result.errors.length > 0 && win && !win.isDestroyed()) {
+        for (const err of result.errors) {
+          logger.warn(`import:error ${err.path}: ${err.message}`)
+          win.webContents.send('import:toast', err.message)
+        }
       }
-    }
-    for (const id of result.added) {
-      metadataService.enqueue(id)
-    }
-    if (result.added.length > 0 && win && !win.isDestroyed()) {
-      emitImportProgress(win, { current: result.added.length, total: result.added.length })
-    }
-  })
+      for (const id of result.added) {
+        metadataService.enqueue(id)
+      }
+    })
 
-  metadataService.resumeOnStartup()
-
-  const r: Runtime = {
-    db,
-    repos,
-    importer,
-    metadataService,
-    watcher,
-    missingCheckInterval: null,
-    aiProvidersService,
-    pdfTextService,
-    aiSummaryService,
-    aiAgentService
+    return {
+      db,
+      repos,
+      importer,
+      metadataService,
+      watcher,
+      missingCheckInterval: null,
+      missingCheckAbort: new AbortController(),
+      activated: false,
+      aiProvidersService,
+      pdfTextService,
+      aiSummaryService,
+      aiAgentService
+    }
+  } catch (error) {
+    closeDatabase(db)
+    throw error
   }
+}
+
+function activateRuntime(target: Runtime, startLibraryWatcher = true): void {
+  if (target.activated) return
+  target.activated = true
+  target.metadataService.resumeOnStartup()
+  const signal = target.missingCheckAbort.signal
 
   setImmediate(() => {
-    const enabledFolders = repos.watchFolders.getEnabled()
-    watcher.startAll(enabledFolders)
-    logger.info(`watch:started ${enabledFolders.length} watchers`)
-    const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
-    if (libraryFolder) watcher.startLibraryWatcher(libraryFolder)
+    if (signal.aborted) return
+    try {
+      const enabledFolders = target.repos.watchFolders.getEnabled()
+      target.watcher.startAll(enabledFolders)
+      logger.info(`watch:started ${enabledFolders.length} watchers`)
+      const libraryFolder = target.repos.settings.get<string>('libraryFolderPath', '')
+      if (startLibraryWatcher && libraryFolder) target.watcher.startLibraryWatcher(libraryFolder)
+    } catch (error) {
+      logger.warn(`watch:start failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
   })
 
-  const proxyUrl = repos.settings.get<string>('proxyUrl', '')
+  const proxyUrl = target.repos.settings.get<string>('proxyUrl', '')
   if (proxyUrl) {
     if (validateProxyUrl(proxyUrl)) {
       void session.defaultSession.setProxy({ proxyRules: proxyUrl }).catch((e) => {
@@ -380,17 +415,13 @@ function buildRuntime(dbPath: string): Runtime {
     }
   }
 
-  missingCheckAbort = new AbortController()
-  const signal = missingCheckAbort.signal
   setImmediate(() => {
-    checkMissing(repos, win, signal)
+    if (!signal.aborted) checkMissing(target.repos, win, signal)
   })
 
-  r.missingCheckInterval = setInterval(() => {
-    if (!isQuitting && !signal.aborted) checkMissing(repos, win, signal)
+  target.missingCheckInterval = setInterval(() => {
+    if (!isQuitting && !signal.aborted) checkMissing(target.repos, win, signal)
   }, 10 * 60 * 1000)
-
-  return r
 }
 
 function resolveStartupDbPath(): string {
@@ -441,54 +472,58 @@ function resolveStartupDbPath(): string {
   return userDataDbPath
 }
 
-function switchLibraryFolder(folder: string): Promise<LibrarySwitchResult> {
-  if (switchPromise) {
-    return Promise.reject(new RepoError('busy', 'Library switch already in progress'))
-  }
-  const promise = performLibrarySwitch(folder)
-  switchPromise = promise
-  void promise.finally(() => {
-    if (switchPromise === promise) switchPromise = null
-  })
-  return promise
-}
-
 async function performLibrarySwitch(folder: string): Promise<LibrarySwitchResult> {
-  if (!folder || !existsSync(folder) || !statSync(folder).isDirectory()) {
-    throw new Error(`Invalid library folder: ${folder}`)
+  const resolvedFolder = folder ? resolvePath(folder) : ''
+  if (!resolvedFolder || !existsSync(resolvedFolder) || !statSync(resolvedFolder).isDirectory()) {
+    throw new Error(`Invalid library folder: ${resolvedFolder}`)
   }
-  const targetDbPath = dbPathForLibraryFolder(folder)
-  const dbExisted = dbExistsInLibraryFolder(folder)
-  logger.info(`library:switch folder=${folder} dbExisted=${dbExisted}`)
+  const targetDbPath = dbPathForLibraryFolder(resolvedFolder)
+  const dbExisted = dbExistsInLibraryFolder(resolvedFolder)
+  logger.info(`library:switch folder=${resolvedFolder} dbExisted=${dbExisted}`)
 
-  teardownRuntime()
-  runtime = buildRuntime(targetDbPath)
-  runtime.repos.settings.set('libraryFolderPath', folder)
-  writeLibraryFolderPath(app.getPath('userData'), folder)
-  runtime.watcher.startLibraryWatcher(folder)
+  const nextRuntime = prepareReplacement(
+    () => buildRuntime(targetDbPath),
+    (candidate) => candidate.repos.settings.set('libraryFolderPath', resolvedFolder),
+    destroyRuntime
+  )
+  const previousRuntime = runtime
+  runtime = nextRuntime
+  if (previousRuntime) destroyRuntime(previousRuntime)
+  writeLibraryFolderPath(app.getPath('userData'), resolvedFolder)
+  activateRuntime(nextRuntime, false)
 
   let scanned = 0
   let imported = 0
   let skipped = 0
   const errors: Array<{ path: string; message: string }> = []
 
-  if (!dbExisted) {
-    const pdfs = findPdfsRecursively(folder)
-    scanned = pdfs.length
-    logger.info(`library:scan found ${scanned} pdfs in ${folder}`)
-    if (scanned > 0 && win && !win.isDestroyed()) {
-      emitLibraryScanning(win, { current: 0, total: scanned })
+  try {
+    if (!dbExisted) {
+      const pdfs = await findPdfsRecursively(resolvedFolder)
+      scanned = pdfs.length
+      logger.info(`library:scan found ${scanned} pdfs in ${resolvedFolder}`)
+      if (scanned > 0 && win && !win.isDestroyed()) {
+        emitLibraryScanning(win, { current: 0, total: scanned })
+      }
+      if (scanned > 0) {
+        const importResult = await nextRuntime.importer.importFiles(pdfs, false)
+        imported = importResult.added.length
+        skipped = importResult.skipped.length
+        errors.push(...importResult.errors)
+      }
     }
-    if (scanned > 0) {
-      const result = await runtime.importer.importFiles(pdfs, false)
-      imported = result.added.length
-      skipped = result.skipped.length
-      errors.push(...result.errors)
+  } finally {
+    try {
+      nextRuntime.watcher.startLibraryWatcher(resolvedFolder)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logger.warn(`watch:library start failed: ${message}`)
+      errors.push({ path: resolvedFolder, message })
     }
   }
 
   const result: LibrarySwitchResult = {
-    libraryFolderPath: folder,
+    libraryFolderPath: resolvedFolder,
     dbExisted,
     scanned,
     imported,
@@ -500,6 +535,11 @@ async function performLibrarySwitch(folder: string): Promise<LibrarySwitchResult
   }
   return result
 }
+
+const switchLibraryFolder = createExclusiveTask(
+  performLibrarySwitch,
+  () => new RepoError('busy', 'Library switch already in progress')
+)
 
 void app.whenReady().then(() => {
   isDev = !app.isPackaged
@@ -519,6 +559,7 @@ void app.whenReady().then(() => {
   const r = runtime.repos
   const savedBounds = r.settings.get<{ x?: number; y?: number; width?: number; height?: number } | null>('windowBounds', null)
   win = createWindow(savedBounds)
+  activateRuntime(runtime)
 
   Menu.setApplicationMenu(buildMenu())
   registerIpcHandlers({

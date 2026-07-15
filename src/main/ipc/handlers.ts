@@ -1,5 +1,6 @@
 import { dialog, ipcMain, shell, session, type BrowserWindow } from 'electron'
 import { existsSync, statSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { resolve as resolvePath, parse as parsePath } from 'node:path'
 import { IpcChannel } from '../../shared/ipc-channels'
 import type {
@@ -42,6 +43,7 @@ import type { ImportResult } from '../services/importer'
 import { openPdf } from '../services/pdfOpen'
 import { moveToLibrary, restoreToOriginal } from '../services/library'
 import { relocate, deleteDocument, bulkDeleteDocuments, findPdfsRecursively } from '../services/files'
+import { resolvePdfFilePath } from '../services/pdfPath'
 import { emitDocumentUpdated } from '../ipc/events'
 import { writeExportFile, importFromJsonFile, toBibtex } from '../services/export'
 import { importFromBibtex, type BibImportSource } from '../services/bibImport'
@@ -79,15 +81,19 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventWorkspaceItemsChanged
 >
 
+function errorResult(e: unknown): Result<never> {
+  if (e instanceof RepoError) {
+    return { ok: false, error: { code: e.code, message: e.message } }
+  }
+  const message = e instanceof Error ? e.message : String(e)
+  return { ok: false, error: { code: 'internal_error', message } }
+}
+
 function wrap<T>(fn: () => T): Result<T> {
   try {
     return { ok: true, data: fn() }
   } catch (e) {
-    if (e instanceof RepoError) {
-      return { ok: false, error: { code: e.code, message: e.message } }
-    }
-    const message = e instanceof Error ? e.message : String(e)
-    return { ok: false, error: { code: 'internal_error', message } }
+    return errorResult(e)
   }
 }
 
@@ -95,11 +101,7 @@ async function asyncWrap<T>(fn: () => Promise<T>): Promise<Result<T>> {
   try {
     return { ok: true, data: await fn() }
   } catch (e) {
-    if (e instanceof RepoError) {
-      return { ok: false, error: { code: e.code, message: e.message } }
-    }
-    const message = e instanceof Error ? e.message : String(e)
-    return { ok: false, error: { code: 'internal_error', message } }
+    return errorResult(e)
   }
 }
 
@@ -218,7 +220,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     const alreadyInLibrary = libraryFolder ? isInsideLibrary(doc.filePath, libraryFolder) : false
     if (libraryFolder && !alreadyInLibrary) {
       try {
-        const newPath = moveToLibrary(doc.filePath, libraryFolder)
+        const newPath = moveToLibrary(resolvePdfFilePath(doc.filePath), libraryFolder)
         r.documents.updateFilePath(docId, newPath, parsePath(newPath).base)
       } catch (e) {
         logger.warn(
@@ -259,7 +261,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
 
     [IpcChannel.DocumentsBulkRefreshMetadata]: (ids: string[]): Result<void> => {
       const ms = deps.getRuntime()?.metadataService
-      return ms ? (ms.bulkRefreshMetadata(ids), { ok: true, data: undefined }) : notImplemented('documents.bulkRefreshMetadata')
+      return ms ? wrap(() => ms.bulkRefreshMetadata(ids)) : notImplemented('documents.bulkRefreshMetadata')
     },
     [IpcChannel.DocumentsOpenPdf]: async (id: string): Promise<Result<Document>> =>
       asyncWrap(() => openPdf(repos(), getWin(), id)),
@@ -267,7 +269,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       wrap(() => {
         const doc = repos().documents.get(id)
         if (!doc) throw new RepoError('not_found', `Document ${id} not found`)
-        shell.showItemInFolder(doc.filePath)
+        shell.showItemInFolder(resolvePdfFilePath(doc.filePath))
       }),
     [IpcChannel.DocumentsRefreshMetadata]: (id: string): Result<Document> => {
       const rt = deps.getRuntime()
@@ -295,7 +297,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           }
           path = result.filePaths[0]
         }
-        const doc = relocate(repos(), id, path)
+        const doc = await relocate(repos(), id, path)
         const w = getWin()
         if (w) emitDocumentUpdated(w, doc)
         return doc
@@ -308,42 +310,46 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         return doc as Document
       }),
 
-    [IpcChannel.ImportAddFiles]: async (paths: string[]): Promise<Result<string[]>> => {
+    [IpcChannel.ImportAddFiles]: (paths: string[]): Promise<Result<ImportResult>> => {
       const importer = deps.getRuntime()?.importer
-      if (!importer) return notImplemented('import.addFiles') as Result<string[]>
-      let filePaths = paths
-      if (filePaths.length === 0) {
-        const w = requireWin()
-        w.focus()
-        const result = await dialog.showOpenDialog(w, {
-          title: 'Add PDF Files',
-          properties: ['openFile', 'multiSelections'],
-          filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
-        })
-        if (result.canceled) return { ok: true, data: [] }
-        filePaths = result.filePaths
-      }
+      if (!importer) return Promise.resolve(notImplemented('import.addFiles') as Result<ImportResult>)
       return asyncWrap(async () => {
-        const importResult = await importer.importFiles(filePaths, false)
-        return importResult.added
+        let filePaths = paths
+        if (filePaths.length === 0) {
+          const w = requireWin()
+          w.focus()
+          const result = await dialog.showOpenDialog(w, {
+            title: 'Add PDF Files',
+            properties: ['openFile', 'multiSelections'],
+            filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+          })
+          if (result.canceled) return { added: [], skipped: [], errors: [] }
+          filePaths = result.filePaths
+        }
+        return importer.importFiles(filePaths, false)
       })
     },
 
-    [IpcChannel.ImportAddFolder]: async (_dir: string): Promise<Result<string[]>> => {
+    [IpcChannel.ImportAddFolder]: (requestedDir: string): Promise<Result<ImportResult>> => {
       const importer = deps.getRuntime()?.importer
-      if (!importer) return notImplemented('import.addFolder') as Result<string[]>
-      const w = requireWin()
-      w.focus()
-      const result = await dialog.showOpenDialog(w, {
-        title: 'Add Folder',
-        properties: ['openDirectory']
-      })
-      if (result.canceled) return { ok: true, data: [] }
-      const dir = result.filePaths[0]
-      const pdfPaths = findPdfsRecursively(dir)
+      if (!importer) return Promise.resolve(notImplemented('import.addFolder') as Result<ImportResult>)
       return asyncWrap(async () => {
-        const importResult = await importer.importFiles(pdfPaths, false)
-        return importResult.added
+        let dir = requestedDir ? resolvePath(requestedDir) : ''
+        if (!dir) {
+          const w = requireWin()
+          w.focus()
+          const result = await dialog.showOpenDialog(w, {
+            title: 'Add Folder',
+            properties: ['openDirectory']
+          })
+          if (result.canceled) return { added: [], skipped: [], errors: [] }
+          dir = resolvePath(result.filePaths[0])
+        }
+        if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+          throw new RepoError('invalid_path', `Not a directory: ${dir}`)
+        }
+        const pdfPaths = await findPdfsRecursively(dir)
+        return importer.importFiles(pdfPaths, false)
       })
     },
 
@@ -643,7 +649,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.AiSummaryGet]: (docId: string): Result<AiSummary | null> =>
       wrap(() => repos().aiSummaries.getSummary(docId)),
 
-    [IpcChannel.AiChatSend]: (req: ChatSendRequest): Promise<Result<{ threadId: string }>> =>
+    [IpcChannel.AiChatSend]: (req: ChatSendRequest): Promise<Result<{ threadId: string; runId: string }>> =>
       asyncWrap(async () => {
         const rt = deps.getRuntime()
         if (!rt?.aiAgentService) throw new RepoError('not_ready', 'Agent service not ready')
@@ -653,16 +659,6 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const raw = repos().aiProviders.getRaw(pid)
         if (!raw || !raw.apiKeyEnc) throw new RepoError('no_api_key', 'Provider has no API key')
 
-        let threadId = req.threadId
-        if (!threadId) {
-          const thread = rt.repos.chat.createThread(req.workspaceId, pid)
-          threadId = thread.id
-        } else {
-          const thread = rt.repos.chat.getThread(threadId)
-          if (!thread || thread.workspaceId !== req.workspaceId) {
-            throw new RepoError('not_found', 'Chat thread not found in this workspace')
-          }
-        }
         if (req.attachments?.length) {
           const wsItems = repos().workspaceItems.list(req.workspaceId).filter((i) => i.kind === 'document')
           const wsDocIds = new Set(wsItems.map((i) => i.docId).filter((d): d is string => d !== null))
@@ -672,8 +668,31 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
             }
           }
         }
-        void rt.aiAgentService.run({ ...req, threadId }, threadId)
-        return { threadId }
+
+        let threadId = req.threadId
+        if (threadId) {
+          const thread = rt.repos.chat.getThread(threadId)
+          if (!thread || thread.workspaceId !== req.workspaceId) {
+            throw new RepoError('not_found', 'Chat thread not found in this workspace')
+          }
+          if (req.replaceLastExchange) {
+            rt.repos.transaction(() => {
+              rt.repos.chat.deleteLastExchange(threadId!)
+              if (req.replaceRunId) {
+                rt.repos.agentTraces.deleteByRun(threadId!, req.replaceRunId)
+              }
+            })
+          }
+        } else {
+          if (req.replaceLastExchange) {
+            throw new RepoError('invalid_request', 'Cannot replace an exchange without a thread')
+          }
+          const thread = rt.repos.chat.createThread(req.workspaceId, pid)
+          threadId = thread.id
+        }
+        const runId = req.runId?.trim() || randomUUID()
+        void rt.aiAgentService.run({ ...req, threadId, runId }, threadId, runId)
+        return { threadId, runId }
       }),
     [IpcChannel.AiChatHistory]: (threadId: string): Result<ChatMessage[]> =>
       wrap(() => {
@@ -730,8 +749,16 @@ export type IpcHandlerMap = ReturnType<typeof createIpcHandlers>
 export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   const handlers = createIpcHandlers(deps)
   for (const [channel, handler] of Object.entries(handlers)) {
-    ipcMain.handle(channel, (_event, ...args) =>
-      (handler as (...a: unknown[]) => unknown)(...args)
-    )
+    ipcMain.handle(channel, (_event, ...args) => {
+      try {
+        const result = (handler as (...a: unknown[]) => unknown)(...args)
+        if (result && typeof (result as { then?: unknown }).then === 'function') {
+          return (result as Promise<unknown>).catch((e) => errorResult(e))
+        }
+        return result
+      } catch (e) {
+        return errorResult(e)
+      }
+    })
   }
 }

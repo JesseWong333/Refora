@@ -166,15 +166,28 @@ describe('isSafeUrl', () => {
 
 describe('fetchPublicUrl', () => {
   it('rejects a redirect to a private address before requesting it', async () => {
-    mockFetch.mockResolvedValueOnce({
+    const transport = vi.fn().mockResolvedValueOnce({
       status: 302,
+      ok: false,
+      url: 'https://public.example/paper.pdf',
       headers: new Headers({ location: 'http://127.0.0.1/internal.pdf' }),
       body: null
     })
 
     await expect(
-      fetchPublicUrl('https://public.example/paper.pdf', new AbortController().signal, {})
-    ).rejects.toThrow('not a public')
-    expect(mockFetch).toHaveBeenCalledTimes(1)
+      fetchPublicUrl(
+        'https://public.example/paper.pdf',
+        new AbortController().signal,
+        {},
+        transport
+      )
+    ).rejects.toThrow('private address')
+    expect(transport).toHaveBeenCalledWith(
+      'https://public.example/paper.pdf',
+      '151.101.3.42',
+      4,
+      expect.any(AbortSignal),
+      {}
+    )
   })
 })

@@ -5,21 +5,27 @@ import { EventEmitter } from 'node:events'
 const {
   mockExistsSync,
   mockStatSync,
+  mockLstatSync,
+  mockUnlinkSync,
   mockShowMessageBox,
   mockWebContentsSend,
   mockCopyToLibrary
 } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(),
   mockStatSync: vi.fn(),
+  mockLstatSync: vi.fn(),
+  mockUnlinkSync: vi.fn(),
   mockShowMessageBox: vi.fn().mockResolvedValue({ response: 0 }),
   mockWebContentsSend: vi.fn(),
   mockCopyToLibrary: vi.fn<[string, string], string>()
 }))
 
 vi.mock('node:fs', () => ({
-  default: { existsSync: mockExistsSync, statSync: mockStatSync },
+  default: { existsSync: mockExistsSync, statSync: mockStatSync, lstatSync: mockLstatSync, unlinkSync: mockUnlinkSync },
   existsSync: mockExistsSync,
-  statSync: mockStatSync
+  statSync: mockStatSync,
+  lstatSync: mockLstatSync,
+  unlinkSync: mockUnlinkSync
 }))
 
 vi.mock('../../src/main/services/library', async () => {
@@ -140,6 +146,8 @@ describe('createImporter', () => {
   beforeEach(() => {
     mockExistsSync.mockClear()
     mockStatSync.mockClear()
+    mockLstatSync.mockClear()
+    mockUnlinkSync.mockClear()
     mockShowMessageBox.mockClear()
     mockWebContentsSend.mockClear()
     mockCopyToLibrary.mockClear()
@@ -153,6 +161,7 @@ describe('createImporter', () => {
 
     mockExistsSync.mockReturnValue(true)
     mockStatSync.mockReturnValue({ isFile: () => true, size: 12345 } as ReturnType<typeof mockStatSync>)
+    mockLstatSync.mockReturnValue({ isSymbolicLink: () => false })
     mockShowMessageBox.mockResolvedValue({ response: 0 })
     mockCopyToLibrary.mockImplementation((_src: string, lib: string) => `${lib}/imported.pdf`)
 
@@ -427,6 +436,17 @@ describe('createImporter', () => {
       expect(result.errors.length).toBe(1)
       expect(result.errors[0]!.message).toContain('timed out')
     })
+
+    it('settles pending imports immediately when destroyed', async () => {
+      vi.useFakeTimers()
+      const promise = importer.importFiles(['/abs/test.pdf'], false)
+
+      importer.destroy()
+      await vi.advanceTimersByTimeAsync(121_000)
+
+      await expect(promise).resolves.toEqual({ added: [], skipped: [], errors: [] })
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 
   describe('importFiles — edge cases', () => {
@@ -456,6 +476,46 @@ describe('createImporter', () => {
       const docB = repos.documents.get(result.added[1]!)
       expect(docA!.fileHash).toBe('hashA')
       expect(docB!.fileHash).toBe('hashB')
+    })
+
+    it('serializes concurrent imports so the same source is inserted once', async () => {
+      const source = '/fake/library/test.pdf'
+      const first = importer.importFiles([source], false)
+      const second = importer.importFiles([source], false)
+      const worker = getWorker()
+
+      expect(worker!.postMessage).toHaveBeenCalledTimes(1)
+      worker!.emit('message', {
+        correlationId: worker!.postMessage.mock.calls[0]![0].correlationId,
+        fileHash: 'same-hash'
+      })
+
+      const firstResult = await first
+      const secondResult = await second
+      expect(firstResult.added).toHaveLength(1)
+      expect(secondResult).toEqual({ added: [], skipped: [source], errors: [] })
+      expect(worker!.postMessage).toHaveBeenCalledTimes(1)
+      expect(repos.documents.list({})).toHaveLength(1)
+    })
+
+    it('advances progress only after a file finishes processing', async () => {
+      const promise = importer.importFiles(['/abs/test.pdf'], false)
+      const worker = getWorker()
+
+      expect(mockWebContentsSend.mock.calls).toEqual([
+        ['import:progress', { current: 0, total: 1 }]
+      ])
+
+      worker!.emit('message', {
+        correlationId: worker!.postMessage.mock.calls[0]![0].correlationId,
+        fileHash: 'progress-hash'
+      })
+      await promise
+
+      expect(mockWebContentsSend.mock.calls.at(-1)).toEqual([
+        'import:progress',
+        { current: 1, total: 1 }
+      ])
     })
   })
 

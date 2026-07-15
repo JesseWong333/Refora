@@ -276,6 +276,7 @@ describe('IPC AI Handlers', () => {
       const pid = seedProvider()
       const req: ChatSendRequest = {
         workspaceId: 'ws-1',
+        runId: 'client-run',
         text: 'hello',
         providerId: pid
       }
@@ -302,7 +303,7 @@ describe('IPC AI Handlers', () => {
       const result = await callAsync(IpcChannel.AiChatSend, req)
       expect(result.ok).toBe(true)
       if (result.ok) {
-        expect(result.data).toEqual({ threadId: thread.id })
+        expect(result.data).toEqual({ threadId: thread.id, runId: expect.any(String) })
       }
     })
 
@@ -365,6 +366,7 @@ describe('IPC AI Handlers', () => {
       const pid = seedProvider()
       const req: ChatSendRequest = {
         workspaceId: 'ws-1',
+        runId: 'client-run',
         text: 'hello',
         providerId: pid
       }
@@ -377,6 +379,8 @@ describe('IPC AI Handlers', () => {
       expect(runArg.providerId).toBe(pid)
       const runThreadId = (runtime.aiAgentService!.run as ReturnType<typeof vi.fn>).mock.calls[0][1] as string
       expect(runThreadId).toBe((result as { ok: true; data: { threadId: string } }).data.threadId)
+      expect((runtime.aiAgentService!.run as ReturnType<typeof vi.fn>).mock.calls[0][2]).toBe('client-run')
+      expect((result as { ok: true; data: { runId: string } }).data.runId).toBe('client-run')
     })
 
     it('accepts only document attachments already present in the workspace', async () => {
@@ -411,6 +415,53 @@ describe('IPC AI Handlers', () => {
           error: expect.objectContaining({ code: 'invalid_attachment' })
         })
       )
+    })
+
+    it('does not create an empty thread when attachment validation fails', async () => {
+      const pid = seedProvider()
+      const result = await callAsync(IpcChannel.AiChatSend, {
+        workspaceId: 'ws-1',
+        text: 'Use a missing paper',
+        providerId: pid,
+        attachments: [{ type: 'document', docId: 'missing' }]
+      })
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          ok: false,
+          error: expect.objectContaining({ code: 'invalid_attachment' })
+        })
+      )
+      expect(repos.chat.listThreads('ws-1')).toEqual([])
+    })
+
+    it('removes the previous exchange and its trace before regeneration', async () => {
+      const pid = seedProvider()
+      const thread = repos.chat.createThread('ws-1', pid)
+      repos.chat.addMessage(thread.id, 'user', 'Old question')
+      repos.chat.addMessage(thread.id, 'assistant', 'Old answer')
+      repos.agentTraces.addStep({
+        threadId: thread.id,
+        runId: 'old-run',
+        kind: 'run',
+        status: 'done',
+        startedAt: 1,
+        endedAt: 2,
+        seq: 0
+      })
+
+      const result = await callAsync(IpcChannel.AiChatSend, {
+        workspaceId: 'ws-1',
+        threadId: thread.id,
+        text: 'Old question',
+        providerId: pid,
+        replaceLastExchange: true,
+        replaceRunId: 'old-run'
+      })
+
+      expect(result.ok).toBe(true)
+      expect(repos.chat.listMessages(thread.id)).toEqual([])
+      expect(repos.agentTraces.listByRun('old-run')).toEqual([])
     })
 
     it('returns error when agent service not ready', async () => {

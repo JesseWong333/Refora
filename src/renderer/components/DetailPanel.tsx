@@ -216,31 +216,65 @@ function NoteField({
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const saveRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const statusRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const textRef = useRef(value ?? '')
+  const editVersionRef = useRef(0)
+  const dirtyRef = useRef(false)
+  const docIdRef = useRef(docId)
 
   useEffect(() => {
+    if (docIdRef.current !== docId) {
+      docIdRef.current = docId
+      dirtyRef.current = false
+      editVersionRef.current++
+    }
+    if (dirtyRef.current) return
+    textRef.current = value ?? ''
     setText(value ?? '')
-  }, [value])
+  }, [docId, value])
 
-  const save = useCallback(async () => {
+  useEffect(() => {
+    return () => {
+      if (saveRef.current) clearTimeout(saveRef.current)
+      if (statusRef.current) clearTimeout(statusRef.current)
+    }
+  }, [])
+
+  const save = useCallback(async (nextText: string, editVersion: number) => {
     const current = value ?? ''
-    if (text === current) return
+    if (nextText === current) {
+      if (editVersion === editVersionRef.current) dirtyRef.current = false
+      return
+    }
     setStatus('saving')
     try {
-      const doc = await api.documents.update(docId, { note: text })
+      const doc = await api.documents.update(docId, { note: nextText })
+      if (editVersion === editVersionRef.current) {
+        dirtyRef.current = false
+        setStatus('saved')
+        if (statusRef.current) clearTimeout(statusRef.current)
+        statusRef.current = setTimeout(() => setStatus('idle'), 2000)
+      }
       onSaved(doc)
-      setStatus('saved')
-      if (statusRef.current) clearTimeout(statusRef.current)
-      statusRef.current = setTimeout(() => setStatus('idle'), 2000)
     } catch {
-      setText(value ?? '')
-      setStatus('idle')
+      if (editVersion === editVersionRef.current) {
+        dirtyRef.current = false
+        textRef.current = current
+        setText(current)
+        setStatus('idle')
+      }
     }
-  }, [text, value, docId, onSaved])
+  }, [value, docId, onSaved])
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value)
+    const nextText = e.target.value
+    const editVersion = ++editVersionRef.current
+    dirtyRef.current = true
+    textRef.current = nextText
+    setText(nextText)
     if (saveRef.current) clearTimeout(saveRef.current)
-    saveRef.current = setTimeout(save, 1000)
+    saveRef.current = setTimeout(() => {
+      void save(nextText, editVersion)
+    }, 1000)
   }
 
   return (
@@ -266,7 +300,7 @@ function NoteField({
         onChange={handleChange}
         onBlur={() => {
           if (saveRef.current) clearTimeout(saveRef.current)
-          save()
+          void save(textRef.current, editVersionRef.current)
         }}
       />
     </div>
@@ -736,10 +770,16 @@ function BulkBar({
 export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
   const documents = useDocumentStore((s) => s.documents)
+  const searchResults = useDocumentStore((s) => s.searchResults) ?? []
+  const isSearching = useDocumentStore((s) => s.isSearching) ?? false
   const selectedIds = useDocumentStore((s) => s.selectedIds)
   const focusedDocId = useDocumentStore((s) => s.focusedDocId)
 
-  const focusedDoc = documents.find((d) => d.id === focusedDocId) ?? null
+  const focusedDoc = (isSearching ? searchResults : documents)
+    .find((d) => d.id === focusedDocId) ??
+    documents.find((d) => d.id === focusedDocId) ??
+    searchResults.find((d) => d.id === focusedDocId) ??
+    null
 
   if (selectedIds.length >= 2) {
     return (

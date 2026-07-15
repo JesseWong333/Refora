@@ -215,6 +215,7 @@ export function createAiSummaryService(
     try {
       text = await pdfTextService.getOrExtract(docId)
     } catch (e) {
+      if (destroyed) return
       const msg = e instanceof Error ? e.message : String(e)
       logger.warn(`aiSummary:extract-failed id=${docId}: ${msg}`)
       emitError(docId, `Failed to extract PDF text: ${msg}`)
@@ -312,7 +313,6 @@ export function createAiSummaryService(
   function destroy(): void {
     destroyed = true
     jobQueue.length = 0
-    activeJobs = 0
   }
 
   return { summarize, destroy }

@@ -59,7 +59,9 @@ export default function ChatInput({
   useClickOutside(attachMenuRef, () => onAttachMenuOpenChange(false), attachMenuOpen)
 
   useEffect(() => {
+    setWorkspaceDocs([])
     if (!attachMenuOpen || !activeWorkspaceId) return
+    let cancelled = false
     void (async () => {
       try {
         const items = await api.workspaceItems.list(activeWorkspaceId)
@@ -70,11 +72,14 @@ export default function ChatInput({
             return { docId: i.docId!, title: doc?.title ?? doc?.fileName ?? i.docId! }
           })
         )
-        setWorkspaceDocs(docs)
+        if (!cancelled) setWorkspaceDocs(docs)
       } catch {
-        setWorkspaceDocs([])
+        if (!cancelled) setWorkspaceDocs([])
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [attachMenuOpen, activeWorkspaceId])
 
   useEffect(() => {

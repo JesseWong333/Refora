@@ -14,6 +14,10 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitDocumentUpdated: vi.fn()
 }))
 
+vi.mock('../../src/main/services/pdfPath', () => ({
+  resolvePdfFilePath: (filePath: string) => filePath
+}))
+
 import { shell } from 'electron'
 import { emitDocumentUpdated } from '../../src/main/ipc/events'
 import { openPdf } from '../../src/main/services/pdfOpen'

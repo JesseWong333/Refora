@@ -159,6 +159,7 @@ export default function WorkspacePanel() {
               type="button"
               className="sidebar-header-btn"
               onClick={closePanel}
+              disabled={chatStreaming}
               title={t('workspace.close')}
               aria-label={t('workspace.close')}
             >

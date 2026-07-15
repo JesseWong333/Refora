@@ -237,6 +237,24 @@ describe('DocumentStore', () => {
       expect(useDocumentStore.getState().isLoading).toBe(false)
       expect(useDocumentStore.getState().documents).toHaveLength(1)
     })
+
+    it('ignores an older list response that resolves after a newer request', async () => {
+      let resolveFirst!: (docs: Document[]) => void
+      let resolveSecond!: (docs: Document[]) => void
+      mockList
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
+
+      const first = useDocumentStore.getState().fetchDocuments({ mode: 'starred' })
+      const second = useDocumentStore.getState().fetchDocuments({ mode: 'recentlyRead' })
+      const latest = [makeDoc({ id: 'latest' })]
+      resolveSecond(latest)
+      await second
+      resolveFirst([makeDoc({ id: 'stale' })])
+      await first
+
+      expect(useDocumentStore.getState().documents).toEqual(latest)
+    })
   })
 
   describe('performSearch', () => {
@@ -293,6 +311,27 @@ describe('DocumentStore', () => {
       await vi.advanceTimersByTimeAsync(200)
 
       expect(useDocumentStore.getState().searchResults).toEqual([])
+    })
+
+    it('ignores an older in-flight search response', async () => {
+      let resolveFirst!: (docs: Document[]) => void
+      let resolveSecond!: (docs: Document[]) => void
+      mockSearch
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
+
+      useDocumentStore.getState().performSearch('first')
+      await vi.advanceTimersByTimeAsync(200)
+      useDocumentStore.getState().performSearch('second')
+      await vi.advanceTimersByTimeAsync(200)
+
+      const latest = [makeDoc({ id: 'latest' })]
+      resolveSecond(latest)
+      await Promise.resolve()
+      resolveFirst([makeDoc({ id: 'stale' })])
+      await Promise.resolve()
+
+      expect(useDocumentStore.getState().searchResults).toEqual(latest)
     })
   })
 
@@ -529,6 +568,24 @@ describe('DocumentStore', () => {
   })
 
   describe('document actions', () => {
+    it('opens, stars, and deletes documents that exist only in search results', async () => {
+      const searchDoc = makeDoc({ id: 'search-only' })
+      useDocumentStore.setState({
+        documents: [],
+        searchResults: [searchDoc],
+        isSearching: true
+      })
+
+      await useDocumentStore.getState().openPdf(searchDoc.id)
+      await useDocumentStore.getState().toggleStar(searchDoc.id)
+      await useDocumentStore.getState().deleteDoc(searchDoc.id)
+
+      expect(mockOpenPdf).toHaveBeenCalledWith(searchDoc.id)
+      expect(mockSetStarred).toHaveBeenCalledWith(searchDoc.id, true)
+      expect(mockDelete).toHaveBeenCalledWith(searchDoc.id)
+      expect(useDocumentStore.getState().searchResults).toEqual([])
+    })
+
     it('updates documents through individual and bulk actions', async () => {
       const first = makeDoc()
       const second = makeDoc({ id: 'doc-2', title: 'Second' })

@@ -54,8 +54,8 @@ const noop = async () => undefined
   },
 
   import: {
-    addFiles: async () => [],
-    addFolder: async () => [],
+    addFiles: async () => ({ added: [], skipped: [], errors: [] }),
+    addFolder: async () => ({ added: [], skipped: [], errors: [] }),
     fromJson: async () => 0,
     fromZotero: async () => ({ added: 0, skipped: 0, errors: [] }),
     fromMendeley: async () => ({ added: 0, skipped: 0, errors: [] }),

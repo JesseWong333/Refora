@@ -20,6 +20,7 @@ export type NewDocument = Omit<Document, 'categories'>
 
 export interface DocumentsRepoDeps {
   getLibraryFolder: () => string
+  getSearchMode: () => 'trigram' | 'like'
 }
 
 const EDITABLE_FIELDS: readonly EditableField[] = [
@@ -217,12 +218,13 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
   function search(q: string): SearchResult {
     const trimmed = q.trim()
     if (trimmed.length === 0) return []
-    if (trimmed.length >= 3) {
+    if (trimmed.length >= 3 && deps.getSearchMode() === 'trigram') {
+      const literalQuery = `"${trimmed.replace(/"/g, '""')}"`
       const rows = db
         .prepare(
           'SELECT d.* FROM documents d JOIN docs_fts f ON d.rowid = f.rowid WHERE docs_fts MATCH ? ORDER BY rank LIMIT 500'
         )
-        .all(trimmed) as Record<string, unknown>[]
+        .all(literalQuery) as Record<string, unknown>[]
       return rows.map((r) => mapDocument(r, lib()))
     }
     const escaped = trimmed.replace(/[%_\\]/g, '\\$&')
@@ -351,6 +353,19 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     )
   }
 
+  function updateFileIdentity(
+    id: string,
+    filePath: string,
+    fileName: string,
+    fileSize: number,
+    fileHash: string
+  ): void {
+    const rel = toLibraryRelative(filePath, lib())
+    db.prepare(
+      'UPDATE documents SET filePath = ?, fileName = ?, fileSize = ?, fileHash = ?, fileMissing = 0, updatedAt = ? WHERE id = ?'
+    ).run(rel, fileName, fileSize, fileHash, Date.now(), id)
+  }
+
   function setMetadataStatus(id: string, status: MetadataStatus, source?: MetadataSource): void {
     if (source === undefined) {
       db.prepare('UPDATE documents SET metadataStatus = ?, updatedAt = ? WHERE id = ?').run(
@@ -458,6 +473,7 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     findByPath,
     findByHash,
     updateFilePath,
+    updateFileIdentity,
     setMetadataStatus,
     incrementMetadataAttempts,
     setLastReadAt,

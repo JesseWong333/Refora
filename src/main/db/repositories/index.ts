@@ -14,10 +14,15 @@ import { createAgentTracesRepository } from './agentTraces'
 import { createAiProvidersRepository } from './aiProviders'
 import { RepoError } from './errors'
 
-export function createRepositories(db: SqliteDb) {
+export interface RepositoryDeps {
+  getSearchMode?: () => 'trigram' | 'like'
+}
+
+export function createRepositories(db: SqliteDb, deps: RepositoryDeps = {}) {
   const settings = createSettingsRepository(db)
   const documents = createDocumentsRepository(db, {
-    getLibraryFolder: () => settings.get<string>('libraryFolderPath', '')
+    getLibraryFolder: () => settings.get<string>('libraryFolderPath', ''),
+    getSearchMode: deps.getSearchMode ?? (() => 'trigram')
   })
   const categories = createCategoriesRepository(db)
   const watchFolders = createWatchFoldersRepository(db)

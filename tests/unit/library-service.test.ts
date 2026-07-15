@@ -4,21 +4,41 @@ import { RepoError } from '../../src/main/db/repositories/errors'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { Document } from '../../src/shared/ipc-types'
 
-const { mockExistsSync, mockRenameSync, mockStatSync, mockMkdirSync } = vi.hoisted(() => ({
+const {
+  mockExistsSync,
+  mockRenameSync,
+  mockStatSync,
+  mockMkdirSync,
+  mockCopyFileSync,
+  mockUnlinkSync
+} = vi.hoisted(() => ({
   mockExistsSync: vi.fn<[string], boolean>(),
   mockRenameSync: vi.fn<[string, string], void>(),
   mockStatSync: vi.fn<[string], { isDirectory: () => boolean }>(),
-  mockMkdirSync: vi.fn<[string, { recursive: boolean }], void>()
+  mockMkdirSync: vi.fn<[string, { recursive: boolean }], void>(),
+  mockCopyFileSync: vi.fn<[string, string], void>(),
+  mockUnlinkSync: vi.fn<[string], void>()
 }))
 
 vi.mock('node:fs', () => ({
-  default: { existsSync: mockExistsSync, renameSync: mockRenameSync, statSync: mockStatSync, mkdirSync: mockMkdirSync, copyFileSync: vi.fn(), unlinkSync: vi.fn() },
+  default: {
+    existsSync: mockExistsSync,
+    renameSync: mockRenameSync,
+    statSync: mockStatSync,
+    mkdirSync: mockMkdirSync,
+    copyFileSync: mockCopyFileSync,
+    unlinkSync: mockUnlinkSync
+  },
   existsSync: mockExistsSync,
   renameSync: mockRenameSync,
   statSync: mockStatSync,
   mkdirSync: mockMkdirSync,
-  copyFileSync: vi.fn(),
-  unlinkSync: vi.fn()
+  copyFileSync: mockCopyFileSync,
+  unlinkSync: mockUnlinkSync
+}))
+
+vi.mock('../../src/main/services/pdfPath', () => ({
+  resolvePdfFilePath: (filePath: string) => filePath
 }))
 
 function mockDoc(id: string, overrides: Partial<Document> = {}): Document {
@@ -124,6 +144,8 @@ describe('restoreToOriginal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRenameSync.mockReset()
+    mockCopyFileSync.mockReset()
+    mockUnlinkSync.mockReset()
   })
 
   it('renames file to original folder and updates DB', () => {
@@ -206,5 +228,22 @@ describe('restoreToOriginal', () => {
     expect(result).toBe('/abs/original/d1 (1).pdf')
     expect(mockRenameSync).toHaveBeenCalledWith('/library/d1.pdf', '/abs/original/d1 (1).pdf')
     expect(repos.documents.updateFilePath).toHaveBeenCalledWith('d1', '/abs/original/d1 (1).pdf', 'd1 (1).pdf')
+  })
+
+  it('copies then removes the source when restoring across volumes', () => {
+    const doc = mockDoc('d1', { filePath: '/library/d1.pdf', originalFolderPath: '/abs/original' })
+    const repos = mockRepos([doc])
+    mockStatSync.mockReturnValue({ isDirectory: () => true })
+    mockExistsSync.mockReturnValue(false)
+    mockRenameSync.mockImplementation(() => {
+      throw Object.assign(new Error('cross-device link'), { code: 'EXDEV' })
+    })
+
+    const result = restoreToOriginal(repos, 'd1')
+
+    expect(result).toBe('/abs/original/d1.pdf')
+    expect(mockCopyFileSync).toHaveBeenCalledWith('/library/d1.pdf', '/abs/original/d1.pdf')
+    expect(mockUnlinkSync).toHaveBeenCalledWith('/library/d1.pdf')
+    expect(repos.documents.updateFilePath).toHaveBeenCalledWith('d1', '/abs/original/d1.pdf', 'd1.pdf')
   })
 })

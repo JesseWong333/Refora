@@ -95,6 +95,25 @@ describe('documents repository', () => {
     expect(repos.documents.search('   ')).toEqual([])
   })
 
+  it('search treats FTS operators and punctuation as literal text', () => {
+    repos.documents.insert(makeDoc('cpp', { title: 'Modern C++ patterns' }))
+    repos.documents.insert(makeDoc('quote', { title: 'He said "search"' }))
+    repos.documents.insert(makeDoc('operator', { title: 'foo OR bar' }))
+
+    expect(ids(repos.documents.search('C++'))).toEqual(['cpp'])
+    expect(ids(repos.documents.search('"search'))).toEqual(['quote'])
+    expect(ids(repos.documents.search('foo OR'))).toEqual(['operator'])
+  })
+
+  it('uses LIKE substring matching when trigram search is unavailable', () => {
+    const likeRepos = createRepositories(migrateMainTestDb(db), {
+      getSearchMode: () => 'like'
+    })
+    likeRepos.documents.insert(makeDoc('apple', { title: 'Apple pie' }))
+
+    expect(ids(likeRepos.documents.search('ppl'))).toEqual(['apple'])
+  })
+
   it('search escapes LIKE wildcards so % and _ match literally', () => {
     repos.documents.insert(makeDoc('pct', { title: '50% solution' }))
     repos.documents.insert(makeDoc('und', { title: 'a_b_c' }))

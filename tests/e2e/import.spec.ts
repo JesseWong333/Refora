@@ -13,8 +13,14 @@ interface DocumentItem {
   fileName: string
 }
 
+interface PdfImportResult {
+  added: string[]
+  skipped: string[]
+  errors: Array<{ path: string; message: string }>
+}
+
 interface ElectronApi {
-  import: { addFiles(paths: string[]): Promise<string[]> }
+  import: { addFiles(paths: string[]): Promise<PdfImportResult> }
   documents: { list(filter: { mode: string }): Promise<DocumentItem[]> }
   settings: { set(key: string, value: unknown): Promise<void> }
 }
@@ -53,8 +59,8 @@ test.describe('Import E2E', () => {
   test('imports a single valid PDF and document appears in list', async () => {
     const validPath = path.resolve(fixturesDir, 'valid.pdf')
     const ids = await electronPage.evaluate(async (p: string) => {
-      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<string[]> } } }
-      return w.api.import.addFiles([p])
+      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<PdfImportResult> } } }
+      return (await w.api.import.addFiles([p])).added
     }, validPath)
     expect(ids).toHaveLength(1)
 
@@ -75,7 +81,7 @@ test.describe('Import E2E', () => {
     const events = await electronPage.evaluate(async (paths: string[]) => {
       const w = window as Window & {
         api: {
-          import: { addFiles(ps: string[]): Promise<string[]> }
+          import: { addFiles(ps: string[]): Promise<PdfImportResult> }
           events: {
             onImportProgress(cb: (p: { current: number; total: number; message?: string }) => void): void
           }
@@ -109,8 +115,8 @@ test.describe('Import E2E', () => {
   test('skips duplicate path and does not re-insert', async () => {
     const validPath = path.resolve(fixturesDir, 'valid.pdf')
     const ids = await electronPage.evaluate(async (p: string) => {
-      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<string[]> } } }
-      return w.api.import.addFiles([p])
+      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<PdfImportResult> } } }
+      return (await w.api.import.addFiles([p])).added
     }, validPath)
     expect(ids).toHaveLength(0)
 
@@ -131,8 +137,8 @@ test.describe('Import E2E', () => {
 
     const encryptedPath = path.resolve(fixturesDir, 'encrypted.pdf')
     const ids = await electronPage.evaluate(async (p: string) => {
-      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<string[]> } } }
-      return w.api.import.addFiles([p])
+      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<PdfImportResult> } } }
+      return (await w.api.import.addFiles([p])).added
     }, encryptedPath)
     expect(ids).toHaveLength(0)
 
@@ -151,8 +157,8 @@ test.describe('Import E2E', () => {
 
     const corruptedPath = path.resolve(fixturesDir, 'corrupted.pdf')
     const ids = await electronPage.evaluate(async (p: string) => {
-      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<string[]> } } }
-      return w.api.import.addFiles([p])
+      const w = window as Window & { api: { import: { addFiles(paths: string[]): Promise<PdfImportResult> } } }
+      return (await w.api.import.addFiles([p])).added
     }, corruptedPath)
     expect(ids).toHaveLength(0)
 

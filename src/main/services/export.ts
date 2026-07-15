@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, parse as parsePath, resolve as resolvePath } from 'node:path'
 import type { Repositories } from '../db/repositories'
 import type { SqliteDb } from '../db/types'
 import type { NewDocument } from '../db/repositories/documents'
@@ -11,7 +12,7 @@ import type {
   RemoteValues
 } from '../../shared/ipc-types'
 import { lookupVenue, venueType } from './venue-map'
-import { toLibraryRelative } from './paths'
+import { isInsideLibrary } from './paths'
 
 const BIBTEX_ESCAPE_MAP: Record<string, string> = {
   '\\': '\\textbackslash{}',
@@ -267,15 +268,40 @@ function asNumberDefault(v: unknown, def: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : def
 }
 
-function sanitizeImportedDoc(doc: unknown, libraryFolder: string): NewDocument | null {
+export function sanitizeImportedDoc(doc: unknown, libraryFolder: string): NewDocument | null {
   if (!doc || typeof doc !== 'object') return null
   const d = doc as Record<string, unknown>
 
   if (typeof d.id !== 'string' || d.id.length === 0) return null
   if (typeof d.filePath !== 'string') return null
-  if (typeof d.fileName !== 'string') return null
+  let filePath: string
+  if (isAbsolute(d.filePath)) {
+    filePath = resolvePath(d.filePath)
+  } else {
+    if (!libraryFolder) return null
+    filePath = resolvePath(libraryFolder, d.filePath)
+    if (!isInsideLibrary(filePath, libraryFolder)) return null
+  }
+  if (!filePath.toLowerCase().endsWith('.pdf')) return null
 
-  const filePath = libraryFolder ? toLibraryRelative(d.filePath, libraryFolder) : d.filePath
+  let fileMissing = 1
+  let fileSize = asNumberOrNull(d.fileSize)
+  if (existsSync(filePath)) {
+    try {
+      if (lstatSync(filePath).isSymbolicLink()) return null
+      const fileStat = statSync(filePath)
+      if (!fileStat.isFile()) return null
+      fileMissing = 0
+      fileSize = fileStat.size
+    } catch {
+      return null
+    }
+  }
+
+  const originalFolderPath =
+    typeof d.originalFolderPath === 'string' && isAbsolute(d.originalFolderPath)
+      ? resolvePath(d.originalFolderPath)
+      : dirname(filePath)
 
   const editedFields: EditableField[] = Array.isArray(d.editedFields)
     ? d.editedFields.filter(
@@ -305,9 +331,9 @@ function sanitizeImportedDoc(doc: unknown, libraryFolder: string): NewDocument |
   return {
     id: d.id,
     filePath,
-    originalFolderPath: typeof d.originalFolderPath === 'string' ? d.originalFolderPath : '',
-    fileName: d.fileName,
-    fileSize: asNumberOrNull(d.fileSize),
+    originalFolderPath,
+    fileName: parsePath(filePath).base,
+    fileSize,
     fileHash: asStringOrNull(d.fileHash),
     title: asStringOrNull(d.title),
     authors: asStringOrNull(d.authors),
@@ -331,7 +357,7 @@ function sanitizeImportedDoc(doc: unknown, libraryFolder: string): NewDocument |
     metadataAttempts: asNumberDefault(d.metadataAttempts, 0),
     editedFields,
     remoteValues,
-    fileMissing: asNumberDefault(d.fileMissing, 0)
+    fileMissing
   }
 }
 

@@ -48,6 +48,8 @@ const mockDoc: Document = {
 const mockStoreState = vi.hoisted(() => ({
   focusedDocId: null as string | null,
   documents: [] as Document[],
+  searchResults: [] as Document[],
+  isSearching: false,
   selectedIds: [] as string[],
   categories: [] as Category[],
   updateDocument: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +78,8 @@ vi.mock('../../src/renderer/store/documentStore', () => ({
 function resetStore(): void {
   mockStoreState.focusedDocId = null
   mockStoreState.documents = []
+  mockStoreState.searchResults = []
+  mockStoreState.isSearching = false
   mockStoreState.selectedIds = []
   mockStoreState.categories = []
   mockStoreState.toastMessage = null
@@ -324,6 +328,22 @@ describe('DetailPanel', () => {
       expect(mockUpdateDoc).toHaveBeenCalledTimes(1)
       expect(mockUpdateDoc).toHaveBeenCalledWith('1', { note: 'Saved' })
 
+      vi.useRealTimers()
+    })
+
+    it('autosaves the latest note value after the debounce without blur', async () => {
+      vi.useFakeTimers()
+      mockUpdateDoc.mockResolvedValue({ ...mockDoc, note: 'Latest note' })
+      render(<DetailPanel />)
+
+      const textarea = screen.getByDisplayValue('Good read') as HTMLTextAreaElement
+      fireEvent.change(textarea, { target: { value: 'Latest note' } })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith('1', { note: 'Latest note' })
       vi.useRealTimers()
     })
   })

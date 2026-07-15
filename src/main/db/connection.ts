@@ -6,6 +6,7 @@ import { logger } from '../services/logger'
 type BetterSqlite3Database = Database.Database
 
 let activeSearchMode: 'trigram' | 'like' = 'trigram'
+const searchModes = new WeakMap<BetterSqlite3Database, 'trigram' | 'like'>()
 
 function adapt(db: BetterSqlite3Database): SqliteLike {
   return {
@@ -28,14 +29,20 @@ function adapt(db: BetterSqlite3Database): SqliteLike {
 
 export function openDatabase(dbPath: string): BetterSqlite3Database {
   const db = new Database(dbPath)
-  db.exec('PRAGMA foreign_keys = ON')
-  db.exec('PRAGMA journal_mode = WAL')
-  const result = runMigrations(adapt(db))
-  activeSearchMode = result.searchMode
-  logger.info(
-    `db:opened path=${dbPath} from=v${result.from} to=v${result.to} search=${activeSearchMode}`
-  )
-  return db
+  try {
+    db.exec('PRAGMA foreign_keys = ON')
+    db.exec('PRAGMA journal_mode = WAL')
+    const result = runMigrations(adapt(db))
+    activeSearchMode = result.searchMode
+    searchModes.set(db, result.searchMode)
+    logger.info(
+      `db:opened path=${dbPath} from=v${result.from} to=v${result.to} search=${activeSearchMode}`
+    )
+    return db
+  } catch (error) {
+    if (db.open) db.close()
+    throw error
+  }
 }
 
 export function seedSettings(db: BetterSqlite3Database, language: 'zh' | 'en'): void {
@@ -49,11 +56,12 @@ export function getSetting(db: BetterSqlite3Database, key: string): string | nul
   return row?.value ?? null
 }
 
-export function getSearchMode(): 'trigram' | 'like' {
-  return activeSearchMode
+export function getSearchMode(db?: BetterSqlite3Database): 'trigram' | 'like' {
+  return db ? searchModes.get(db) ?? activeSearchMode : activeSearchMode
 }
 
 export function closeDatabase(db: BetterSqlite3Database): void {
+  searchModes.delete(db)
   if (db.open) {
     db.close()
   }

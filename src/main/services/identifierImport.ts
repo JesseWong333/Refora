@@ -6,6 +6,8 @@ import { pipeline } from 'node:stream/promises'
 import { createHash } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import type { Repositories } from '../db/repositories'
 import type { Document, IdentifierImportResult, IdentifierType, MetadataSource } from '../../shared/ipc-types'
 import { newId } from '../db/repositories/documents'
@@ -60,6 +62,22 @@ function isPrivateIp(ip: string): boolean {
 
 const DNS_TIMEOUT_MS = 3_000
 
+interface PublicUrlResponse {
+  status: number
+  ok: boolean
+  url: string
+  headers: Headers
+  body: ReadableStream<Uint8Array> | null
+}
+
+export type PublicUrlTransport = (
+  url: string,
+  address: string,
+  family: 4 | 6,
+  signal: AbortSignal,
+  headers: Record<string, string>
+) => Promise<PublicUrlResponse>
+
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | null = null
   try {
@@ -74,48 +92,94 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null
   }
 }
 
-export async function isSafeUrl(urlStr: string): Promise<boolean> {
+async function resolvePublicAddress(urlStr: string): Promise<{ address: string; family: 4 | 6 }> {
   let parsed: URL
   try {
     parsed = new URL(urlStr)
   } catch {
-    return false
+    throw new Error('Download URL is invalid')
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Download URL is not HTTP(S)')
+  }
   const hostname = parsed.hostname
     .toLowerCase()
     .replace(/^\[|\]$/g, '')
     .replace(/\.$/, '')
-  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return false
-  if (isPrivateIp(hostname)) return false
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || isPrivateIp(hostname)) {
+    throw new Error('Download URL resolves to a private address')
+  }
 
-  if (isIP(hostname) !== 0) return true
+  const directFamily = isIP(hostname)
+  if (directFamily !== 0) {
+    return { address: hostname, family: directFamily as 4 | 6 }
+  }
 
   const records = await withTimeout(
     lookup(hostname, { all: true, verbatim: true }).catch(() => []),
     DNS_TIMEOUT_MS
   )
-  if (records === null || records.length === 0) return false
-  if (records.some((record) => isPrivateIp(record.address))) return false
+  if (records === null || records.length === 0) {
+    throw new Error('Download URL could not be resolved')
+  }
+  if (records.some((record) => isPrivateIp(record.address))) {
+    throw new Error('Download URL resolves to a private address')
+  }
+  const selected = records[0]
+  return { address: selected.address, family: selected.family as 4 | 6 }
+}
 
-  return true
+export async function isSafeUrl(urlStr: string): Promise<boolean> {
+  try {
+    await resolvePublicAddress(urlStr)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const pinnedRequest: PublicUrlTransport = (url, address, family, signal, headers) => {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const request = parsed.protocol === 'https:' ? httpsRequest : httpRequest
+    const req = request(parsed, {
+      method: 'GET',
+      headers,
+      signal,
+      lookup: (_hostname, _options, callback) => callback(null, address, family)
+    }, (response) => {
+      const responseHeaders = new Headers()
+      for (const [name, value] of Object.entries(response.headers)) {
+        if (Array.isArray(value)) {
+          for (const item of value) responseHeaders.append(name, item)
+        } else if (value !== undefined) {
+          responseHeaders.set(name, String(value))
+        }
+      }
+      const status = response.statusCode ?? 0
+      resolve({
+        status,
+        ok: status >= 200 && status < 300,
+        url,
+        headers: responseHeaders,
+        body: Readable.toWeb(response) as ReadableStream<Uint8Array>
+      })
+    })
+    req.on('error', reject)
+    req.end()
+  })
 }
 
 export async function fetchPublicUrl(
   initialUrl: string,
   signal: AbortSignal,
-  headers: Record<string, string>
-): Promise<Response> {
+  headers: Record<string, string>,
+  transport: PublicUrlTransport = pinnedRequest
+): Promise<PublicUrlResponse> {
   let currentUrl = initialUrl
   for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
-    if (!(await isSafeUrl(currentUrl))) {
-      throw new Error('Download URL is not a public HTTP(S) address')
-    }
-    const response = await net.fetch(currentUrl, {
-      signal,
-      redirect: 'manual',
-      headers
-    })
+    const { address, family } = await resolvePublicAddress(currentUrl)
+    const response = await transport(currentUrl, address, family, signal, headers)
     if (response.status < 300 || response.status >= 400) return response
 
     const location = response.headers.get('location')
@@ -246,8 +310,10 @@ async function resolveDoiPdfUrl(doi: string): Promise<string | null> {
     )
     const contentType = response.headers.get('content-type') ?? ''
     if (contentType.includes('application/pdf')) {
+      await response.body?.cancel()
       return response.url
     }
+    await response.body?.cancel()
     return null
   } catch {
     return null

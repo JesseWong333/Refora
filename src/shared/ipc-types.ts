@@ -146,6 +146,12 @@ export interface ImportProgress {
   message?: string
 }
 
+export interface PdfImportResult {
+  added: string[]
+  skipped: string[]
+  errors: Array<{ path: string; message: string }>
+}
+
 export interface LibrarySwitchResult {
   libraryFolderPath: string
   dbExisted: boolean
@@ -369,9 +375,12 @@ export interface ChatMessage {
 export interface ChatSendRequest {
   workspaceId: string
   threadId?: string
+  runId?: string
   text: string
   providerId: string
   model?: string
+  replaceLastExchange?: boolean
+  replaceRunId?: string
   features?: {
     deepThinking?: boolean
   }
@@ -492,8 +501,8 @@ export interface ReforaApi {
     restoreFile(id: string): Promise<Document>
   }
   import: {
-    addFiles(paths: string[]): Promise<string[]>
-    addFolder(dir: string): Promise<string[]>
+    addFiles(paths: string[]): Promise<PdfImportResult>
+    addFolder(dir: string): Promise<PdfImportResult>
     fromJson(file: string): Promise<number>
     fromZotero(): Promise<BibImportResult>
     fromMendeley(): Promise<BibImportResult>
@@ -565,7 +574,7 @@ export interface ReforaApi {
     docTextGet(docId: string): Promise<string>
     summarize(docId: string): Promise<void>
     summaryGet(docId: string): Promise<AiSummary | null>
-    chatSend(req: ChatSendRequest): Promise<{ threadId: string }>
+    chatSend(req: ChatSendRequest): Promise<{ threadId: string; runId: string }>
     chatHistory(threadId: string): Promise<ChatMessage[]>
     chatThreads(workspaceId: string): Promise<ChatThread[]>
     chatTraces(threadId: string): Promise<AgentTraceStep[]>

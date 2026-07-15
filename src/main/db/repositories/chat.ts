@@ -71,6 +71,23 @@ export function createChatRepository(db: SqliteDb) {
     return rows.map(mapMessage)
   }
 
+  function deleteLastExchange(threadId: string): number {
+    const row = db
+      .prepare(
+        `SELECT rowid
+         FROM chat_messages
+         WHERE threadId = ? AND role = 'user'
+         ORDER BY rowid DESC
+         LIMIT 1`
+      )
+      .get(threadId) as { rowid: number } | undefined
+    if (!row) return 0
+    const result = db
+      .prepare('DELETE FROM chat_messages WHERE threadId = ? AND rowid >= ?')
+      .run(threadId, row.rowid)
+    return result.changes
+  }
+
   function deleteThread(id: string): void {
     const result = db.prepare('DELETE FROM chat_threads WHERE id = ?').run(id)
     if (result.changes === 0) throw new RepoError('not_found', `thread not found: ${id}`)
@@ -85,5 +102,14 @@ export function createChatRepository(db: SqliteDb) {
     return mapThread(row)
   }
 
-  return { createThread, listThreads, getThread, addMessage, listMessages, deleteThread, updateTitle }
+  return {
+    createThread,
+    listThreads,
+    getThread,
+    addMessage,
+    listMessages,
+    deleteLastExchange,
+    deleteThread,
+    updateTitle
+  }
 }

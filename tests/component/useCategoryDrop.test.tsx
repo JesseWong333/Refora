@@ -122,7 +122,11 @@ describe('useCategoryDrop', () => {
 
   it('imports dropped PDF files and assigns them to the category', async () => {
     api.getPathForFile.mockReturnValue('/path/paper.pdf')
-    api.import.addFiles.mockResolvedValue(['new-1', 'new-2'])
+    api.import.addFiles.mockResolvedValue({
+      added: ['new-1', 'new-2'],
+      skipped: [],
+      errors: []
+    })
     api.categories.assign.mockResolvedValue(undefined)
     const { result } = renderHook(() => useCategoryDrop(fetchCategories, fetchDocuments))
     const file = { name: 'paper.pdf' } as File

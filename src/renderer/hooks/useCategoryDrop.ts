@@ -70,8 +70,8 @@ export function useCategoryDrop(fetchCategories: () => void, fetchDocuments: () 
         }))
 
         try {
-          const addedIds = await api.import.addFiles(paths)
-          for (const id of addedIds) {
+          const result = await api.import.addFiles(paths)
+          for (const id of result.added) {
             await api.categories.assign(id, catId)
           }
         } catch (e) {

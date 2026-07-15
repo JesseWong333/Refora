@@ -295,6 +295,7 @@ export function createAiAgentService(
     return w
   }
 
+  let destroyed = false
   const activeRuns = new Map<string, AbortController>()
 
   function buildTools(req: ChatSendRequest, providerModel: string, signal: AbortSignal) {
@@ -736,11 +737,12 @@ export function createAiAgentService(
     return { start, finish, finishByKeys, recordSnapshot, failOpen }
   }
 
-  async function run(req: ChatSendRequest, threadId: string): Promise<void> {
+  async function run(req: ChatSendRequest, threadId: string, requestedRunId?: string): Promise<void> {
+    if (destroyed) return
     const w = getWin()
     if (!w) return
 
-    const runId = randomUUID()
+    const runId = requestedRunId?.trim() || randomUUID()
 
     const existingController = activeRuns.get(threadId)
     if (existingController) {
@@ -1002,6 +1004,7 @@ export function createAiAgentService(
           (streamErr instanceof Error &&
             (streamErr.name === 'AbortError' || /abort/i.test(streamErr.message)))
         if (isAbort) {
+          if (destroyed) return
           finishActiveContent()
           if (activeLlmId) {
             trace.finish(activeLlmId, 'done', null, null)
@@ -1081,7 +1084,7 @@ export function createAiAgentService(
         void (async () => {
           try {
             const title = await generateThreadTitle(modelId, provider, key, req.text)
-            if (title) {
+            if (title && !destroyed) {
               repos.chat.updateTitle(threadId, title)
               const ww2 = getWin()
               if (ww2) emitAiChatTitleUpdated(ww2, { threadId, title })
@@ -1115,9 +1118,11 @@ export function createAiAgentService(
   }
 
   function destroy(): void {
+    destroyed = true
     for (const controller of activeRuns.values()) {
       controller.abort()
     }
+    activeRuns.clear()
   }
 
   function clearWorkspaceCache(workspaceId?: string): void {

@@ -1,7 +1,8 @@
 import { renameSync, existsSync, statSync, copyFileSync, unlinkSync, mkdirSync } from 'node:fs'
-import { parse, join } from 'node:path'
+import { isAbsolute, parse, join, resolve as resolvePath } from 'node:path'
 import type { Repositories } from '../db/repositories'
 import { RepoError } from '../db/repositories/errors'
+import { resolvePdfFilePath } from './pdfPath'
 
 function collisionSafePath(destPath: string): string {
   if (!existsSync(destPath)) return destPath
@@ -15,22 +16,23 @@ function collisionSafePath(destPath: string): string {
   return candidate
 }
 
+function moveFile(filePath: string, destPath: string): void {
+  try {
+    renameSync(filePath, destPath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
+    copyFileSync(filePath, destPath)
+    unlinkSync(filePath)
+  }
+}
+
 export function moveToLibrary(filePath: string, libraryFolder: string): string {
   if (!existsSync(libraryFolder)) {
     mkdirSync(libraryFolder, { recursive: true })
   }
   const fileName = parse(filePath).base
   const destPath = collisionSafePath(join(libraryFolder, fileName))
-  try {
-    renameSync(filePath, destPath)
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EXDEV') {
-      copyFileSync(filePath, destPath)
-      unlinkSync(filePath)
-    } else {
-      throw e
-    }
-  }
+  moveFile(filePath, destPath)
   return destPath
 }
 
@@ -53,16 +55,21 @@ export function restoreToOriginal(
   if (!doc.originalFolderPath) {
     throw new RepoError('invalid_state', 'Document has no original folder path')
   }
+  const sourcePath = resolvePdfFilePath(doc.filePath)
+  if (!isAbsolute(doc.originalFolderPath)) {
+    throw new RepoError('invalid_state', 'Original folder path must be absolute')
+  }
+  const originalFolderPath = resolvePath(doc.originalFolderPath)
   try {
-    if (!statSync(doc.originalFolderPath).isDirectory()) {
+    if (!statSync(originalFolderPath).isDirectory()) {
       throw new RepoError('invalid_state', 'Original folder no longer exists')
     }
   } catch {
     throw new RepoError('invalid_state', 'Original folder no longer exists')
   }
-  const fileName = parse(doc.filePath).base
-  const destPath = collisionSafePath(join(doc.originalFolderPath, fileName))
-  renameSync(doc.filePath, destPath)
+  const fileName = parse(sourcePath).base
+  const destPath = collisionSafePath(join(originalFolderPath, fileName))
+  moveFile(sourcePath, destPath)
   repos.documents.updateFilePath(docId, destPath, parse(destPath).base)
   return destPath
 }

@@ -20,6 +20,10 @@ vi.mock('electron', () => ({
   }
 }))
 
+vi.mock('../../src/main/services/pdfPath', () => ({
+  resolvePdfFilePath: (filePath: string) => filePath
+}))
+
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn()
 }))

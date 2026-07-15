@@ -28,6 +28,7 @@ const { parseReforaDocLink } = ChatPanelModule
 const { useChatStream } = await import('../../src/renderer/hooks/useChatStream')
 const { AgentTracePanel } = await import('../../src/renderer/components/workspace/AgentTrace')
 const ChatMessages = (await import('../../src/renderer/components/workspace/ChatMessages')).default
+const ChatInput = (await import('../../src/renderer/components/workspace/ChatInput')).default
 
 const mockChatHistory = vi.fn()
 const mockChatSend = vi.fn()
@@ -95,7 +96,10 @@ function setupApi(messages: ChatMessage[]): void {
     chatTraceHandler = handler
   }
   mockChatHistory.mockResolvedValue(messages)
-  mockChatSend.mockResolvedValue({ threadId: 'thread-1' })
+  mockChatSend.mockImplementation(async (req: ChatSendRequest) => ({
+    threadId: req.threadId ?? 'thread-1',
+    runId: req.runId ?? 'run-1'
+  }))
   mockChatCancel.mockResolvedValue(undefined)
 }
 
@@ -269,6 +273,35 @@ describe('ChatPanel tool message filtering', () => {
   })
 })
 
+describe('ChatPanel provider restoration', () => {
+  it('falls back to a valid provider model and removes stale recent providers', async () => {
+    setupApi([])
+    const settingsSet = vi.fn().mockResolvedValue(undefined)
+    const w = window as unknown as { api: Record<string, Record<string, unknown>> }
+    w.api.settings.get = async (key: string, defaultValue: unknown) => {
+      if (key === 'activeProviderId') return 'removed-provider'
+      if (key === 'chatSelectedModel') return 'removed-model'
+      if (key === 'chatSelectedVariant') return 'max'
+      if (key === 'chatRecentModels') {
+        return JSON.stringify([{ model: 'stale-recent', providerId: 'removed-provider' }])
+      }
+      return defaultValue
+    }
+    w.api.settings.set = settingsSet
+
+    render(<ChatPanel />)
+
+    const selector = await screen.findByRole('button', {
+      name: 'workspace.chat.selectProvider'
+    })
+    await waitFor(() => expect(selector).toHaveTextContent('gpt-4o'))
+    expect(selector).not.toHaveTextContent('removed-model')
+    fireEvent.click(selector)
+    expect(screen.queryByText('stale-recent')).toBeNull()
+    expect(settingsSet).toHaveBeenCalledWith('activeProviderId', 'p1')
+  })
+})
+
 function renderMessages(overrides: Partial<Parameters<typeof ChatMessages>[0]> = {}) {
   return render(
     <ChatMessages
@@ -277,6 +310,7 @@ function renderMessages(overrides: Partial<Parameters<typeof ChatMessages>[0]> =
       streaming
       streamingText=""
       streamingReasoning=""
+      activeRunId={null}
       elapsedSeconds={4}
       loadingHistory={false}
       providers={[]}
@@ -377,6 +411,79 @@ describe('ChatMessages presentation', () => {
     expect(screen.queryByText('workspace.chat.toolSearchLibraryDone')).not.toBeInTheDocument()
     expect(screen.getByText('Final answer')).toBeInTheDocument()
   })
+
+  it('does not pair a failed run without an answer to the next assistant message', () => {
+    const messages: ChatMessage[] = [
+      { id: 'a1', threadId: 't1', role: 'assistant', content: 'Successful answer', createdAt: 20 }
+    ]
+    const traceSteps: AgentTraceStep[] = [
+      {
+        id: 'failed-run', threadId: 't1', runId: 'run-failed', kind: 'run', name: 'agent_run',
+        input: null, output: 'Provider failed', status: 'error', startedAt: 1, endedAt: 2,
+        seq: 0, inputTokens: null, outputTokens: null, totalTokens: null
+      },
+      {
+        id: 'success-run', threadId: 't1', runId: 'run-success', kind: 'run', name: 'agent_run',
+        input: null, output: null, status: 'done', startedAt: 10, endedAt: 12,
+        seq: 0, inputTokens: null, outputTokens: null, totalTokens: null
+      },
+      {
+        id: 'success-message', threadId: 't1', runId: 'run-success', kind: 'message',
+        name: 'assistant_message', input: null, output: 'Successful answer', status: 'done',
+        startedAt: 11, endedAt: 12, seq: 1, inputTokens: null, outputTokens: null,
+        totalTokens: null
+      }
+    ]
+
+    renderMessages({ messages, traceSteps, streaming: false })
+
+    expect(screen.getByText('Successful answer')).toBeInTheDocument()
+    expect(screen.queryByText('workspace.chat.traceCompletedError')).toBeNull()
+    expect(screen.getByText('workspace.chat.traceLlmDone')).toBeInTheDocument()
+  })
+})
+
+describe('ChatInput attachment loading', () => {
+  it('ignores documents returned for a workspace that is no longer active', async () => {
+    let resolveFirst!: (value: Array<{ kind: string; docId: string }>) => void
+    const w = window as unknown as { api: Record<string, Record<string, unknown>> }
+    w.api.workspaceItems.list = vi.fn((workspaceId: string) => {
+      if (workspaceId === 'ws-1') {
+        return new Promise((resolve) => {
+          resolveFirst = resolve
+        })
+      }
+      return Promise.resolve([{ kind: 'document', docId: 'doc-2' }])
+    })
+    w.api.documents.get = vi.fn(async (docId: string) => ({
+      id: docId,
+      title: docId === 'doc-1' ? 'First workspace paper' : 'Second workspace paper'
+    }))
+    const props = {
+      input: '',
+      onInputChange: vi.fn(),
+      streaming: false,
+      selectedAttachments: [],
+      onSelectedAttachmentsChange: vi.fn(),
+      attachMenuOpen: true,
+      onAttachMenuOpenChange: vi.fn(),
+      providers: [TEST_PROVIDER],
+      canSend: false,
+      onSend: vi.fn(),
+      onCancel: vi.fn(),
+      textareaRef: { current: null },
+      inputAreaRef: { current: null }
+    }
+    const { rerender } = render(<ChatInput {...props} activeWorkspaceId="ws-1" />)
+
+    rerender(<ChatInput {...props} activeWorkspaceId="ws-2" />)
+    expect(await screen.findByText('Second workspace paper')).toBeInTheDocument()
+    resolveFirst([{ kind: 'document', docId: 'doc-1' }])
+    await act(async () => Promise.resolve())
+
+    expect(screen.queryByText('First workspace paper')).toBeNull()
+    expect(screen.getByText('Second workspace paper')).toBeInTheDocument()
+  })
 })
 
 function renderChatStream(activeThreadId: string | null = 'thread-1') {
@@ -403,11 +510,12 @@ describe('useChatStream lifecycle', () => {
     await act(async () => {
       await result.current.sendText('Compare these papers', [], 'thread-1')
     })
+    const runId = (mockChatSend.mock.calls[0][0] as ChatSendRequest).runId!
 
     const reasoningStep: AgentTraceStep = {
       id: 'reasoning-1',
       threadId: 'thread-1',
-      runId: 'run-1',
+      runId,
       kind: 'reasoning',
       name: 'model_reasoning',
       input: null,
@@ -429,11 +537,11 @@ describe('useChatStream lifecycle', () => {
     }
 
     act(() => {
-      chatTraceHandler?.({ threadId: 'thread-1', runId: 'run-1', step: reasoningStep })
-      chatReasoningHandler?.({ threadId: 'thread-1', runId: 'run-1', stepId: 'reasoning-1', token: 'Inspect ' })
-      chatReasoningHandler?.({ threadId: 'thread-1', runId: 'run-1', stepId: 'reasoning-1', token: 'sources' })
-      chatTraceHandler?.({ threadId: 'thread-1', runId: 'run-1', step: messageStep })
-      chatTokenHandler?.({ threadId: 'thread-1', runId: 'run-1', stepId: 'message-1', token: 'Answer' })
+      chatTraceHandler?.({ threadId: 'thread-1', runId, step: reasoningStep })
+      chatReasoningHandler?.({ threadId: 'thread-1', runId, stepId: 'reasoning-1', token: 'Inspect ' })
+      chatReasoningHandler?.({ threadId: 'thread-1', runId, stepId: 'reasoning-1', token: 'sources' })
+      chatTraceHandler?.({ threadId: 'thread-1', runId, step: messageStep })
+      chatTokenHandler?.({ threadId: 'thread-1', runId, stepId: 'message-1', token: 'Answer' })
     })
 
     await waitFor(() => {
@@ -449,8 +557,9 @@ describe('useChatStream lifecycle', () => {
     await act(async () => {
       await result.current.sendText('Compare these papers', ['doc-1'], 'thread-1')
     })
+    const runId = (mockChatSend.mock.calls[0][0] as ChatSendRequest).runId!
     act(() => {
-      chatErrorHandler?.({ threadId: 'thread-1', message: 'Provider unavailable' })
+      chatErrorHandler?.({ threadId: 'thread-1', runId, message: 'Provider unavailable' })
     })
 
     expect(result.current.error).toBe('Provider unavailable')
@@ -462,6 +571,8 @@ describe('useChatStream lifecycle', () => {
     await waitFor(() => expect(mockChatSend).toHaveBeenCalledTimes(2))
     expect(mockChatSend.mock.calls[1][0] as ChatSendRequest).toMatchObject({
       text: 'Compare these papers',
+      replaceLastExchange: true,
+      replaceRunId: runId,
       attachments: [{ type: 'document', docId: 'doc-1' }]
     })
   })
@@ -473,8 +584,9 @@ describe('useChatStream lifecycle', () => {
     await act(async () => {
       await result.current.sendText('Summarize this paper', ['doc-2'], 'thread-1')
     })
+    const runId = (mockChatSend.mock.calls[0][0] as ChatSendRequest).runId!
     act(() => {
-      chatDoneHandler?.({ threadId: 'thread-1', finalText: 'Summary' })
+      chatDoneHandler?.({ threadId: 'thread-1', runId, finalText: 'Summary' })
     })
 
     expect(result.current.canRetry).toBe(false)
@@ -484,15 +596,90 @@ describe('useChatStream lifecycle', () => {
     await waitFor(() => expect(mockChatSend).toHaveBeenCalledTimes(2))
     expect(mockChatSend.mock.calls[1][0] as ChatSendRequest).toMatchObject({
       text: 'Summarize this paper',
+      replaceLastExchange: true,
       attachments: [{ type: 'document', docId: 'doc-2' }]
     })
   })
 
+  it('ignores late events from an older run in the same thread', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+
+    await act(async () => {
+      await result.current.sendText('Current request', [], 'thread-1')
+    })
+    const runId = (mockChatSend.mock.calls[0][0] as ChatSendRequest).runId!
+
+    act(() => {
+      chatTokenHandler?.({ threadId: 'thread-1', runId: 'older-run', token: 'stale' })
+      chatErrorHandler?.({ threadId: 'thread-1', runId: 'older-run', message: 'stale error' })
+      chatTokenHandler?.({ threadId: 'thread-1', runId, token: 'current' })
+    })
+
+    await waitFor(() => expect(result.current.streamingText).toBe('current'))
+    expect(result.current.error).toBeNull()
+    expect(result.current.streaming).toBe(true)
+  })
+
+  it('does not hydrate history over a newly started live run', async () => {
+    setupApi([])
+    const setActiveThreadId = vi.fn()
+    const { result, rerender } = renderHook(
+      ({ threadId }: { threadId: string | null }) => useChatStream({
+        activeWorkspaceId: 'ws-1',
+        activeProviderId: 'p1',
+        activeThreadId: threadId,
+        requestModel: '',
+        deepThinking: false,
+        setActiveThreadId,
+        setChatStreaming: vi.fn(),
+        fetchThreads: vi.fn().mockResolvedValue(undefined)
+      }),
+      { initialProps: { threadId: null as string | null } }
+    )
+
+    await act(async () => {
+      await result.current.sendText('New live question', [], null)
+    })
+    rerender({ threadId: 'thread-1' })
+
+    expect(mockChatHistory).not.toHaveBeenCalled()
+    expect(result.current.messages).toHaveLength(1)
+    expect(result.current.messages[0].content).toBe('New live question')
+    expect(result.current.streaming).toBe(true)
+  })
+
+  it('cancels an active run and releases the global lock when unmounted', async () => {
+    setupApi([])
+    const setChatStreaming = vi.fn()
+    const { result, unmount } = renderHook(() => useChatStream({
+      activeWorkspaceId: 'ws-1',
+      activeProviderId: 'p1',
+      activeThreadId: 'thread-1',
+      requestModel: '',
+      deepThinking: false,
+      setActiveThreadId: vi.fn(),
+      setChatStreaming,
+      fetchThreads: vi.fn().mockResolvedValue(undefined)
+    }))
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+    await act(async () => {
+      await result.current.sendText('Keep running', [], 'thread-1')
+    })
+
+    unmount()
+
+    expect(mockChatCancel).toHaveBeenCalledWith('thread-1')
+    expect(setChatStreaming).toHaveBeenLastCalledWith(false)
+  })
+
   it('cancels a new thread after its id arrives when stop is clicked immediately', async () => {
-    let resolveSend: ((value: { threadId: string }) => void) | undefined
+    let resolveSend: ((value: { threadId: string; runId: string }) => void) | undefined
+    let requestedRunId = ''
     const { result } = renderChatStream(null)
     mockChatSend.mockImplementation(
-      () => new Promise<{ threadId: string }>((resolve) => {
+      (req: ChatSendRequest) => new Promise<{ threadId: string; runId: string }>((resolve) => {
+        requestedRunId = req.runId!
         resolveSend = resolve
       })
     )
@@ -508,11 +695,20 @@ describe('useChatStream lifecycle', () => {
 
     expect(mockChatCancel).not.toHaveBeenCalled()
     await act(async () => {
-      resolveSend?.({ threadId: 'new-thread' })
+      resolveSend?.({ threadId: 'new-thread', runId: requestedRunId })
       await sendPromise
     })
     expect(mockChatCancel).toHaveBeenCalledWith('new-thread')
+    expect(result.current.streaming).toBe(true)
+    act(() => {
+      chatDoneHandler?.({
+        threadId: 'new-thread',
+        runId: requestedRunId,
+        finalText: '[Response cancelled by user]'
+      })
+    })
     expect(result.current.streaming).toBe(false)
+    expect(result.current.messages.at(-1)?.content).toBe('[Response cancelled by user]')
   })
 })
 

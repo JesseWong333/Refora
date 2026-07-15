@@ -296,6 +296,22 @@ describe('WorkspaceStore', () => {
       })
     })
 
+    it('preserves the selected thread during a normal refresh', async () => {
+      const threads = [
+        { id: 'latest', workspaceId: 'ws-1', providerId: 'p1', createdAt: 2, title: null },
+        { id: 'selected', workspaceId: 'ws-1', providerId: 'p1', createdAt: 1, title: null }
+      ]
+      mockChatThreads.mockResolvedValue(threads)
+      useWorkspaceStore.setState({
+        activeWorkspaceId: 'ws-1',
+        activeThreadId: 'selected'
+      })
+
+      await useWorkspaceStore.getState().fetchThreads()
+
+      expect(useWorkspaceStore.getState().activeThreadId).toBe('selected')
+    })
+
     it('clears content from the previous workspace immediately', () => {
       useWorkspaceStore.setState({
         activeWorkspaceId: 'ws-old',
@@ -529,6 +545,10 @@ describe('WorkspaceStore', () => {
         fullscreen: true
       })
 
+      useWorkspaceStore.getState().closePanel()
+      expect(useWorkspaceStore.getState().panelOpen).toBe(true)
+
+      useWorkspaceStore.getState().setChatStreaming(false)
       useWorkspaceStore.getState().closePanel()
       expect(useWorkspaceStore.getState().panelOpen).toBe(false)
     })

@@ -983,6 +983,19 @@ describe('createMetadataService', () => {
     expect(repos.documents.setMetadataStatus).not.toHaveBeenCalled()
   })
 
+  it('does not update the old repository after pending work is destroyed', async () => {
+    const repos = mockRepos([makeDoc()])
+    const svc = createMetadataService(asRepos(repos), mockWin())
+
+    svc.enqueue('doc-1')
+    svc.destroy()
+    await vi.advanceTimersByTimeAsync(121_000)
+
+    expect(repos.documents.incrementMetadataAttempts).not.toHaveBeenCalled()
+    expect(repos.documents.setMetadataStatus).not.toHaveBeenCalled()
+    expect(repos.documents.applyMetadataFields).not.toHaveBeenCalled()
+  })
+
   // ----------------------------------------------------------
   // Test 15: Venue supplement — arXiv source has no venue, Crossref title search fills it
   // ----------------------------------------------------------

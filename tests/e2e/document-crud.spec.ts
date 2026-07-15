@@ -35,7 +35,7 @@ test.describe('Document CRUD', () => {
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
     const ids = await electronPage.evaluate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (absPath: string) => (window as any).api.import.addFiles([absPath]) as Promise<string[]>,
+      async (absPath: string) => ((await (window as any).api.import.addFiles([absPath])) as { added: string[] }).added,
       pdfPath,
     )
     expect(ids.length).toBe(1)
@@ -67,7 +67,7 @@ test.describe('Document CRUD', () => {
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
     const ids = await electronPage.evaluate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (absPath: string) => (window as any).api.import.addFiles([absPath]) as Promise<string[]>,
+      async (absPath: string) => ((await (window as any).api.import.addFiles([absPath])) as { added: string[] }).added,
       pdfPath,
     )
     expect(ids.length).toBe(1)
@@ -107,7 +107,7 @@ test.describe('Document CRUD', () => {
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
     const ids = await electronPage.evaluate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (absPath: string) => (window as any).api.import.addFiles([absPath]) as Promise<string[]>,
+      async (absPath: string) => ((await (window as any).api.import.addFiles([absPath])) as { added: string[] }).added,
       pdfPath,
     )
     expect(ids.length).toBe(1)
@@ -136,7 +136,7 @@ test.describe('Document CRUD', () => {
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
     const ids = await electronPage.evaluate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (absPath: string) => (window as any).api.import.addFiles([absPath]) as Promise<string[]>,
+      async (absPath: string) => ((await (window as any).api.import.addFiles([absPath])) as { added: string[] }).added,
       pdfPath,
     )
     expect(ids.length).toBe(1)
@@ -161,7 +161,7 @@ test.describe('Document CRUD', () => {
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
     const ids = await electronPage.evaluate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (absPath: string) => (window as any).api.import.addFiles([absPath]) as Promise<string[]>,
+      async (absPath: string) => ((await (window as any).api.import.addFiles([absPath])) as { added: string[] }).added,
       pdfPath,
     )
     expect(ids.length).toBe(1)
@@ -184,11 +184,11 @@ test.describe('Document CRUD', () => {
       async (absPath: string) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const a = (window as any).api
-        const id1 = (await a.import.addFiles([absPath]))[0]
+        const id1 = (await a.import.addFiles([absPath])).added[0]
         const pdf2 = absPath.replace('valid.pdf', 'with-doi.pdf')
         const pdf3 = absPath.replace('valid.pdf', 'encrypted.pdf')
-        const id2 = (await a.import.addFiles([pdf2]))[0]
-        const id3 = (await a.import.addFiles([pdf3]))[0]
+        const id2 = (await a.import.addFiles([pdf2])).added[0]
+        const id3 = (await a.import.addFiles([pdf3])).added[0]
         return [id1, id2, id3]
       },
       pdfPath,
@@ -215,7 +215,7 @@ test.describe('Document CRUD', () => {
     const pdfPath = path.resolve(__dirname, '..', 'fixtures', 'valid.pdf')
     const ids = await electronPage.evaluate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (absPath: string) => (window as any).api.import.addFiles([absPath]) as Promise<string[]>,
+      async (absPath: string) => ((await (window as any).api.import.addFiles([absPath])) as { added: string[] }).added,
       pdfPath,
     )
     expect(ids.length).toBe(1)

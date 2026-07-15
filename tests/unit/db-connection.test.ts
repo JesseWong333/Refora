@@ -113,6 +113,7 @@ describe('database connection', () => {
       'MIGRATION SQL'
     ])
     expect(getSearchMode()).toBe('like')
+    expect(getSearchMode(db)).toBe('like')
     expect(mocks.info).toHaveBeenCalledWith(
       'db:opened path=/tmp/refora.db from=v4 to=v16 search=like'
     )
@@ -134,6 +135,17 @@ describe('database connection', () => {
     closeDatabase(db)
     closeDatabase(db)
 
+    expect(fake.close).toHaveBeenCalledOnce()
+    expect(fake.open).toBe(false)
+  })
+
+  it('closes the database when migrations fail', () => {
+    mocks.runMigrations.mockImplementationOnce(() => {
+      throw new Error('migration failed')
+    })
+
+    expect(() => openDatabase('/tmp/broken.db')).toThrow('migration failed')
+    const fake = state.instances.at(-1) as FakeDatabase
     expect(fake.close).toHaveBeenCalledOnce()
     expect(fake.open).toBe(false)
   })

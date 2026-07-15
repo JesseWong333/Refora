@@ -101,6 +101,13 @@ const librarySwitchedCb: Array<null | (() => void)> = [null]
 
 let toastTimeout: ReturnType<typeof setTimeout> | null = null
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
+let documentRequestVersion = 0
+let searchRequestVersion = 0
+
+function findKnownDocument(state: DocumentState, docId: string): Document | undefined {
+  return state.documents.find((doc) => doc.id === docId) ??
+    state.searchResults.find((doc) => doc.id === docId)
+}
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   documents: [],
@@ -120,14 +127,24 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   searchResults: [],
 
   fetchDocuments: async (filter?: ListFilter) => {
+    const requestVersion = ++documentRequestVersion
     const f = filter ?? get().listMode
     const sort = get().listColumnState.sort
     set({ isLoading: true })
     try {
       const docs = await api.documents.list({ ...f, sort })
-      set({ documents: docs })
+      if (requestVersion === documentRequestVersion) {
+        set({ documents: docs })
+      }
+    } catch (error) {
+      if (requestVersion === documentRequestVersion) {
+        get().showToast(errorMessage(error, 'Failed to load documents'))
+      }
+      throw error
     } finally {
-      set({ isLoading: false })
+      if (requestVersion === documentRequestVersion) {
+        set({ isLoading: false })
+      }
     }
   },
 
@@ -185,7 +202,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   selectAll: () => {
-    set((s) => ({ selectedIds: s.documents.map((d) => d.id) }))
+    set((s) => ({
+      selectedIds: (s.isSearching ? s.searchResults : s.documents).map((d) => d.id)
+    }))
   },
 
   clearSelection: () => {
@@ -193,7 +212,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   toggleStar: async (docId: string) => {
-    const doc = get().documents.find((d) => d.id === docId)
+    const doc = findKnownDocument(get(), docId)
     if (!doc) return
     const newValue = !doc.starred
     get().patchDocument(docId, { ...doc, starred: newValue ? 1 : 0 })
@@ -206,7 +225,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   openPdf: async (docId: string) => {
-    const doc = get().documents.find((d) => d.id === docId)
+    const doc = findKnownDocument(get(), docId)
     if (!doc || doc.fileMissing) return
     try {
       const updated = await api.documents.openPdf(docId)
@@ -225,10 +244,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   deleteDoc: async (docId: string) => {
-    const doc = get().documents.find((d) => d.id === docId)
+    const before = get()
+    const doc = findKnownDocument(before, docId)
     if (!doc) return
     set((s) => ({
       documents: s.documents.filter((d) => d.id !== docId),
+      searchResults: s.searchResults.filter((d) => d.id !== docId),
       selectedIds: s.selectedIds.filter((id) => id !== docId),
       focusedDocId: s.focusedDocId === docId ? null : s.focusedDocId
     }))
@@ -237,9 +258,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       get().showToast(i18n.t('common.movedToTrash', { count: 1 }))
       void get().fetchCategories()
     } catch {
-      if (doc) {
-        set((s) => ({ documents: [...s.documents, doc] }))
-      }
+      set((s) => ({
+        documents: before.documents.some((item) => item.id === docId)
+          ? before.documents
+          : s.documents,
+        searchResults: before.searchResults.some((item) => item.id === docId)
+          ? before.searchResults
+          : s.searchResults
+      }))
       get().showToast(i18n.t('common.deleteFailed'))
     }
   },
@@ -256,9 +282,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   bulkDelete: async (ids: string[]) => {
-    const prev = get().documents.filter((d) => ids.includes(d.id))
+    const before = get()
     set((s) => ({
       documents: s.documents.filter((d) => !ids.includes(d.id)),
+      searchResults: s.searchResults.filter((d) => !ids.includes(d.id)),
       selectedIds: [],
       focusedDocId: ids.includes(s.focusedDocId ?? '') ? null : s.focusedDocId
     }))
@@ -267,11 +294,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       get().showToast(i18n.t('common.movedToTrash', { count: ids.length }))
       void get().fetchCategories()
     } catch {
-      set((s) => {
-        const current = new Set(s.documents.map((d) => d.id))
-        const restored = prev.filter((d) => !current.has(d.id))
-        return { documents: [...s.documents, ...restored] }
-      })
+      set({ documents: before.documents, searchResults: before.searchResults })
       get().showToast(i18n.t('common.deleteFailed'))
     }
   },
@@ -406,8 +429,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
     docUpdatedCb[0] = (doc: Document) => {
       set((state) => {
-        const inResults = state.searchResults.some((d) => d.id === doc.id)
-        if (state.isSearching && !inResults) return {}
         return {
           documents: state.documents.map((d) => (d.id === doc.id ? doc : d)),
           searchResults: state.isSearching
@@ -449,6 +470,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     api.events.onMenuImportMendeley(menuImportMendeleyCb[0])
 
     librarySwitchedCb[0] = () => {
+      searchRequestVersion++
       set({
         selectedIds: [],
         focusedDocId: null,
@@ -508,6 +530,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   performSearch: (q: string) => {
     const trimmed = q.trim()
+    const requestVersion = ++searchRequestVersion
     if (searchTimeout) clearTimeout(searchTimeout)
     if (!trimmed) {
       get().clearSearch()
@@ -517,20 +540,32 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     searchTimeout = setTimeout(async () => {
       try {
         const results = await api.documents.search(trimmed)
-        set({ searchResults: results })
+        if (
+          requestVersion === searchRequestVersion &&
+          get().isSearching &&
+          get().searchQuery.trim() === trimmed
+        ) {
+          set({ searchResults: results })
+        }
       } catch {
-        set({ searchResults: [] })
+        if (requestVersion === searchRequestVersion) {
+          set({ searchResults: [] })
+        }
       }
     }, 200)
   },
 
   clearSearch: () => {
+    searchRequestVersion++
     if (searchTimeout) clearTimeout(searchTimeout)
+    searchTimeout = null
     set({ isSearching: false, searchQuery: '', searchResults: [] })
     void get().fetchDocuments()
   },
 
   destroy: () => {
+    documentRequestVersion++
+    searchRequestVersion++
     if (docUpdatedCb[0]) {
       api.events.off('document:updated', docUpdatedCb[0])
       docUpdatedCb[0] = null
@@ -560,6 +595,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       librarySwitchedCb[0] = null
     }
     if (toastTimeout) clearTimeout(toastTimeout)
+    if (searchTimeout) clearTimeout(searchTimeout)
+    searchTimeout = null
     set({ initialized: false })
   }
 }))

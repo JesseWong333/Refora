@@ -120,9 +120,11 @@ export default function ChatPanel() {
         api.settings.get<boolean>('chatDeepThinking', false)
       ])
       setProviders(list)
-      setRecentModels(recent)
+      const providerIds = new Set(list.map((provider) => provider.id))
+      setRecentModels(recent.filter((entry) => providerIds.has(entry.providerId)))
+      const activeIsValid = !!active && providerIds.has(active)
       const nextId =
-        (active && list.some((p) => p.id === active) && active) ||
+        (activeIsValid && active) ||
         (list.length > 0 ? list[0].id : '')
       setActiveProviderId(nextId)
       const p = list.find((x) => x.id === nextId)
@@ -131,8 +133,9 @@ export default function ChatPanel() {
         setSelectedModel(p.baseModel || parsed.baseModel || p.model)
         setSelectedVariant(p.variant || parsed.variant)
       }
-      if (savedModel) setSelectedModel(savedModel)
-      if (savedVariant) setSelectedVariant(savedVariant)
+      if (activeIsValid && savedModel) setSelectedModel(savedModel)
+      if (activeIsValid && savedVariant) setSelectedVariant(savedVariant)
+      if (!activeIsValid && nextId) void api.settings.set('activeProviderId', nextId)
       setDeepThinking(savedDeep)
     } catch (e) {
       chat.setError(errorMessage(e, 'Failed to load providers'))
@@ -168,12 +171,9 @@ export default function ChatPanel() {
   }, [activeProviderId])
 
   useEffect(() => {
-    void fetchThreads()
-  }, [activeWorkspaceId, fetchThreads])
-
-  useEffect(() => {
     setSelectedAttachments([])
-  }, [activeThreadId])
+    setAttachMenuOpen(false)
+  }, [activeWorkspaceId, activeThreadId])
 
   useEffect(() => {
     const onShortcut = (e: KeyboardEvent) => {
@@ -202,6 +202,7 @@ export default function ChatPanel() {
   const applyModel = useCallback(
     async (baseModel: string, variant = '', providerId?: string) => {
       const nextProviderId = providerId ?? activeProviderId
+      if (!providers.some((provider) => provider.id === nextProviderId)) return
       if (providerId && providerId !== activeProviderId) {
         setActiveProviderId(providerId)
         void api.settings.set('activeProviderId', providerId)
@@ -319,6 +320,7 @@ export default function ChatPanel() {
         streaming={chat.streaming}
         streamingText={chat.streamingText}
         streamingReasoning={chat.streamingReasoning}
+        activeRunId={chat.activeRunId}
         elapsedSeconds={chat.elapsedSeconds}
         loadingHistory={chat.loadingHistory}
         providers={providers}

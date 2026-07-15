@@ -37,7 +37,7 @@ interface WorkspaceState {
   setChatStreaming: (streaming: boolean) => void
   deleteThread: (threadId: string) => Promise<void>
   renameThread: (threadId: string, title: string) => Promise<void>
-  fetchThreads: () => Promise<void>
+  fetchThreads: (options?: { selectLatestIfNone?: boolean }) => Promise<void>
   startNewChat: () => void
   openPanel: () => void
   closePanel: () => void
@@ -196,7 +196,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     void get().fetchItems()
     void get().fetchReports()
     void get().fetchNotes()
-    void get().fetchThreads()
+    void get().fetchThreads({ selectLatestIfNone: true })
   },
 
   setActiveThreadId: (id: string | null) => {
@@ -231,7 +231,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  fetchThreads: async () => {
+  fetchThreads: async (options) => {
     const id = get().activeWorkspaceId
     if (!id) {
       set({ threads: [], activeThreadId: null })
@@ -240,11 +240,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       const list = await api.ai.chatThreads(id)
       if (get().activeWorkspaceId !== id) return
-      const latest = list.length > 0 ? list[0] : null
-      set({ threads: list, activeThreadId: latest ? latest.id : null })
+      set((state) => {
+        if (state.activeWorkspaceId !== id) return state
+        const activeStillExists = list.some((thread) => thread.id === state.activeThreadId)
+        const shouldSelectLatest =
+          options?.selectLatestIfNone === true ||
+          (state.activeThreadId !== null && !activeStillExists)
+        return {
+          threads: list,
+          activeThreadId: activeStillExists
+            ? state.activeThreadId
+            : shouldSelectLatest
+              ? list[0]?.id ?? null
+              : null
+        }
+      })
     } catch {
       if (get().activeWorkspaceId !== id) return
-      set({ threads: [], activeThreadId: null })
     }
   },
 
@@ -257,6 +269,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   closePanel: () => {
+    if (get().chatStreaming) return
     set({ panelOpen: false })
   },
 

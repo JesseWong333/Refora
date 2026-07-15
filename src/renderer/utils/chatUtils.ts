@@ -11,6 +11,13 @@ export type ChatSendContext = {
   text: string
   attachments: string[]
   threadId: string | null
+  runId: string | null
+  persisted: boolean
+}
+
+export type ChatReplacementOptions = {
+  replaceLastExchange?: boolean
+  replaceRunId?: string | null
 }
 
 export const MAX_INPUT_LENGTH = 32000
@@ -23,7 +30,7 @@ export interface UseChatStreamParams {
   deepThinking: boolean
   setActiveThreadId: (id: string) => void
   setChatStreaming: (streaming: boolean) => void
-  fetchThreads: () => Promise<void>
+  fetchThreads: (options?: { selectLatestIfNone?: boolean }) => Promise<void>
 }
 
 export interface UseChatStreamReturn {
@@ -34,6 +41,7 @@ export interface UseChatStreamReturn {
   streaming: boolean
   streamingText: string
   streamingReasoning: string
+  activeRunId: string | null
   elapsedSeconds: number
   error: string | null
   setError: Dispatch<SetStateAction<string | null>>
@@ -41,7 +49,12 @@ export interface UseChatStreamReturn {
   canRetry: boolean
   loadingHistory: boolean
   displayMessages: ChatMessage[]
-  sendText: (text: string, attachments: string[], existingThread: string | null) => Promise<void>
+  sendText: (
+    text: string,
+    attachments: string[],
+    existingThread: string | null,
+    replacement?: ChatReplacementOptions
+  ) => Promise<void>
   handleCancel: () => void
   handleRetry: () => void
   handleRegenerate: () => void

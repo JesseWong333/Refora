@@ -898,6 +898,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     try {
       workerResponse = await requestParse(doc.filePath)
     } catch (e) {
+      if (destroyed) return
       logger.warn(`metadata:processJob parse-failed id=${docId}: ${e instanceof Error ? e.message : String(e)}`)
       repos.documents.incrementMetadataAttempts(docId)
       repos.documents.setMetadataStatus(docId, 'failed')
@@ -1190,14 +1191,17 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       clearTimeout(workerIdleTimer)
       workerIdleTimer = null
     }
+    for (const [, req] of pending) {
+      clearTimeout(req.timer)
+      req.reject(new Error('Metadata service destroyed'))
+    }
+    pending.clear()
     if (worker && !workerKilled) {
       worker.kill()
       workerKilled = true
       worker = null
     }
-    pending.clear()
     jobQueue.length = 0
-    activeJobs = 0
   }
 
   return {

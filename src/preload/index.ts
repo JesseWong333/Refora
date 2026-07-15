@@ -28,6 +28,7 @@ import type {
   ListFilter,
   ListModelsRequest,
   ListModelsResult,
+  PdfImportResult,
   Result,
   ReforaApi,
   SearchResult,
@@ -129,8 +130,8 @@ const api: ReforaApi = {
   },
 
   import: {
-    addFiles: (paths: string[]) => invoke<string[]>(IpcChannel.ImportAddFiles, paths),
-    addFolder: (dir: string) => invoke<string[]>(IpcChannel.ImportAddFolder, dir),
+    addFiles: (paths: string[]) => invoke<PdfImportResult>(IpcChannel.ImportAddFiles, paths),
+    addFolder: (dir: string) => invoke<PdfImportResult>(IpcChannel.ImportAddFolder, dir),
     fromJson: (file: string) => invoke<number>(IpcChannel.ImportFromJson, file),
     fromZotero: () => invoke<BibImportResult>(IpcChannel.ImportFromZotero),
     fromMendeley: () => invoke<BibImportResult>(IpcChannel.ImportFromMendeley),
@@ -234,7 +235,7 @@ const api: ReforaApi = {
     summarize: (docId: string) => invoke<void>(IpcChannel.AiSummarize, docId),
     summaryGet: (docId: string) => invoke<AiSummary | null>(IpcChannel.AiSummaryGet, docId),
     chatSend: (req: ChatSendRequest) =>
-      invoke<{ threadId: string }>(IpcChannel.AiChatSend, req),
+      invoke<{ threadId: string; runId: string }>(IpcChannel.AiChatSend, req),
     chatHistory: (threadId: string) => invoke<ChatMessage[]>(IpcChannel.AiChatHistory, threadId),
     chatThreads: (workspaceId: string) =>
       invoke<ChatThread[]>(IpcChannel.AiChatThreads, workspaceId),

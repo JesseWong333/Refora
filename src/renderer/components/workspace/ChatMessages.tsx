@@ -314,6 +314,7 @@ export interface ChatMessagesProps {
   streaming: boolean
   streamingText: string
   streamingReasoning: string
+  activeRunId: string | null
   elapsedSeconds: number
   loadingHistory: boolean
   providers: AiProvider[]
@@ -330,6 +331,7 @@ export default function ChatMessages({
   streaming,
   streamingText,
   streamingReasoning,
+  activeRunId,
   elapsedSeconds,
   loadingHistory,
   providers,
@@ -346,7 +348,9 @@ export default function ChatMessages({
   const showEmpty = displayMessages.length === 0 && !streaming && !streamingText && !streamingReasoning
 
   const runTraceGroups = useMemo(() => {
-    const sorted = [...traceSteps].sort((a, b) => a.seq - b.seq)
+    const sorted = [...traceSteps].sort(
+      (a, b) => a.startedAt - b.startedAt || a.seq - b.seq
+    )
     const order: string[] = []
     const map = new Map<string, AgentTraceStep[]>()
     for (const s of sorted) {
@@ -356,7 +360,14 @@ export default function ChatMessages({
       }
       map.get(s.runId)!.push(s)
     }
-    return { order, map }
+    const completedOrder = order.filter((runId) => {
+      const steps = map.get(runId) ?? []
+      const runStep = steps.find((step) => step.kind === 'run')
+      return runStep
+        ? runStep.status === 'done'
+        : steps.some((step) => step.kind === 'message')
+    })
+    return { completedOrder, map }
   }, [traceSteps])
 
   const assistantRunForIdx = useMemo(() => {
@@ -364,7 +375,7 @@ export default function ChatMessages({
     let assistantCount = 0
     for (let i = 0; i < displayMessages.length; i++) {
       if (displayMessages[i].role === 'assistant') {
-        result[i] = runTraceGroups.order[assistantCount] ?? null
+        result[i] = runTraceGroups.completedOrder[assistantCount] ?? null
         assistantCount++
       }
     }
@@ -372,12 +383,9 @@ export default function ChatMessages({
   }, [displayMessages, runTraceGroups])
 
   const streamingSteps = useMemo(() => {
-    const assigned = new Set<string>()
-    for (const rid of assistantRunForIdx) {
-      if (rid) assigned.add(rid)
-    }
-    return traceSteps.filter((s) => !assigned.has(s.runId))
-  }, [traceSteps, assistantRunForIdx])
+    if (!activeRunId) return []
+    return runTraceGroups.map.get(activeRunId) ?? []
+  }, [activeRunId, runTraceGroups])
 
   const lastAssistantIdx = (() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {

@@ -1,5 +1,5 @@
-import { statSync, existsSync } from 'node:fs'
-import { basename, dirname, resolve as resolvePath, join, parse as parsePath } from 'node:path'
+import { statSync, existsSync, lstatSync, unlinkSync } from 'node:fs'
+import { basename, dirname, resolve as resolvePath, join } from 'node:path'
 import { dialog, utilityProcess, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
 import type { Repositories } from '../db/repositories'
@@ -8,6 +8,7 @@ import { emitImportProgress } from '../ipc/events'
 import { logger } from './logger'
 import { copyToLibrary } from './library'
 import { isInsideLibrary } from './paths'
+import type { PdfImportResult } from '../../shared/ipc-types'
 
 interface WorkerRequest {
   correlationId: string
@@ -30,10 +31,13 @@ interface PendingRequest {
 
 const WORKER_TIMEOUT_MS = 120_000
 
-export interface ImportResult {
-  added: string[]
-  skipped: string[]
-  errors: Array<{ path: string; message: string }>
+export type ImportResult = PdfImportResult
+
+interface QueuedImport {
+  paths: string[]
+  isWatch: boolean
+  resolve: (result: ImportResult) => void
+  reject: (error: unknown) => void
 }
 
 export function createImporter(repos: Repositories, win: BrowserWindow | (() => BrowserWindow | null)) {
@@ -42,6 +46,8 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
   let destroyed = false
   const pending = new Map<string, PendingRequest>()
   const emitter = new EventEmitter()
+  const importQueue: QueuedImport[] = []
+  let importRunning = false
 
   const getWin = (): BrowserWindow | null => {
     const w = typeof win === 'function' ? win() : win
@@ -96,6 +102,7 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
     if (!abs.toLowerCase().endsWith('.pdf')) return null
     if (!existsSync(abs)) return null
     try {
+      if (lstatSync(abs).isSymbolicLink()) return null
       if (!statSync(abs).isFile()) return null
     } catch {
       return null
@@ -118,13 +125,19 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
     return result.response === 0
   }
 
-  async function importFiles(paths: string[], isWatch: boolean): Promise<ImportResult> {
+  function complete(result: ImportResult): ImportResult {
+    if (!destroyed) emitter.emit('import:complete', result)
+    return result
+  }
+
+  async function runImportFiles(paths: string[], isWatch: boolean): Promise<ImportResult> {
     const added: string[] = []
     const skipped: string[] = []
     const errors: Array<{ path: string; message: string }> = []
     const total = paths.length
 
-    if (total === 0) return { added, skipped, errors }
+    if (total === 0) return complete({ added, skipped, errors })
+    if (destroyed) return { added, skipped, errors }
 
     const libraryFolder = repos.settings.get<string>('libraryFolderPath', '')
     if (!libraryFolder) {
@@ -132,146 +145,194 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
         errors.push({ path: raw, message: 'Library folder is not configured. Please set it in Settings first.' })
         logger.warn(`import:skip no-library-folder: ${raw}`)
       }
-      return { added, skipped, errors }
+      return complete({ added, skipped, errors })
     }
+
+    const initialWindow = getWin()
+    if (initialWindow) emitImportProgress(initialWindow, { current: 0, total })
 
     for (let i = 0; i < paths.length; i++) {
       if (destroyed) return { added, skipped, errors }
       const current = i + 1
       const raw = paths[i]
-
-      const w = getWin()
-      if (w) emitImportProgress(w, { current, total })
-
-      const abs = validateFilePath(raw)
-      if (!abs) {
-        skipped.push(raw)
-        logger.warn(`import:skip invalid path: ${raw}`)
-        continue
-      }
-
-      const existing = repos.documents.findByPath(abs)
-      if (existing) {
-        skipped.push(abs)
-        logger.info(`import:skip path-duplicate: ${abs}`)
-        continue
-      }
-
-      let workerResponse: WorkerResponse
       try {
-        workerResponse = await requestFromWorker(abs)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        errors.push({ path: abs, message: msg })
-        logger.error(`import:worker-error ${abs}: ${msg}`)
-        continue
-      }
-
-      if (workerResponse.error) {
-        const fileName = basename(abs)
-        if (workerResponse.error.type === 'encrypted') {
-          errors.push({
-            path: abs,
-            message: `Skipping encrypted PDF: ${fileName} (password-protected).`
-          })
-          logger.info(`import:skip encrypted: ${abs}`)
-        } else if (workerResponse.error.type === 'corrupted') {
-          errors.push({
-            path: abs,
-            message: `Could not read: ${fileName} (file may be corrupted).`
-          })
-          logger.info(`import:skip corrupted: ${abs}`)
-        } else {
-          errors.push({ path: abs, message: workerResponse.error.message })
-          logger.info(`import:skip error: ${abs} — ${workerResponse.error.message}`)
+        const abs = validateFilePath(raw)
+        if (!abs) {
+          skipped.push(raw)
+          logger.warn(`import:skip invalid path: ${raw}`)
+          continue
         }
-        continue
-      }
 
-      const fileHash = workerResponse.fileHash ?? null
+        const existing = repos.documents.findByPath(abs)
+        if (existing) {
+          skipped.push(abs)
+          logger.info(`import:skip path-duplicate: ${abs}`)
+          continue
+        }
 
-      if (fileHash !== null) {
-        const hashDup = repos.documents.findByHash(fileHash)
-        if (hashDup) {
-          if (isWatch) {
-            skipped.push(abs)
-            logger.info(`import:skip hash-duplicate (watch): ${abs}`)
-            continue
+        let workerResponse: WorkerResponse
+        try {
+          workerResponse = await requestFromWorker(abs)
+        } catch (error) {
+          if (destroyed) return { added, skipped, errors }
+          const message = error instanceof Error ? error.message : String(error)
+          errors.push({ path: abs, message })
+          logger.error(`import:worker-error ${abs}: ${message}`)
+          continue
+        }
+
+        if (workerResponse.error) {
+          const fileName = basename(abs)
+          if (workerResponse.error.type === 'encrypted') {
+            errors.push({
+              path: abs,
+              message: `Skipping encrypted PDF: ${fileName} (password-protected).`
+            })
+            logger.info(`import:skip encrypted: ${abs}`)
+          } else if (workerResponse.error.type === 'corrupted') {
+            errors.push({
+              path: abs,
+              message: `Could not read: ${fileName} (file may be corrupted).`
+            })
+            logger.info(`import:skip corrupted: ${abs}`)
           } else {
-            const shouldSkip = await showDuplicateDialog(basename(abs))
-            if (shouldSkip) {
+            errors.push({ path: abs, message: workerResponse.error.message })
+            logger.info(`import:skip error: ${abs} — ${workerResponse.error.message}`)
+          }
+          continue
+        }
+
+        const fileHash = workerResponse.fileHash ?? null
+
+        if (fileHash !== null) {
+          const hashDup = repos.documents.findByHash(fileHash)
+          if (hashDup) {
+            if (isWatch) {
               skipped.push(abs)
-              logger.info(`import:skip hash-duplicate (user-skip): ${abs}`)
+              logger.info(`import:skip hash-duplicate (watch): ${abs}`)
               continue
+            } else {
+              const shouldSkip = await showDuplicateDialog(basename(abs))
+              if (shouldSkip) {
+                skipped.push(abs)
+                logger.info(`import:skip hash-duplicate (user-skip): ${abs}`)
+                continue
+              }
+              logger.info(`import:hash-duplicate user chose import-anyway: ${abs}`)
             }
-            logger.info(`import:hash-duplicate user chose import-anyway: ${abs}`)
           }
         }
-      }
 
-      const fileSize = statSync(abs).size
-      const now = Date.now()
-
-      const doc = repos.documents.insert({
-        id: newId(),
-        filePath: abs,
-        originalFolderPath: dirname(abs),
-        fileName: basename(abs),
-        fileSize,
-        fileHash,
-        title: null,
-        authors: null,
-        year: null,
-        venue: null,
-        volume: null,
-        issue: null,
-        pages: null,
-        abstract: null,
-        keywords: null,
-        url: null,
-        doi: null,
-        note: null,
-        affiliations: null,
-        starred: 0,
-        addedAt: now,
-        lastReadAt: null,
-        updatedAt: now,
-        metadataSource: null,
-        metadataStatus: 'pending',
-        metadataAttempts: 0,
-        editedFields: [],
-        remoteValues: null,
-        fileMissing: 0
-      })
-
-      try {
+        const fileSize = statSync(abs).size
+        let storedPath = abs
+        let copiedPath: string | null = null
         if (!isInsideLibrary(abs, libraryFolder)) {
-          const newPath = copyToLibrary(abs, libraryFolder)
-          repos.documents.updateFilePath(doc.id, newPath, parsePath(newPath).base)
+          copiedPath = copyToLibrary(abs, libraryFolder)
+          storedPath = copiedPath
         }
-      } catch (copyErr) {
-        logger.warn(`import:copy-to-library failed ${abs}: ${copyErr instanceof Error ? copyErr.message : String(copyErr)}`)
-      }
 
-      added.push(doc.id)
-      logger.info(`import:added ${doc.id} — ${abs}`)
+        try {
+          const now = Date.now()
+          const doc = repos.documents.insert({
+            id: newId(),
+            filePath: storedPath,
+            originalFolderPath: dirname(abs),
+            fileName: basename(storedPath),
+            fileSize,
+            fileHash,
+            title: null,
+            authors: null,
+            year: null,
+            venue: null,
+            volume: null,
+            issue: null,
+            pages: null,
+            abstract: null,
+            keywords: null,
+            url: null,
+            doi: null,
+            note: null,
+            affiliations: null,
+            starred: 0,
+            addedAt: now,
+            lastReadAt: null,
+            updatedAt: now,
+            metadataSource: null,
+            metadataStatus: 'pending',
+            metadataAttempts: 0,
+            editedFields: [],
+            remoteValues: null,
+            fileMissing: 0
+          })
+          added.push(doc.id)
+          logger.info(`import:added ${doc.id} — ${storedPath}`)
+        } catch (error) {
+          if (copiedPath) {
+            try {
+              unlinkSync(copiedPath)
+            } catch {
+              void 0
+            }
+          }
+          throw error
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        errors.push({ path: raw, message })
+        logger.warn(`import:failed ${raw}: ${message}`)
+      } finally {
+        const currentWindow = getWin()
+        if (currentWindow && !destroyed) emitImportProgress(currentWindow, { current, total })
+      }
     }
 
-    const w = getWin()
-    if (w) emitImportProgress(w, { current: total, total })
+    return complete({ added, skipped, errors })
+  }
 
-    emitter.emit('import:complete', { added, skipped, errors })
-    return { added, skipped, errors }
+  function advanceImportQueue(): void {
+    const next = importQueue.shift()
+    if (!next) {
+      importRunning = false
+      return
+    }
+    startImport(next.paths, next.isWatch).then(next.resolve, next.reject)
+  }
+
+  function startImport(paths: string[], isWatch: boolean): Promise<ImportResult> {
+    importRunning = true
+    return runImportFiles(paths, isWatch).then(
+      (result) => {
+        advanceImportQueue()
+        return result
+      },
+      (error) => {
+        advanceImportQueue()
+        throw error
+      }
+    )
+  }
+
+  function importFiles(paths: string[], isWatch: boolean): Promise<ImportResult> {
+    if (!importRunning) return startImport(paths, isWatch)
+    return new Promise((resolve, reject) => {
+      importQueue.push({ paths, isWatch, resolve, reject })
+    })
   }
 
   function destroy(): void {
     destroyed = true
+    for (const [, req] of pending) {
+      clearTimeout(req.timer)
+      req.reject(new Error('Importer has been destroyed'))
+    }
+    pending.clear()
+    const emptyResult: ImportResult = { added: [], skipped: [], errors: [] }
+    for (const queued of importQueue.splice(0)) queued.resolve(emptyResult)
     if (worker && !workerKilled) {
       worker.kill()
       workerKilled = true
       worker = null
     }
-    pending.clear()
     emitter.removeAllListeners()
   }
 

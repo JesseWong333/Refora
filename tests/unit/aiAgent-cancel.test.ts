@@ -288,7 +288,8 @@ describe('AiAgentService cancellation', () => {
     await runPromise
 
     expect(signalWasAborted).toBe(true)
-    expect(mocks.emitAiChatDone).toHaveBeenCalled()
+    expect(mocks.emitAiChatDone).not.toHaveBeenCalled()
+    expect(mocks.emitAiChatError).not.toHaveBeenCalled()
   })
 
   it('activeRuns is cleaned up after run completes normally', async () => {
