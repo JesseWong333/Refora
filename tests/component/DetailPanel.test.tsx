@@ -150,6 +150,38 @@ describe('DetailPanel', () => {
       render(<DetailPanel />)
       expect(screen.getByText('ML')).toBeInTheDocument()
     })
+
+    it('renders semicolon-separated authors as individual chips', () => {
+      mockStoreState.documents = [{
+        ...mockDoc,
+        authors: 'Pu, Yewen; Narasimhan, Karthik; Solar-Lezama, Armando'
+      }]
+
+      render(<DetailPanel />)
+
+      expect(screen.getByText('Pu, Yewen')).toBeInTheDocument()
+      expect(screen.getByText('Narasimhan, Karthik')).toBeInTheDocument()
+      expect(screen.getByText('Solar-Lezama, Armando')).toBeInTheDocument()
+    })
+
+    it('places the close action in the document header', () => {
+      const onClose = vi.fn()
+      render(<DetailPanel onClose={onClose} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'common.close' }))
+
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(screen.getAllByText('Test Paper')).toHaveLength(1)
+    })
+
+    it('does not clamp long abstracts', () => {
+      const longAbstract = 'Long abstract '.repeat(80).trim()
+      mockStoreState.documents = [{ ...mockDoc, abstract: longAbstract }]
+
+      render(<DetailPanel />)
+
+      expect(screen.getByRole('button', { name: longAbstract })).not.toHaveClass('line-clamp-[7]')
+    })
   })
 
   describe('inline edit — blur saves', () => {

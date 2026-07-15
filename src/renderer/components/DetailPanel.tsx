@@ -20,42 +20,16 @@ import type {
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 
-const FIELD_GROUPS: {
-  labelKey: string
-  fields: { field: EditableField; labelKey: string }[]
-}[] = [
-  {
-    labelKey: 'detail.sectionBasic',
-    fields: [
-      { field: 'title', labelKey: 'detail.title' },
-      { field: 'authors', labelKey: 'detail.authors' },
-      { field: 'year', labelKey: 'detail.year' }
-    ]
-  },
-  {
-    labelKey: 'detail.sectionPublication',
-    fields: [
-      { field: 'venue', labelKey: 'detail.venue' },
-      { field: 'volume', labelKey: 'detail.volume' },
-      { field: 'issue', labelKey: 'detail.issue' },
-      { field: 'pages', labelKey: 'detail.pages' }
-    ]
-  },
-  {
-    labelKey: 'detail.sectionContent',
-    fields: [
-      { field: 'abstract', labelKey: 'detail.abstract' },
-      { field: 'keywords', labelKey: 'detail.keywords' }
-    ]
-  },
-  {
-    labelKey: 'detail.sectionIdentifiers',
-    fields: [
-      { field: 'url', labelKey: 'detail.url' },
-      { field: 'doi', labelKey: 'DOI' }
-    ]
-  }
-]
+type InlineFieldVariant = 'default' | 'title' | 'year' | 'authors' | 'metadata' | 'abstract'
+
+const DISPLAY_CLASSES: Record<InlineFieldVariant, string> = {
+  default: 'rounded-lg bg-background px-3 py-1.5 text-sm leading-5',
+  title: 'rounded-md px-0 py-0 text-lg font-semibold leading-6 tracking-tight',
+  year: 'rounded-md px-0 py-0 text-sm leading-5 text-muted',
+  authors: 'rounded-lg px-0 py-0 text-sm leading-5',
+  metadata: 'rounded-lg px-0 py-0 text-sm leading-5',
+  abstract: 'rounded-lg px-0 py-0 text-justify text-sm leading-[22px] text-foreground'
+}
 
 function InlineField({
   field,
@@ -64,24 +38,23 @@ function InlineField({
   remoteValue,
   docId,
   onSaved,
-  expandable = false
+  variant = 'default',
+  className
 }: {
   field: EditableField
-  label: string
+  label?: string
   value: string
   remoteValue?: RemoteValue
   docId: string
   onSaved: (doc: Document) => void
-  expandable?: boolean
+  variant?: InlineFieldVariant
+  className?: string
 }) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(value)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [expanded, setExpanded] = useState(false)
-  const [overflowing, setOverflowing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const displayRef = useRef<HTMLDivElement>(null)
   const statusRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
@@ -93,11 +66,6 @@ function InlineField({
       textareaRef.current.focus()
     }
   }, [editing])
-
-  useEffect(() => {
-    if (!expandable || editing || !displayRef.current) return
-    setOverflowing(displayRef.current.scrollHeight > 160)
-  }, [value, expandable, editing])
 
   const save = useCallback(async () => {
     const trimmed = text.trim()
@@ -141,22 +109,27 @@ function InlineField({
   }, [field, remoteValue, docId, onSaved, value])
 
   const hasRemoteDiff = remoteValue && remoteValue.value !== '' && remoteValue.value !== (value ?? '')
+  const authors = variant === 'authors'
+    ? value.split(';').map((author) => author.trim()).filter(Boolean)
+    : []
 
   return (
-    <div className="flex flex-col gap-1">
-      <span className="flex items-center gap-1 text-label font-semibold uppercase tracking-wide text-muted">
-        {label}
-        {status === 'saving' && (
-          <span className="text-caption font-normal normal-case text-muted">
-            {t('common.saving')}
-          </span>
-        )}
-        {status === 'saved' && (
-          <span className="text-caption font-normal normal-case text-success">
-            {t('common.saved')}
-          </span>
-        )}
-      </span>
+    <div className={`flex min-w-0 flex-col gap-1 ${className ?? ''}`}>
+      {label ? (
+        <span className="flex items-center gap-1 text-label font-semibold uppercase tracking-wide text-muted">
+          {label}
+          {status === 'saving' && (
+            <span className="text-caption font-normal normal-case text-muted">
+              {t('common.saving')}
+            </span>
+          )}
+          {status === 'saved' && (
+            <span className="text-caption font-normal normal-case text-success">
+              {t('common.saved')}
+            </span>
+          )}
+        </span>
+      ) : null}
       <div className="flex items-start gap-1">
         {editing ? (
           <Textarea
@@ -185,8 +158,7 @@ function InlineField({
           />
         ) : (
           <div
-            ref={expandable ? displayRef : undefined}
-            className={`w-full rounded-lg border border-transparent bg-background px-3 py-1.5 text-sm text-foreground transition-colors duration-150 hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent cursor-text${expandable && !expanded ? ' max-h-40 overflow-hidden' : ''}`}
+            className={`w-full cursor-text border border-transparent text-foreground transition-colors duration-150 hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent ${DISPLAY_CLASSES[variant]}`}
             onClick={() => setEditing(true)}
             role="button"
             tabIndex={0}
@@ -194,7 +166,18 @@ function InlineField({
               if (e.key === 'Enter' || e.key === ' ') setEditing(true)
             }}
           >
-            {value || '\u2014'}
+            {variant === 'authors' && authors.length > 0 ? (
+              <span className="flex flex-wrap gap-2">
+                {authors.map((author, index) => (
+                  <span
+                    key={`${author}-${index}`}
+                    className="rounded-lg border border-border/60 bg-panel px-2.5 py-1 text-[13px] text-foreground"
+                  >
+                    {author}
+                  </span>
+                ))}
+              </span>
+            ) : value || '\u2014'}
           </div>
         )}
         {hasRemoteDiff && !editing && (
@@ -210,14 +193,11 @@ function InlineField({
           </Button>
         )}
       </div>
-      {expandable && !editing && overflowing && (
-        <button
-          className="self-start text-caption text-accent transition-colors duration-150 hover:text-accent-hover"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          {expanded ? t('detail.showLess') : t('detail.showMore')}
-        </button>
-      )}
+      {!label && status !== 'idle' ? (
+        <span className={`text-caption ${status === 'saved' ? 'text-success' : 'text-muted'}`}>
+          {status === 'saved' ? t('common.saved') : t('common.saving')}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -461,11 +441,12 @@ function SingleDetail({ doc }: { doc: Document }) {
     !doc.filePath.startsWith(doc.originalFolderPath)
 
   return (
-    <div className="flex flex-col gap-4 px-5 py-4">
-      <div className="flex items-center justify-between">
+    <div className="-mt-4 flex flex-col">
+      <div className="border-b border-border/60 px-5 pb-4 pt-4">
         <Button
           variant="link"
           size="sm"
+          className="text-sm font-medium text-foreground hover:text-accent hover:no-underline"
           icon={<ArrowClockwise className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />}
           onClick={handleRefresh}
           disabled={refreshing}
@@ -487,107 +468,174 @@ function SingleDetail({ doc }: { doc: Document }) {
             </span>
           )}
         </Button>
+
+        <div className="mt-3 px-3">
+          <InlineField
+            field="title"
+            value={doc.title ?? ''}
+            remoteValue={remoteValues.title}
+            docId={doc.id}
+            onSaved={onSaved}
+            variant="title"
+          />
+        </div>
+
+        <InlineField
+          field="year"
+          value={doc.year ?? ''}
+          remoteValue={remoteValues.year}
+          docId={doc.id}
+          onSaved={onSaved}
+          variant="year"
+          className="mt-1 px-3"
+        />
       </div>
 
-      {FIELD_GROUPS.map((group) => (
-        <div key={group.labelKey} className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-caption font-semibold uppercase tracking-wider text-muted">
-              {t(group.labelKey as never)}
-            </span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-          {group.fields.map(({ field, labelKey }) => (
-            <InlineField
-              key={field}
-              field={field}
-              label={labelKey === 'DOI' ? 'DOI' : t(`detail.${field}` as never)}
-              value={(doc[field] as string) ?? ''}
-              remoteValue={remoteValues[field]}
-              docId={doc.id}
-              onSaved={onSaved}
-              expandable={field === 'abstract'}
-            />
+      <div className="flex flex-col px-8 py-5">
+        <div className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-4">
+          <span className="pt-1 text-[13px] text-muted">{t('detail.authors')}</span>
+          <InlineField
+            field="authors"
+            value={doc.authors ?? ''}
+            remoteValue={remoteValues.authors}
+            docId={doc.id}
+            onSaved={onSaved}
+            variant="authors"
+          />
+        </div>
+
+        <div className="mt-5 grid grid-cols-[84px_minmax(0,1fr)] gap-x-4 gap-y-2">
+          {(['venue', 'volume', 'issue', 'pages'] as const).map((field) => (
+            <div key={field} className="contents">
+              <span className="text-[13px] leading-5 text-muted">
+                {t(`detail.${field}` as never)}
+              </span>
+              <InlineField
+                field={field}
+                value={doc[field] ?? ''}
+                remoteValue={remoteValues[field]}
+                docId={doc.id}
+                onSaved={onSaved}
+                variant="metadata"
+              />
+            </div>
           ))}
         </div>
-      ))}
 
-      <div className="flex flex-col gap-1">
-        <span className="text-label font-semibold uppercase tracking-wide text-muted">
-          {t('detail.addedAt')}
-        </span>
-        <div className="text-sm text-muted">{formatDate(doc.addedAt)}</div>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between">
-          <span className="text-label font-semibold uppercase tracking-wide text-muted">
-            {t('detail.filePath')}
+        <div className="mt-5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+            {t('detail.abstract')}
           </span>
-          {!doc.fileMissing && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="link"
-                size="sm"
-                icon={<FileText className="h-3.5 w-3.5" />}
-                onClick={handleOpenPdf}
-              >
-                {t('common.openFile')}
-              </Button>
-              <Button
-                variant="link"
-                size="sm"
-                icon={<FolderOpen className="h-3.5 w-3.5" />}
-                onClick={() => openInFinder(doc.id)}
-              >
-                {t('common.showInFolder')}
-              </Button>
-            </div>
-          )}
+          <InlineField
+            field="abstract"
+            value={doc.abstract ?? ''}
+            remoteValue={remoteValues.abstract}
+            docId={doc.id}
+            onSaved={onSaved}
+            variant="abstract"
+            className="mt-2"
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm text-muted">
-            {formatFilePath(doc.filePath)}
+
+        <div className="mt-6 grid grid-cols-[84px_minmax(0,1fr)] gap-x-4 gap-y-2 border-t border-border pt-5">
+          {(['keywords', 'url', 'doi'] as const).map((field) => (
+            <div key={field} className="contents">
+              <span className="text-[13px] leading-5 text-muted">
+                {field === 'doi' ? 'DOI' : t(`detail.${field}` as never)}
+              </span>
+              <InlineField
+                field={field}
+                value={doc[field] ?? ''}
+                remoteValue={remoteValues[field]}
+                docId={doc.id}
+                onSaved={onSaved}
+                variant="metadata"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex flex-col gap-1 border-t border-border pt-5">
+          <span className="text-label font-semibold uppercase tracking-wide text-muted">
+            {t('detail.addedAt')}
           </span>
-          {doc.fileMissing && (
+          <div className="text-sm text-muted">{formatDate(doc.addedAt)}</div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <span className="text-label font-semibold uppercase tracking-wide text-muted">
+              {t('detail.filePath')}
+            </span>
+            {!doc.fileMissing && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="link"
+                  size="sm"
+                  icon={<FileText className="h-3.5 w-3.5" />}
+                  onClick={handleOpenPdf}
+                >
+                  {t('common.openFile')}
+                </Button>
+                <Button
+                  variant="link"
+                  size="sm"
+                  icon={<FolderOpen className="h-3.5 w-3.5" />}
+                  onClick={() => openInFinder(doc.id)}
+                >
+                  {t('common.showInFolder')}
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm text-muted">
+              {formatFilePath(doc.filePath)}
+            </span>
+            {doc.fileMissing && (
+              <Button
+                variant="link"
+                size="sm"
+                className="flex-shrink-0 text-warning"
+                onClick={handleRelocate}
+              >
+                {t('detail.relocate')}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {isMoved && (
+          <div className="mt-3 flex flex-col gap-1">
             <Button
               variant="link"
               size="sm"
-              className="flex-shrink-0 text-warning"
-              onClick={handleRelocate}
+              className="self-start"
+              onClick={handleRestore}
             >
-              {t('detail.relocate')}
+              {t('detail.restoreOriginal')}
             </Button>
-          )}
+          </div>
+        )}
+
+        <div className="mt-5">
+          <NoteField value={doc.note ?? ''} docId={doc.id} onSaved={onSaved} />
         </div>
+
+        <div className="mt-4">
+          <CategoryChips docId={doc.id} docCategories={doc.categories} />
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-5 self-start text-error"
+          icon={<Trash className="h-3.5 w-3.5" />}
+          onClick={() => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm'))}
+        >
+          {t('common.delete')}
+        </Button>
       </div>
-
-      {isMoved && (
-        <div className="flex flex-col gap-1">
-          <Button
-            variant="link"
-            size="sm"
-            className="self-start"
-            onClick={handleRestore}
-          >
-            {t('detail.restoreOriginal')}
-          </Button>
-        </div>
-      )}
-
-      <NoteField value={doc.note ?? ''} docId={doc.id} onSaved={onSaved} />
-
-      <CategoryChips docId={doc.id} docCategories={doc.categories} />
-
-      <Button
-        variant="ghost"
-        size="sm"
-        className="self-start text-error"
-        icon={<Trash className="h-3.5 w-3.5" />}
-        onClick={() => requestDeleteConfirm([doc.id], t('dialog.deleteConfirm'))}
-      >
-        {t('common.delete')}
-      </Button>
     </div>
   )
 }
@@ -705,8 +753,10 @@ export default function DetailPanel({ onClose }: { onClose?: () => void }) {
   }
 
   return (
-    <div className="relative flex shrink-0 flex-col bg-panel">
-      <PanelHeader title={focusedDoc.title ?? undefined} onClose={onClose} />
+    <div className="relative flex min-h-full shrink-0 flex-col bg-background">
+      <div className="relative z-10">
+        <PanelHeader onClose={onClose} />
+      </div>
       <SingleDetail doc={focusedDoc} />
     </div>
   )
