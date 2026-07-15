@@ -31,6 +31,7 @@ const mockDoc: Document = {
   url: 'https://example.com',
   doi: '10.1234/test',
   note: 'Good read',
+  affiliations: 'MIT; Stanford University',
   starred: 1,
   addedAt: 1700000000000,
   lastReadAt: null,

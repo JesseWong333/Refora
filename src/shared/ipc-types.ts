@@ -45,6 +45,7 @@ export type EditableField =
   | 'url'
   | 'doi'
   | 'note'
+  | 'affiliations'
 
 export type MetadataStatus = 'pending' | 'done' | 'failed'
 export type MetadataSource = 'pdf' | 'crossref' | 'arxiv' | 'dblp' | 'manual'
@@ -83,6 +84,7 @@ export interface Document {
   url: string | null
   doi: string | null
   note: string | null
+  affiliations: string | null
   starred: number
   addedAt: number
   lastReadAt: number | null

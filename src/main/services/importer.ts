@@ -231,6 +231,7 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
         url: null,
         doi: null,
         note: null,
+        affiliations: null,
         starred: 0,
         addedAt: now,
         lastReadAt: null,

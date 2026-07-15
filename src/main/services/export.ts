@@ -241,7 +241,8 @@ const EDITABLE_FIELD_VALUES: readonly EditableField[] = [
   'keywords',
   'url',
   'doi',
-  'note'
+  'note',
+  'affiliations'
 ]
 
 const METADATA_STATUS_VALUES: readonly MetadataStatus[] = ['pending', 'done', 'failed']
@@ -320,6 +321,7 @@ function sanitizeImportedDoc(doc: unknown, libraryFolder: string): NewDocument |
     url: asStringOrNull(d.url),
     doi: asStringOrNull(d.doi),
     note: asStringOrNull(d.note),
+    affiliations: asStringOrNull(d.affiliations),
     starred: asNumberDefault(d.starred, 0),
     addedAt: asNumberDefault(d.addedAt, 0),
     lastReadAt: asNumberOrNull(d.lastReadAt),

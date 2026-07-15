@@ -34,7 +34,8 @@ const EDITABLE_FIELDS: readonly EditableField[] = [
   'keywords',
   'url',
   'doi',
-  'note'
+  'note',
+  'affiliations'
 ]
 
 const COLUMN_FOR: Record<EditableField, string> = {
@@ -49,7 +50,8 @@ const COLUMN_FOR: Record<EditableField, string> = {
   keywords: 'keywords',
   url: 'url',
   doi: 'doi',
-  note: 'note'
+  note: 'note',
+  affiliations: 'affiliations'
 }
 
 const FTS_LIKE_COLUMNS = [
@@ -83,6 +85,7 @@ const DOCUMENT_COLUMNS = [
   'url',
   'doi',
   'note',
+  'affiliations',
   'starred',
   'addedAt',
   'lastReadAt',
@@ -164,6 +167,7 @@ function mapDocument(row: Record<string, unknown>, libraryFolder: string): Docum
     url: (row.url as string | null) ?? null,
     doi: (row.doi as string | null) ?? null,
     note: (row.note as string | null) ?? null,
+    affiliations: (row.affiliations as string | null) ?? null,
     starred: safeInt(row.starred) ?? 0,
     addedAt: safeInt(row.addedAt) ?? 0,
     lastReadAt: safeInt(row.lastReadAt),
@@ -260,6 +264,7 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
       doc.url,
       doc.doi,
       doc.note,
+      doc.affiliations,
       doc.starred,
       doc.addedAt,
       doc.lastReadAt,

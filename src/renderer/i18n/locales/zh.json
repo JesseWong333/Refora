@@ -66,6 +66,7 @@
     "addedAt": "添加时间",
     "filePath": "PDF位置",
     "note": "笔记",
+    "affiliations": "机构",
     "sectionBasic": "基本信息",
     "sectionPublication": "出版信息",
     "sectionContent": "内容",

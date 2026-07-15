@@ -86,6 +86,111 @@ export function extractArxivFromText(text: string): string | null {
   return match ? match[1] : null
 }
 
+const AFFILIATION_SYMBOL_PATTERN = /^[†‡§¶∗○●▲△▼▽☆★◇◆■□♣♦♥♠∘]/u
+const AFFILIATION_DEPT_KEYWORDS = /\b(department|dept|school of|institute|laboratory|lab|college|university|center|centre|centre for|faculty of|academy|hospital|corporation|inc|company|gmbh|division of|research group)\b/i
+const AFFILIATION_ORG_KEYWORDS = /\b(research institutes|technologies|sciences|science|engineering|physics|electronics|automotive|energy)\b/i
+const SUPERSCRIPT_MARKER = /^(?:[†‡§¶∗○●▲△▼▽☆★◇◆■□♣♦♥♠∘]|[a-z](?:,[a-z])*|\d+(?:,\d+)*|\*|•)\.?\s*$/
+
+function isLikelyAffiliation(line: string): boolean {
+  if (line.length < 5 || line.length > 300) return false
+  if (/@/.test(line)) return false
+  if (AFFILIATION_DEPT_KEYWORDS.test(line)) return true
+  if (AFFILIATION_ORG_KEYWORDS.test(line) && /\b(University|Institute|College|Laboratory|Research|Corp|Inc|Ltd|GmbH|Company|Foundation)\b/i.test(line)) return true
+  if (/\b[A-Z][a-zA-Z]+\s+Research\b/.test(line) && line.length < 80) return true
+  if (/^[A-Z][a-zA-Z\s,&.'-]+(University|Institute|College|Laboratory|Corporation|Inc\.?|Ltd\.?|GmbH)\b/.test(line)) return true
+  return false
+}
+
+export function extractAffiliationsFromText(text: string): string | null {
+  const hasAbstract = /\babstract\b/i.test(text.slice(0, 3000))
+  if (!hasAbstract) return null
+
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+  const head = lines.slice(0, 50)
+  const affiliations: string[] = []
+  const seen = new Set<string>()
+
+  function tryAdd(value: string): void {
+    const trimmed = value.trim()
+    if (trimmed.length < 5) return
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    affiliations.push(trimmed)
+  }
+
+  let inAffiliationBlock = false
+  let blockEnded = false
+  let expectAffiliationAfterMarker = false
+
+  for (let i = 0; i < head.length; i++) {
+    const line = head[i]
+
+    if (blockEnded) break
+
+    if (/^(abstract|keywords|introduction)\b/i.test(line)) {
+      break
+    }
+
+    if (/^affiliations?\b/i.test(line) || /^\*?\s*author affiliations?\b/i.test(line)) {
+      const rest = line.replace(/^.*?affiliations?\s*:?\s*/i, '').trim()
+      if (rest.length > 0) {
+        for (const part of rest.split(/[;|]/).map((s) => s.trim()).filter(Boolean)) {
+          if (isLikelyAffiliation(part)) tryAdd(part)
+        }
+        inAffiliationBlock = true
+      }
+      continue
+    }
+
+    if (inAffiliationBlock) {
+      if (line.length < 5) {
+        blockEnded = true
+        continue
+      }
+      if (isLikelyAffiliation(line)) {
+        tryAdd(line)
+        continue
+      } else {
+        blockEnded = true
+        continue
+      }
+    }
+
+    if (SUPERSCRIPT_MARKER.test(line)) {
+      if (i + 1 < head.length) {
+        const next = head[i + 1]
+        if (isLikelyAffiliation(next)) {
+          tryAdd(next)
+          expectAffiliationAfterMarker = true
+          i++
+          continue
+        }
+      }
+    }
+
+    if (expectAffiliationAfterMarker && isLikelyAffiliation(line)) {
+      tryAdd(line)
+      continue
+    }
+
+    if (AFFILIATION_SYMBOL_PATTERN.test(line)) {
+      const cleaned = line.replace(AFFILIATION_SYMBOL_PATTERN, '').replace(/^[a-z\d]+,?\s*/, '').replace(/^\d+\.?\s*/, '').trim()
+      if (cleaned.length > 5 && isLikelyAffiliation(cleaned)) {
+        tryAdd(cleaned)
+        continue
+      }
+    }
+
+    if (!inAffiliationBlock && isLikelyAffiliation(line)) {
+      tryAdd(line)
+    }
+  }
+
+  if (affiliations.length === 0) return null
+  return affiliations.join('; ')
+}
+
 const CONFERENCE_VENUE_MAP: Record<string, string> = {
   ICLR: 'ICLR',
   ICML: 'ICML',
@@ -268,7 +373,7 @@ export function mergeMetadata(
 ): { patch: DocumentPatch; remoteValues: RemoteValues } {
   const editableFields: EditableField[] = [
     'title', 'authors', 'year', 'venue', 'volume', 'issue', 'pages',
-    'abstract', 'keywords', 'url', 'doi', 'note'
+    'abstract', 'keywords', 'url', 'doi', 'note', 'affiliations'
   ]
   const patch: DocumentPatch = {}
   const remoteValues: RemoteValues = {}
@@ -295,7 +400,7 @@ export function mergeMetadata(
 
 export function parseCrossrefMessage(msg: {
   title?: string[]
-  author?: Array<{ family?: string; given?: string; name?: string }>
+  author?: Array<{ family?: string; given?: string; name?: string; affiliation?: Array<{ name?: string }> }>
   'published-print'?: { 'date-parts'?: number[][] }
   'published-online'?: { 'date-parts'?: number[][] }
   'container-title'?: string[]
@@ -316,6 +421,17 @@ export function parseCrossrefMessage(msg: {
       return a.name ?? ''
     }).filter(Boolean).join('; ')
     : null
+  const affiliationSet = new Set<string>()
+  if (msg.author) {
+    for (const a of msg.author) {
+      if (a.affiliation) {
+        for (const aff of a.affiliation) {
+          if (aff.name && aff.name.trim()) affiliationSet.add(aff.name.trim())
+        }
+      }
+    }
+  }
+  const affiliations = affiliationSet.size > 0 ? Array.from(affiliationSet).join('; ') : null
   const dateParts = msg['published-print']?.['date-parts']?.[0] ?? msg['published-online']?.['date-parts']?.[0]
   const year = dateParts?.[0]?.toString() ?? null
   const venue = msg['container-title']?.[0] ?? null
@@ -340,6 +456,7 @@ export function parseCrossrefMessage(msg: {
   if (keywords) data.keywords = keywords
   if (url) data.url = url
   if (doiVal) data.doi = doiVal
+  if (affiliations) data.affiliations = affiliations
   return Object.keys(data).length > 1 ? data : null
 }
 
@@ -943,10 +1060,25 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
 
     if (destroyed) return
 
+    if (!fetchedData.affiliations) {
+      const textAffiliations = extractAffiliationsFromText(text)
+      if (textAffiliations) {
+        fetchedData.affiliations = textAffiliations
+      }
+    }
+
+    if (destroyed) return
+
     const current = repos.documents.get(docId)
     if (!current) return
 
+    const textExtractedAffiliations = fetchedData.affiliations !== null &&
+      fetchedData.affiliations !== undefined &&
+      source !== 'pdf'
     const { patch, remoteValues } = mergeMetadata(current, fetchedData)
+    if (textExtractedAffiliations && remoteValues.affiliations) {
+      remoteValues.affiliations = { value: remoteValues.affiliations.value, source: 'pdf' }
+    }
     logger.info(`metadata:processJob merge id=${docId} patchKeys=${Object.keys(patch).join(',') || 'none'} remoteKeys=${Object.keys(remoteValues).join(',') || 'none'} source=${source}`)
     repos.documents.applyMetadataFields(docId, patch, remoteValues, 'done', source)
 
