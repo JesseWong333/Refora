@@ -1,0 +1,168 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AiProvider, ReforaApi } from '../../src/shared/ipc-types'
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, fallback?: unknown) =>
+      ({
+        'settings.title': 'Settings',
+        'settings.sectionGeneral.title': 'General',
+        'settings.sectionGeneral.desc': 'Library and network',
+        'settings.sectionAppearance.title': 'Appearance',
+        'settings.sectionAppearance.desc': 'Theme and language',
+        'settings.aiProviders.title': 'AI Providers',
+        'settings.aiProviders.desc': 'Model providers and API keys',
+        'settings.libraryFolder': 'Library Folder',
+        'settings.libraryFolderAutoImportHint': 'Auto import',
+        'settings.chooseFolder': 'Choose Folder',
+        'settings.switching': 'Switching',
+        'settings.proxy': 'Proxy',
+        'settings.crossrefMailto': 'Crossref Mailto',
+        'settings.theme': 'Theme',
+        'settings.language': 'Language',
+        'settings.sidebarCollapsed': 'Collapse Sidebar',
+        'settings.aiProviders.connect': 'Connect',
+        'settings.aiProviders.customProvider': 'Custom provider',
+        'settings.aiProviders.providerApi': 'Provider API',
+        'settings.aiProviders.reasoningControl': 'Reasoning parameter',
+        'common.done': 'Done'
+      } as Record<string, string>)[key] ?? (typeof fallback === 'string' ? fallback : key),
+    i18n: { language: 'en' }
+  })
+}))
+
+vi.mock('../../src/renderer/hooks/useTheme', () => ({
+  useTheme: () => ({ mode: 'system', resolvedTheme: 'light', setMode: vi.fn() })
+}))
+
+const { AiProvidersSection } = await import(
+  '../../src/renderer/components/AiProvidersSection'
+)
+const { default: SettingsModal } = await import(
+  '../../src/renderer/components/SettingsModal'
+)
+
+const api = (window as unknown as { api: ReforaApi }).api
+
+describe('AiProvidersSection', () => {
+  const create = vi.fn()
+  const set = vi.fn()
+  let computedStyleSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    const getComputedStyle = window.getComputedStyle
+    computedStyleSpy = vi
+      .spyOn(window, 'getComputedStyle')
+      .mockImplementation((element) => getComputedStyle(element))
+    create.mockReset()
+    set.mockReset()
+    api.aiProviders.list = vi.fn().mockResolvedValue([])
+    api.aiProviders.listModels = vi.fn().mockResolvedValue({
+      ok: true,
+      models: [
+        {
+          id: 'gpt-5.6-terra',
+          supportsVariants: false,
+          supportsReasoning: true,
+          reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+          supportsVision: true,
+          supportsTools: true,
+          supportedParameters: []
+        }
+      ]
+    })
+    api.aiProviders.create = create.mockImplementation(async (input) =>
+      ({
+        id: 'provider-openai',
+        presetId: input.presetId ?? 'custom',
+        name: input.name,
+        baseUrl: input.baseUrl,
+        apiProtocol: input.apiProtocol ?? 'openai-compatible',
+        reasoningControl: input.reasoningControl ?? 'openai',
+        reasoningEffort: input.reasoningEffort ?? 'medium',
+        model: input.model,
+        baseModel: input.baseModel ?? input.model,
+        variant: input.variant ?? '',
+        variantFormat: input.variantFormat ?? 'none',
+        hasKey: true,
+        temperature: input.temperature ?? null,
+        maxTokens: input.maxTokens ?? null,
+        createdAt: 0
+      }) satisfies AiProvider
+    )
+    api.settings.get = vi.fn().mockResolvedValue('')
+    api.settings.set = set.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    computedStyleSpy.mockRestore()
+    cleanup()
+  })
+
+  it('connects OpenAI with only an API key and selects its recommended model', async () => {
+    const { container } = render(<AiProvidersSection />)
+
+    expect(container.querySelector('[data-provider-icon="openai"] svg')).toBeInTheDocument()
+    expect(container.querySelector('[data-provider-icon="deepseek"] svg')).toBeInTheDocument()
+    expect(screen.queryByText('OA')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Connect' })[0])
+
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByPlaceholderText('sk-…'), {
+      target: { value: 'sk-test' }
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presetId: 'openai',
+        apiProtocol: 'openai-responses',
+        apiKey: 'sk-test',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'medium'
+      })
+    )
+    expect(set).toHaveBeenCalledWith('activeProviderId', 'provider-openai')
+  })
+
+  it('opens a custom provider form with protocol and base URL fields', async () => {
+    render(<AiProvidersSection />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Custom provider/ }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Provider API')).toBeInTheDocument()
+    expect(within(dialog).getByPlaceholderText('https://api.example.com/v1')).toBeInTheDocument()
+    expect(within(dialog).getByText('Reasoning parameter')).toBeInTheDocument()
+  })
+
+  it('switches settings content through the left navigation', async () => {
+    render(<SettingsModal open onClose={vi.fn()} />)
+
+    const navigation = await screen.findByRole('navigation', { name: 'Settings' })
+    const layout = document.querySelector('[data-settings-layout]')
+    expect(layout).not.toHaveClass('rounded-xl', 'border')
+    expect(layout?.querySelector('aside')).toHaveClass('settings-titlebar-material')
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument()
+    expect(within(navigation).getByRole('button', { name: 'General' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+    expect(screen.getByText('Library Folder')).toBeInTheDocument()
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'AI Providers' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'AI Providers' })).toBeInTheDocument()
+    )
+    expect(screen.queryByText('Library Folder')).not.toBeInTheDocument()
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Appearance' }))
+
+    expect(screen.getByText('Theme')).toBeInTheDocument()
+    expect(screen.getByText('Language')).toBeInTheDocument()
+  })
+})

@@ -987,6 +987,24 @@
   background-color: transparent;
 }
 
+.settings-titlebar-material {
+  background-color: color-mix(in srgb, var(--color-panel) 78%, transparent);
+  backdrop-filter: saturate(160%) blur(24px);
+  -webkit-backdrop-filter: saturate(160%) blur(24px);
+}
+
+.settings-modal-shell [class*='ant-modal-container'] {
+  border: 0;
+}
+
+[data-theme='light'] .settings-titlebar-material {
+  background-color: rgba(246, 246, 246, 0.82);
+}
+
+[data-theme='dark'] .settings-titlebar-material {
+  background-color: rgba(34, 34, 36, 0.82);
+}
+
 [data-platform='mac'] .sidebar-floating {
   border: 0.5px solid color-mix(in srgb, var(--color-border) 32%, transparent);
   background-color: color-mix(in srgb, var(--color-panel) 18%, transparent);
