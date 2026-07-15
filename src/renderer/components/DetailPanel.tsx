@@ -491,18 +491,31 @@ function SingleDetail({ doc }: { doc: Document }) {
         />
       </div>
 
-      <div className="flex flex-col px-8 py-5">
-        <div className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-4">
-          <span className="pt-1 text-[13px] text-muted">{t('detail.authors')}</span>
-          <InlineField
-            field="authors"
-            value={doc.authors ?? ''}
-            remoteValue={remoteValues.authors}
-            docId={doc.id}
-            onSaved={onSaved}
-            variant="authors"
-          />
-        </div>
+        <div className="flex flex-col px-8 py-5">
+          <div className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-4">
+            <span className="pt-1 text-[13px] text-muted">{t('detail.authors')}</span>
+            <InlineField
+              field="authors"
+              value={doc.authors ?? ''}
+              remoteValue={remoteValues.authors}
+              docId={doc.id}
+              onSaved={onSaved}
+              variant="authors"
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-[84px_minmax(0,1fr)] gap-x-4">
+            <span className="pt-1 text-[13px] text-muted">{t('detail.affiliations')}</span>
+            <InlineField
+              field="affiliations"
+              value={doc.affiliations ?? ''}
+              remoteValue={remoteValues.affiliations}
+              docId={doc.id}
+              onSaved={onSaved}
+              variant="authors"
+            />
+          </div>
+
 
         <div className="mt-5 grid grid-cols-[84px_minmax(0,1fr)] gap-x-4 gap-y-2">
           {(['venue', 'volume', 'issue', 'pages'] as const).map((field) => (
