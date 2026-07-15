@@ -159,6 +159,13 @@ export interface BibImportResult {
   errors: Array<{ key: string; message: string }>
 }
 
+export type IdentifierType = 'doi' | 'arxiv' | 'isbn' | 'url'
+
+export interface IdentifierImportResult {
+  added: string[]
+  message?: string
+}
+
 export type WorkspaceItemKind = 'document' | 'report'
 
 export interface Workspace {
@@ -373,6 +380,7 @@ export interface DocumentEvents {
   onMenuExportBibtex(cb: () => void): void
   onMenuImportZotero(cb: () => void): void
   onMenuImportMendeley(cb: () => void): void
+  onMenuImportIdentifier(cb: () => void): void
   onLibraryScanning(cb: (payload: ImportProgress) => void): void
   onLibrarySwitched(cb: (payload: LibrarySwitchResult) => void): void
   onAiSummaryUpdated(cb: (docId: string) => void): void
@@ -413,6 +421,7 @@ export interface ReforaApi {
     fromJson(file: string): Promise<number>
     fromZotero(): Promise<BibImportResult>
     fromMendeley(): Promise<BibImportResult>
+    fromIdentifier(identifier: string): Promise<IdentifierImportResult>
   }
   categories: {
     list(): Promise<Category[]>

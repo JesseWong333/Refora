@@ -282,7 +282,7 @@ export function mergeMetadata(
   return { patch, remoteValues }
 }
 
-function parseCrossrefMessage(msg: {
+export function parseCrossrefMessage(msg: {
   title?: string[]
   author?: Array<{ family?: string; given?: string; name?: string }>
   'published-print'?: { 'date-parts'?: number[][] }
@@ -397,7 +397,7 @@ async function fetchCrossrefByTitle(title: string, mailto: string): Promise<{ da
 
 const arxivXmlParser = new XMLParser({ parseTagValue: false, trimValues: true })
 
-interface ParsedArxivEntry {
+export interface ParsedArxivEntry {
   title: string
   authors: string | null
   year: string | null
@@ -410,7 +410,7 @@ function asArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value]
 }
 
-function parseArxivEntry(xml: string): ParsedArxivEntry | null {
+export function parseArxivEntry(xml: string): ParsedArxivEntry | null {
   try {
     const parsed = arxivXmlParser.parse(xml) as Record<string, unknown>
     const feed = parsed?.feed

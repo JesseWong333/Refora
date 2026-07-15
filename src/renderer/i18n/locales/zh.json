@@ -24,6 +24,7 @@
   "topbar": {
     "addFile": "添加文件",
     "addFolder": "添加文件夹",
+    "importFromIdentifier": "从标识符导入",
     "watchFolder": "监控文件夹",
     "exportBibtex": "导出 BibTeX…",
     "exportJson": "导出 JSON…",
@@ -34,6 +35,15 @@
     "refreshingMetadata": "正在刷新元数据 ({{count}})…",
     "search": "搜索标题、作者、期刊…",
     "settings": "设置"
+  },
+  "identifierImport": {
+    "title": "从标识符导入",
+    "placeholder": "输入 DOI、arXiv ID（如 2401.12345）或论文链接",
+    "hint": "粘贴 DOI（10.xxxx/...）、arXiv ID（2401.12345）、arXiv/DOI 链接或直接 PDF 链接，将自动下载并添加到库中。",
+    "import": "导入",
+    "importing": "正在导入…",
+    "success": "导入成功",
+    "failed": "导入失败：{{message}}"
   },
   "list": {
     "title": "论文名称",

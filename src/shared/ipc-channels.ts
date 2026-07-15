@@ -22,6 +22,7 @@ export const IpcChannel = {
   ImportFromJson: 'import:fromJson',
   ImportFromZotero: 'import:fromZotero',
   ImportFromMendeley: 'import:fromMendeley',
+  ImportFromIdentifier: 'import:fromIdentifier',
 
   CategoriesList: 'categories:list',
   CategoriesCreate: 'categories:create',
@@ -86,6 +87,7 @@ export const IpcChannel = {
   EventMenuExportBibtex: 'menu:export-bibtex',
   EventMenuImportZotero: 'menu:import-zotero',
   EventMenuImportMendeley: 'menu:import-mendeley',
+  EventMenuImportIdentifier: 'menu:import-identifier',
   EventLibraryScanning: 'library:scanning',
   EventLibrarySwitched: 'library:switched',
   EventAiSummaryUpdated: 'ai:summary:updated',

@@ -22,6 +22,7 @@ import type {
   Document,
   DocumentPatch,
   EventChannel,
+  IdentifierImportResult,
   ImportProgress,
   LibrarySwitchResult,
   ListFilter,
@@ -128,7 +129,8 @@ const api: ReforaApi = {
     addFolder: (dir: string) => invoke<string[]>(IpcChannel.ImportAddFolder, dir),
     fromJson: (file: string) => invoke<number>(IpcChannel.ImportFromJson, file),
     fromZotero: () => invoke<BibImportResult>(IpcChannel.ImportFromZotero),
-    fromMendeley: () => invoke<BibImportResult>(IpcChannel.ImportFromMendeley)
+    fromMendeley: () => invoke<BibImportResult>(IpcChannel.ImportFromMendeley),
+    fromIdentifier: (identifier: string) => invoke<IdentifierImportResult>(IpcChannel.ImportFromIdentifier, identifier)
   },
 
   categories: {
@@ -241,6 +243,8 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventMenuImportZotero, cb),
     onMenuImportMendeley: (cb: () => void) =>
       subscribe(IpcChannel.EventMenuImportMendeley, cb),
+    onMenuImportIdentifier: (cb: () => void) =>
+      subscribe(IpcChannel.EventMenuImportIdentifier, cb),
     onLibraryScanning: (cb: (payload: ImportProgress) => void) =>
       subscribe(IpcChannel.EventLibraryScanning, cb),
     onLibrarySwitched: (cb: (payload: LibrarySwitchResult) => void) =>
