@@ -1,10 +1,11 @@
 import { net } from 'electron'
-import { createReadStream, createWriteStream, existsSync, mkdirSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, mkdirSync, rmSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { join, basename, parse as parsePath } from 'node:path'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createHash } from 'node:crypto'
-import { resolve4, resolve6 } from 'node:dns/promises'
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 import type { Repositories } from '../db/repositories'
 import type { Document, IdentifierImportResult, IdentifierType, MetadataSource } from '../../shared/ipc-types'
 import { newId } from '../db/repositories/documents'
@@ -14,34 +15,63 @@ import { normalizeAuthors, parseCrossrefMessage, parseArxivEntry } from './metad
 
 const CONNECT_TIMEOUT_MS = 15_000
 const DOWNLOAD_IDLE_TIMEOUT_MS = 60_000
+const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+const MAX_REDIRECTS = 5
 const PDF_MAGIC = '%PDF'
 
-const PRIVATE_HOST_PATTERNS = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^169\.254\./,
-  /^0\./,
-  /^::1$/,
-  /^fc00:/,
-  /^fe80:/,
-  /^fd/,
-  /^::$/,
-  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
-]
-
 function isPrivateIp(ip: string): boolean {
-  return PRIVATE_HOST_PATTERNS.some((p) => p.test(ip))
+  const normalized = ip
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/%.+$/, '')
+
+  const mappedIpv4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)
+  if (mappedIpv4) return isPrivateIp(mappedIpv4[1])
+  const mappedIpv4Hex = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+  if (mappedIpv4Hex) {
+    const high = Number.parseInt(mappedIpv4Hex[1], 16)
+    const low = Number.parseInt(mappedIpv4Hex[2], 16)
+    return isPrivateIp(`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`)
+  }
+
+  if (isIP(normalized) === 4) {
+    const [a, b] = normalized.split('.').map(Number)
+    return a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      a >= 224
+  }
+
+  if (isIP(normalized) === 6) {
+    return normalized === '::' ||
+      normalized === '::1' ||
+      /^f[cd][0-9a-f]{2}:/.test(normalized) ||
+      /^fe[89ab][0-9a-f]:/.test(normalized) ||
+      /^ff[0-9a-f]{2}:/.test(normalized)
+  }
+
+  return false
 }
 
 const DNS_TIMEOUT_MS = 3_000
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return Promise.race([
-    promise,
-    new Promise<T | null>((resolve) => setTimeout(() => resolve(null), ms))
-  ])
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms)
+      })
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 export async function isSafeUrl(urlStr: string): Promise<boolean> {
@@ -53,16 +83,48 @@ export async function isSafeUrl(urlStr: string): Promise<boolean> {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
   const hostname = parsed.hostname
-  if (hostname === 'localhost') return false
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '')
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return false
   if (isPrivateIp(hostname)) return false
 
-  const ipv4Records = await withTimeout(resolve4(hostname).catch(() => []), DNS_TIMEOUT_MS)
-  if (ipv4Records && ipv4Records.some(isPrivateIp)) return false
+  if (isIP(hostname) !== 0) return true
 
-  const ipv6Records = await withTimeout(resolve6(hostname).catch(() => []), DNS_TIMEOUT_MS)
-  if (ipv6Records && ipv6Records.some(isPrivateIp)) return false
+  const records = await withTimeout(
+    lookup(hostname, { all: true, verbatim: true }).catch(() => []),
+    DNS_TIMEOUT_MS
+  )
+  if (records === null || records.length === 0) return false
+  if (records.some((record) => isPrivateIp(record.address))) return false
 
   return true
+}
+
+export async function fetchPublicUrl(
+  initialUrl: string,
+  signal: AbortSignal,
+  headers: Record<string, string>
+): Promise<Response> {
+  let currentUrl = initialUrl
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+    if (!(await isSafeUrl(currentUrl))) {
+      throw new Error('Download URL is not a public HTTP(S) address')
+    }
+    const response = await net.fetch(currentUrl, {
+      signal,
+      redirect: 'manual',
+      headers
+    })
+    if (response.status < 300 || response.status >= 400) return response
+
+    const location = response.headers.get('location')
+    if (!location) throw new Error(`Redirect response ${response.status} has no location`)
+    if (redirectCount === MAX_REDIRECTS) throw new Error('Too many redirects')
+    await response.body?.cancel()
+    currentUrl = new URL(location, currentUrl).toString()
+  }
+  throw new Error('Too many redirects')
 }
 
 export function detectIdentifierType(input: string): IdentifierType | null {
@@ -177,11 +239,11 @@ async function resolveDoiPdfUrl(doi: string): Promise<string | null> {
   const timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
 
   try {
-    const response = await net.fetch(`https://doi.org/${encodeURIComponent(doi)}`, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'User-Agent': 'Refora/0.1 (mailto:support@refora.app)' }
-    })
+    const response = await fetchPublicUrl(
+      `https://doi.org/${encodeURIComponent(doi)}`,
+      controller.signal,
+      { 'User-Agent': 'Refora/0.1 (mailto:support@refora.app)' }
+    )
     const contentType = response.headers.get('content-type') ?? ''
     if (contentType.includes('application/pdf')) {
       return response.url
@@ -263,10 +325,11 @@ async function downloadPdf(url: string, destDir: string, fileName: string): Prom
   }
 
   try {
-    const response = await net.fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Refora/0.1 (mailto:support@refora.app)' }
-    })
+    const response = await fetchPublicUrl(
+      url,
+      controller.signal,
+      { 'User-Agent': 'Refora/0.1 (mailto:support@refora.app)' }
+    )
     if (!response.ok) {
       throw new Error(`Download failed: HTTP ${response.status}`)
     }
@@ -274,10 +337,26 @@ async function downloadPdf(url: string, destDir: string, fileName: string): Prom
       throw new Error('Download failed: no response body')
     }
 
-    const sourceStream = Readable.fromWeb(response.body as ReadableStream)
-    sourceStream.on('data', () => resetIdleTimer())
+    const contentLength = Number(response.headers.get('content-length'))
+    if (Number.isFinite(contentLength) && contentLength > MAX_DOWNLOAD_BYTES) {
+      throw new Error('Download failed: PDF exceeds the 512 MB limit')
+    }
 
-    await pipeline(sourceStream, createWriteStream(destPath))
+    const sourceStream = Readable.fromWeb(response.body as ReadableStream)
+    let downloadedBytes = 0
+    const limiter = new Transform({
+      transform(chunk, _encoding, callback) {
+        downloadedBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk)
+        if (downloadedBytes > MAX_DOWNLOAD_BYTES) {
+          callback(new Error('Download failed: PDF exceeds the 512 MB limit'))
+          return
+        }
+        resetIdleTimer()
+        callback(null, chunk)
+      }
+    })
+
+    await pipeline(sourceStream, limiter, createWriteStream(destPath, { flags: 'wx' }))
 
     const stat = statSync(destPath)
     if (stat.size < 100) {
@@ -286,6 +365,9 @@ async function downloadPdf(url: string, destDir: string, fileName: string): Prom
     }
 
     return destPath
+  } catch (error) {
+    try { unlinkSync(destPath) } catch { void 0 }
+    throw error
   } finally {
     if (idleTimer) clearTimeout(idleTimer)
   }
@@ -380,16 +462,16 @@ export async function importFromIdentifier(
     return { added: [], message: 'The download URL is not allowed (must be a public http(s) address).' }
   }
 
-  const tmpDir = join(libraryFolder, '.tmp')
+  const tmpDir = join(libraryFolder, '.tmp', newId())
   let tmpPath: string | null = null
   try {
-    tmpPath = await downloadPdf(pdfUrl, tmpDir, tempFileName)
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    return { added: [], message: `Failed to download PDF: ${msg}` }
-  }
+    try {
+      tmpPath = await downloadPdf(pdfUrl, tmpDir, tempFileName)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return { added: [], message: `Failed to download PDF: ${msg}` }
+    }
 
-  try {
     if (!isPdfFile(tmpPath)) {
       return { added: [], message: 'Downloaded file is not a valid PDF.' }
     }
@@ -409,7 +491,7 @@ export async function importFromIdentifier(
     const doc = repos.documents.insert({
       id: newId(),
       filePath: tmpPath,
-      originalFolderPath: tmpDir,
+      originalFolderPath: libraryFolder,
       fileName: basename(tmpPath),
       fileSize,
       fileHash,
@@ -438,20 +520,22 @@ export async function importFromIdentifier(
       fileMissing: 0
     })
 
+    let newPath: string | null = null
     try {
-      const newPath = copyToLibrary(tmpPath, libraryFolder)
+      newPath = copyToLibrary(tmpPath, libraryFolder)
       repos.documents.updateFilePath(doc.id, newPath, parsePath(newPath).base)
     } catch {
       logger.warn(`identifier:copy-to-library failed ${tmpPath}`)
       try { repos.documents.delete(doc.id) } catch { void 0 }
+      if (newPath) {
+        try { unlinkSync(newPath) } catch { void 0 }
+      }
       return { added: [], message: 'Failed to copy the downloaded PDF to the library folder.' }
     }
 
     logger.info(`identifier:added ${doc.id} from ${idType}`)
     return { added: [doc.id] }
   } finally {
-    if (tmpPath) {
-      try { unlinkSync(tmpPath) } catch { void 0 }
-    }
+    try { rmSync(tmpDir, { recursive: true, force: true }) } catch { void 0 }
   }
 }

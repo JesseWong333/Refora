@@ -148,14 +148,14 @@ function buildMenu(): Menu {
           label: 'Import from Zotero\u2026',
           click: () => {
             const w = getWin()
-            if (w) w.webContents.send('menu:import-zotero')
+            if (w && !w.isDestroyed()) w.webContents.send('menu:import-zotero')
           }
         },
         {
           label: 'Import from Mendeley\u2026',
           click: () => {
             const w = getWin()
-            if (w) w.webContents.send('menu:import-mendeley')
+            if (w && !w.isDestroyed()) w.webContents.send('menu:import-mendeley')
           }
         },
         { type: 'separator' },

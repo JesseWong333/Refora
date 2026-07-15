@@ -128,6 +128,36 @@ describe('AiProvidersSection', () => {
     expect(set).toHaveBeenCalledWith('activeProviderId', 'provider-openai')
   })
 
+  it('saves an allowed reasoning effort when the model does not support the preset default', async () => {
+    api.aiProviders.listModels = vi.fn().mockResolvedValue({
+      ok: true,
+      models: [
+        {
+          id: 'gpt-5.6-terra',
+          supportsVariants: false,
+          supportsReasoning: true,
+          reasoningEfforts: ['high'],
+          supportsVision: true,
+          supportsTools: true,
+          supportedParameters: []
+        }
+      ]
+    })
+    render(<AiProvidersSection />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Connect' })[0])
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByPlaceholderText('sk-…'), {
+      target: { value: 'sk-test' }
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningEffort: 'high' })
+    )
+  })
+
   it('opens a custom provider form with protocol and base URL fields', async () => {
     render(<AiProvidersSection />)
 

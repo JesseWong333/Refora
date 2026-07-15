@@ -339,7 +339,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   resizeItem: async (itemId: string, width: number, height: number) => {
     const workspaceId = get().activeWorkspaceId
     if (!workspaceId) return false
-    const previous = get().items
+    const previousItem = get().items.find((item) => item.id === itemId)
+    if (!previousItem) return false
     set((s) => ({
       items: s.items.map((item) => item.id === itemId ? { ...item, width, height } : item)
     }))
@@ -347,11 +348,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const saved = await api.workspaceItems.resize(itemId, width, height)
       if (get().activeWorkspaceId !== workspaceId) return true
       set((s) => ({
-        items: s.items.map((item) => item.id === itemId ? saved : item)
+        items: s.items.map((item) =>
+          item.id === itemId && item.width === width && item.height === height ? saved : item
+        )
       }))
       return true
     } catch (e) {
-      if (get().activeWorkspaceId === workspaceId) set({ items: previous })
+      if (get().activeWorkspaceId === workspaceId) {
+        set((s) => ({
+          items: s.items.map((item) =>
+            item.id === itemId && item.width === width && item.height === height
+              ? previousItem
+              : item
+          )
+        }))
+      }
       toast(errorMessage(e, 'Failed to save card size'))
       return false
     }
@@ -360,7 +371,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   moveItem: async (itemId: string, x: number, y: number, zIndex: number) => {
     const workspaceId = get().activeWorkspaceId
     if (!workspaceId) return false
-    const previous = get().items
+    const previousItem = get().items.find((item) => item.id === itemId)
+    if (!previousItem) return false
     set((s) => ({
       items: s.items.map((item) => item.id === itemId ? { ...item, x, y, zIndex } : item)
     }))
@@ -368,11 +380,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const saved = await api.workspaceItems.move(itemId, x, y, zIndex)
       if (get().activeWorkspaceId !== workspaceId) return true
       set((s) => ({
-        items: s.items.map((item) => item.id === itemId ? saved : item)
+        items: s.items.map((item) =>
+          item.id === itemId && item.x === x && item.y === y && item.zIndex === zIndex
+            ? saved
+            : item
+        )
       }))
       return true
     } catch (e) {
-      if (get().activeWorkspaceId === workspaceId) set({ items: previous })
+      if (get().activeWorkspaceId === workspaceId) {
+        set((s) => ({
+          items: s.items.map((item) =>
+            item.id === itemId && item.x === x && item.y === y && item.zIndex === zIndex
+              ? previousItem
+              : item
+          )
+        }))
+      }
       toast(errorMessage(e, 'Failed to save card position'))
       return false
     }
@@ -414,7 +438,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   updateReport: async (id: string, patch: { title?: string; contentMd?: string }) => {
     const workspaceId = get().activeWorkspaceId
-    const prev = get().reports
     try {
       const updated = await api.reports.update(id, patch)
       if (get().activeWorkspaceId !== workspaceId) return true
@@ -422,7 +445,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return true
     } catch (e) {
       toast(errorMessage(e, 'Failed to update report'))
-      set({ reports: prev })
       return false
     }
   },
@@ -485,14 +507,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   updateNote: async (id: string, patch: { title?: string; contentMd?: string }) => {
     const workspaceId = get().activeWorkspaceId
-    const previous = get().notes
     try {
       const updated = await api.workspaceNotes.update(id, patch)
       if (get().activeWorkspaceId !== workspaceId) return true
       set((s) => ({ notes: s.notes.map((note) => note.id === id ? updated : note) }))
       return true
     } catch (e) {
-      set({ notes: previous })
       toast(errorMessage(e, 'Failed to update workspace note'))
       return false
     }

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, statSync, lstatSync, createReadStream } from 'node:fs'
-import { basename, dirname, resolve as resolvePath, parse as parsePath } from 'node:path'
+import { basename, dirname, isAbsolute, resolve as resolvePath, parse as parsePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import type { Repositories } from '../db/repositories'
 import { newId } from '../db/repositories/documents'
@@ -38,6 +39,8 @@ const FIELD_MAP: Record<string, EditableField> = {
   doi: 'doi',
   note: 'note'
 }
+
+const MAX_BIBTEX_BYTES = 50 * 1024 * 1024
 
 export function parseBibtex(content: string): BibImportEntry[] {
   const entries: BibImportEntry[] = []
@@ -323,9 +326,37 @@ function extractMetadataFromEntry(
   return result
 }
 
-function validatePdfPath(raw: string): string | null {
+export function extractAttachmentPaths(raw: string): string[] {
+  return raw
+    .split(';')
+    .map((part) => {
+      let candidate = part.trim()
+      const pdfEnd = candidate.toLowerCase().indexOf('.pdf')
+      if (pdfEnd >= 0) candidate = candidate.slice(0, pdfEnd + 4)
+
+      const fileUrlIndex = candidate.toLowerCase().indexOf('file://')
+      if (fileUrlIndex >= 0) {
+        try {
+          return fileURLToPath(candidate.slice(fileUrlIndex))
+        } catch {
+          return ''
+        }
+      }
+
+      const descriptorEnd = candidate.indexOf(':')
+      if (descriptorEnd >= 0) {
+        const describedPath = candidate.slice(descriptorEnd + 1).trim()
+        if (describedPath.toLowerCase().includes('.pdf')) candidate = describedPath
+      }
+
+      return candidate
+    })
+    .filter(Boolean)
+}
+
+function validatePdfPath(raw: string, baseDir: string): string | null {
   if (!raw) return null
-  const abs = resolvePath(raw)
+  const abs = isAbsolute(raw) ? resolvePath(raw) : resolvePath(baseDir, raw)
   if (!abs.toLowerCase().endsWith('.pdf')) return null
   if (!existsSync(abs)) return null
   try {
@@ -339,40 +370,27 @@ function validatePdfPath(raw: string): string | null {
 
 function findPdfFromEntry(
   entry: BibImportEntry,
-  source: BibImportSource
+  source: BibImportSource,
+  baseDir: string
 ): string | null {
   const candidates: string[] = []
 
   if (source === 'zotero') {
     for (let n = 1; n <= 9; n++) {
       const f = entry.fields[`file${n}`]
-      if (f) candidates.push(f)
+      if (f) candidates.push(...extractAttachmentPaths(f))
     }
     const fileField = entry.fields['file']
-    if (fileField) {
-      const parts = fileField.split(';')
-      for (const p of parts) {
-        const colonIdx = p.indexOf(':')
-        if (colonIdx >= 0) {
-          candidates.push(p.slice(0, colonIdx).trim())
-        } else {
-          candidates.push(p.trim())
-        }
-      }
-    }
+    if (fileField) candidates.push(...extractAttachmentPaths(fileField))
   } else if (source === 'mendeley') {
     const f = entry.fields['file']
-    if (f) candidates.push(f)
+    if (f) candidates.push(...extractAttachmentPaths(f))
     const ff = entry.fields['files']
-    if (ff) {
-      for (const p of ff.split(';')) {
-        candidates.push(p.trim())
-      }
-    }
+    if (ff) candidates.push(...extractAttachmentPaths(ff))
   }
 
   for (const c of candidates) {
-    const valid = validatePdfPath(c)
+    const valid = validatePdfPath(c, baseDir)
     if (valid) return valid
   }
 
@@ -470,6 +488,9 @@ export async function importFromBibtex(
   filePath: string,
   source: BibImportSource
 ): Promise<BibImportResultInternal> {
+  const bibStat = statSync(filePath)
+  if (!bibStat.isFile()) throw new Error('BibTeX path is not a file')
+  if (bibStat.size > MAX_BIBTEX_BYTES) throw new Error('BibTeX file exceeds the 50 MB limit')
   const json = readFileSync(filePath, 'utf-8')
   const entries = parseBibtex(json)
 
@@ -483,7 +504,7 @@ export async function importFromBibtex(
     const key = entry.citekey || `entry-${entries.indexOf(entry) + 1}`
     const metadata = extractMetadataFromEntry(entry)
 
-    const pdfPath = findPdfFromEntry(entry, source)
+    const pdfPath = findPdfFromEntry(entry, source, dirname(filePath))
 
     if (pdfPath) {
       const existingByPath = repos.documents.findByPath(pdfPath)

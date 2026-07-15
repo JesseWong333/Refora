@@ -290,6 +290,22 @@ describe('AiProvidersService', () => {
       expect(callArg.maxTokens).toBe(2048)
     })
 
+    it('rejects an empty provider name', () => {
+      expect(() => service.update('p1', { name: '   ' })).toThrowError(
+        expect.objectContaining({ code: 'invalid_input' })
+      )
+      expect(repos.aiProviders.update).not.toHaveBeenCalled()
+    })
+
+    it('rejects an empty model', () => {
+      expect(() => service.update('p1', {
+        model: '',
+        baseModel: '',
+        variant: ''
+      })).toThrowError(expect.objectContaining({ code: 'invalid_input' }))
+      expect(repos.aiProviders.update).not.toHaveBeenCalled()
+    })
+
     it('when provider not found: throws RepoError not_found', () => {
       expect(() => service.update('nonexistent', { name: 'x' })).toThrow(RepoError)
       try {

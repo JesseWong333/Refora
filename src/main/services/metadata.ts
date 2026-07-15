@@ -1060,10 +1060,12 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
 
     if (destroyed) return
 
+    let affiliationsFromText = false
     if (!fetchedData.affiliations) {
       const textAffiliations = extractAffiliationsFromText(text)
       if (textAffiliations) {
         fetchedData.affiliations = textAffiliations
+        affiliationsFromText = true
       }
     }
 
@@ -1072,11 +1074,8 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     const current = repos.documents.get(docId)
     if (!current) return
 
-    const textExtractedAffiliations = fetchedData.affiliations !== null &&
-      fetchedData.affiliations !== undefined &&
-      source !== 'pdf'
     const { patch, remoteValues } = mergeMetadata(current, fetchedData)
-    if (textExtractedAffiliations && remoteValues.affiliations) {
+    if (affiliationsFromText && remoteValues.affiliations) {
       remoteValues.affiliations = { value: remoteValues.affiliations.value, source: 'pdf' }
     }
     logger.info(`metadata:processJob merge id=${docId} patchKeys=${Object.keys(patch).join(',') || 'none'} remoteKeys=${Object.keys(remoteValues).join(',') || 'none'} source=${source}`)

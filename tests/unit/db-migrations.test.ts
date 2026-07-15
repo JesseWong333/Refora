@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createRequire } from 'node:module'
-import { runMigrations, trigramAvailable, ftsColumns, type SqliteLike } from '../../src/main/db/migrations'
+import {
+  runMigrations,
+  trigramAvailable,
+  ftsColumns,
+  loadMigrationFiles,
+  type SqliteLike
+} from '../../src/main/db/migrations'
+import schemaSql from '../../src/main/db/schema.sql?raw'
 import {
   seedDefaultSettings,
   SETTING_KEYS
@@ -38,8 +45,20 @@ function adapt(db: SqliteDb): SqliteLike {
     },
     setUserVersion: (version) => {
       db.exec(`PRAGMA user_version = ${version}`)
-    }
+    },
+    hasColumn: (table, column) =>
+      db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column) !== undefined,
+    hasObject: (type, name) =>
+      db.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get(type, name) !== undefined
   }
+}
+
+function migrateThrough(db: SqliteDb, version: number): void {
+  db.exec(schemaSql)
+  for (const migration of loadMigrationFiles().filter((item) => item.version <= version)) {
+    db.exec(migration.sql)
+  }
+  db.exec(`PRAGMA user_version = ${version}`)
 }
 
 function userVersion(db: SqliteDb): number {
@@ -125,6 +144,44 @@ describe('db migrations + schema', () => {
     expect(second.from).toBe(16)
     expect(second.to).toBe(16)
     expect(userVersion(db)).toBe(16)
+  })
+
+  it('reconciles a database created by the workspace branch before migrations were renumbered', () => {
+    migrateThrough(db, 11)
+    const migrations = loadMigrationFiles()
+    for (const version of [14, 15, 16]) {
+      db.exec(migrations.find((migration) => migration.version === version)!.sql)
+    }
+    db.exec('PRAGMA user_version = 14')
+
+    const result = runMigrations(adapt(db))
+
+    expect(result.to).toBe(16)
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
+      .toBeDefined()
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'presetId'").get())
+      .toBeDefined()
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_items') WHERE name = 'x'").get())
+      .toBeDefined()
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_notes') WHERE name = 'noteType'").get())
+      .toBeDefined()
+  })
+
+  it('reconciles a database created by the provider branch at the same migration number', () => {
+    migrateThrough(db, 11)
+    const providerMigration = loadMigrationFiles().find((migration) => migration.version === 13)!
+    db.exec(providerMigration.sql)
+    db.exec('PRAGMA user_version = 12')
+
+    const result = runMigrations(adapt(db))
+
+    expect(result.to).toBe(16)
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
+      .toBeDefined()
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'reasoningEffort'").get())
+      .toBeDefined()
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_items') WHERE name = 'noteId'").get())
+      .toBeDefined()
   })
 
   it('drops the legacy moveToLibrary column from categories', () => {

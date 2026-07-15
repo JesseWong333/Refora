@@ -18,7 +18,11 @@ function adapt(db: BetterSqlite3Database): SqliteLike {
     },
     setUserVersion: (version) => {
       db.exec(`PRAGMA user_version = ${version}`)
-    }
+    },
+    hasColumn: (table, column) =>
+      db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column) !== undefined,
+    hasObject: (type, name) =>
+      db.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get(type, name) !== undefined
   }
 }
 

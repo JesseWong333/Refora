@@ -4,6 +4,8 @@ export interface SqliteLike {
   exec(sql: string): void
   getUserVersion(): number
   setUserVersion(version: number): void
+  hasColumn?(table: string, column: string): boolean
+  hasObject?(type: 'table' | 'index', name: string): boolean
 }
 
 export interface MigrationResult {
@@ -56,6 +58,42 @@ function schemaForTokenizer(useTrigram: boolean): string {
   return useTrigram ? schemaSql : schemaSql.replace(/tokenize='trigram'/g, "tokenize='unicode61'")
 }
 
+function migrationSchemaPresent(db: SqliteLike, version: number): boolean {
+  if (!db.hasColumn || !db.hasObject) return version <= db.getUserVersion()
+  const hasColumns = (table: string, columns: string[]) =>
+    columns.every((column) => db.hasColumn?.(table, column) === true)
+  const hasObjects = (objects: Array<['table' | 'index', string]>) =>
+    objects.every(([type, name]) => db.hasObject?.(type, name) === true)
+
+  if (version === 12) return hasColumns('documents', ['affiliations'])
+  if (version === 13) {
+    return hasColumns('ai_providers', [
+      'presetId',
+      'apiProtocol',
+      'reasoningControl',
+      'reasoningEffort'
+    ])
+  }
+  if (version === 14) {
+    return hasColumns('workspace_items', ['noteId', 'width', 'height']) &&
+      hasObjects([
+        ['table', 'workspace_notes'],
+        ['index', 'uq_workspace_items_document'],
+        ['index', 'uq_workspace_items_report'],
+        ['index', 'uq_workspace_items_note']
+      ])
+  }
+  if (version === 15) {
+    return hasColumns('workspace_items', ['x', 'y', 'zIndex']) &&
+      hasObjects([
+        ['table', 'workspace_canvas_state'],
+        ['index', 'idx_workspace_items_canvas']
+      ])
+  }
+  if (version === 16) return hasColumns('workspace_notes', ['noteType'])
+  return version <= db.getUserVersion()
+}
+
 export function runMigrations(db: SqliteLike): MigrationResult {
   const from = db.getUserVersion()
   const useTrigram = trigramAvailable(db)
@@ -65,12 +103,17 @@ export function runMigrations(db: SqliteLike): MigrationResult {
     db.setUserVersion(1)
   }
 
-  const baseline = Math.max(from, 1)
-  for (const migration of loadMigrationFiles().filter((m) => m.version > baseline)) {
+  for (const migration of loadMigrationFiles()) {
+    const currentVersion = db.getUserVersion()
+    if (migration.version < 12 && migration.version <= currentVersion) continue
+    if (migration.version >= 12 && migrationSchemaPresent(db, migration.version)) {
+      if (currentVersion < migration.version) db.setUserVersion(migration.version)
+      continue
+    }
     db.exec('BEGIN')
     try {
       db.exec(migration.sql)
-      db.setUserVersion(migration.version)
+      db.setUserVersion(Math.max(currentVersion, migration.version))
       db.exec('COMMIT')
     } catch (err) {
       db.exec('ROLLBACK')

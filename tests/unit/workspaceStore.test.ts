@@ -62,6 +62,7 @@ function makeNote(overrides: Partial<WorkspaceNote> = {}): WorkspaceNote {
 
 const mockReportsList = vi.fn()
 const mockReportsDelete = vi.fn()
+const mockReportsUpdate = vi.fn()
 const mockChatThreads = vi.fn()
 const mockEventsOff = vi.fn()
 const mockOnWorkspaceItemsChanged = vi.fn()
@@ -74,6 +75,7 @@ const mockWorkspaceItemsResize = vi.fn()
 const mockWorkspaceItemsMove = vi.fn()
 const mockWorkspaceNotesList = vi.fn()
 const mockWorkspaceNotesCreate = vi.fn()
+const mockWorkspaceNotesUpdate = vi.fn()
 
 function resetStoreState(): void {
   useWorkspaceStore.setState({
@@ -93,6 +95,7 @@ function resetStoreState(): void {
 beforeEach(() => {
   mockReportsList.mockReset()
   mockReportsDelete.mockReset()
+  mockReportsUpdate.mockReset()
   mockChatThreads.mockReset()
   mockEventsOff.mockReset()
   mockOnWorkspaceItemsChanged.mockReset()
@@ -105,9 +108,11 @@ beforeEach(() => {
   mockWorkspaceItemsMove.mockReset()
   mockWorkspaceNotesList.mockReset()
   mockWorkspaceNotesCreate.mockReset()
+  mockWorkspaceNotesUpdate.mockReset()
 
   mockReportsList.mockResolvedValue([])
   mockReportsDelete.mockResolvedValue(undefined)
+  mockReportsUpdate.mockResolvedValue(makeReport())
   mockChatThreads.mockResolvedValue([])
   mockWorkspacesList.mockResolvedValue([])
   mockWorkspaceItemsList.mockResolvedValue([])
@@ -120,11 +125,13 @@ beforeEach(() => {
   )
   mockWorkspaceNotesList.mockResolvedValue([])
   mockWorkspaceNotesCreate.mockResolvedValue(makeNote())
+  mockWorkspaceNotesUpdate.mockResolvedValue(makeNote())
 
   const api = window.api as unknown as Record<string, unknown>
   const reports = api.reports as Record<string, unknown>
   reports.list = mockReportsList
   reports.delete = mockReportsDelete
+  reports.update = mockReportsUpdate
 
   const ai = api.ai as Record<string, unknown>
   ai.chatThreads = mockChatThreads
@@ -147,6 +154,7 @@ beforeEach(() => {
   const workspaceNotes = api.workspaceNotes as Record<string, unknown>
   workspaceNotes.list = mockWorkspaceNotesList
   workspaceNotes.create = mockWorkspaceNotesCreate
+  workspaceNotes.update = mockWorkspaceNotesUpdate
 
   useDocumentStore.setState({ showToast: vi.fn() })
 
@@ -200,6 +208,27 @@ describe('WorkspaceStore', () => {
       useWorkspaceStore.setState({ activeWorkspaceId: null, reports: [makeReport()] })
       await useWorkspaceStore.getState().fetchReports()
       expect(useWorkspaceStore.getState().reports).toEqual([])
+    })
+  })
+
+  describe('updateReport', () => {
+    it('does not restore reports from a workspace that is no longer active', async () => {
+      let rejectUpdate!: (error: Error) => void
+      mockReportsUpdate.mockReturnValue(new Promise((_resolve, reject) => {
+        rejectUpdate = reject
+      }))
+      useWorkspaceStore.setState({
+        activeWorkspaceId: 'ws-1',
+        reports: [makeReport({ workspaceId: 'ws-1' })]
+      })
+
+      const update = useWorkspaceStore.getState().updateReport('r1', { title: 'Changed' })
+      const nextReports = [makeReport({ id: 'r2', workspaceId: 'ws-2' })]
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-2', reports: nextReports })
+      rejectUpdate(new Error('network'))
+
+      await update
+      expect(useWorkspaceStore.getState().reports).toEqual(nextReports)
     })
   })
 
@@ -299,6 +328,23 @@ describe('WorkspaceStore', () => {
       expect(useWorkspaceStore.getState().items).toEqual([item])
     })
 
+    it('preserves unrelated item changes when a resize fails', async () => {
+      const first = makeItem({ id: 'first' })
+      const second = makeItem({ id: 'second' })
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1', items: [first, second] })
+      mockWorkspaceItemsResize.mockRejectedValue(new Error('disk'))
+
+      const resize = useWorkspaceStore.getState().resizeItem(first.id, 420, 280)
+      useWorkspaceStore.setState((state) => ({
+        items: state.items.map((item) =>
+          item.id === second.id ? { ...item, x: 900 } : item
+        )
+      }))
+
+      await resize
+      expect(useWorkspaceStore.getState().items).toEqual([first, { ...second, x: 900 }])
+    })
+
     it('persists a freely positioned card in world coordinates', async () => {
       const item = makeItem()
       useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1', items: [item] })
@@ -341,6 +387,25 @@ describe('WorkspaceStore', () => {
       expect(created).toEqual(note)
       expect(useWorkspaceStore.getState().notes).toEqual([note])
       expect(useWorkspaceStore.getState().items).toEqual([item])
+    })
+
+    it('does not restore notes from a workspace that is no longer active', async () => {
+      let rejectUpdate!: (error: Error) => void
+      mockWorkspaceNotesUpdate.mockReturnValue(new Promise((_resolve, reject) => {
+        rejectUpdate = reject
+      }))
+      useWorkspaceStore.setState({
+        activeWorkspaceId: 'ws-1',
+        notes: [makeNote({ workspaceId: 'ws-1' })]
+      })
+
+      const update = useWorkspaceStore.getState().updateNote('note-1', { title: 'Changed' })
+      const nextNotes = [makeNote({ id: 'note-2', workspaceId: 'ws-2' })]
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-2', notes: nextNotes })
+      rejectUpdate(new Error('network'))
+
+      await update
+      expect(useWorkspaceStore.getState().notes).toEqual(nextNotes)
     })
   })
 

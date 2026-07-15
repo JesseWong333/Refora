@@ -1,11 +1,33 @@
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+
+const { mockFetch, mockLookup } = vi.hoisted(() => ({
+  mockFetch: vi.fn(),
+  mockLookup: vi.fn()
+}))
+
+vi.mock('node:dns/promises', () => ({
+  default: {
+    lookup: mockLookup
+  },
+  lookup: mockLookup
+}))
+
+vi.mock('electron', () => ({
+  net: { fetch: mockFetch }
+}))
 import {
   detectIdentifierType,
   extractArxivId,
   extractDoi,
   sanitizeFileName,
-  isSafeUrl
+  isSafeUrl,
+  fetchPublicUrl
 } from '../../src/main/services/identifierImport'
+
+beforeEach(() => {
+  mockFetch.mockReset()
+  mockLookup.mockReset().mockResolvedValue([{ address: '151.101.3.42', family: 4 }])
+})
 
 describe('detectIdentifierType', () => {
   it('detects DOI strings', () => {
@@ -110,7 +132,10 @@ describe('isSafeUrl', () => {
 
   it('rejects localhost', async () => {
     expect(await isSafeUrl('http://localhost/file.pdf')).toBe(false)
+    expect(await isSafeUrl('http://localhost./file.pdf')).toBe(false)
     expect(await isSafeUrl('http://127.0.0.1/file.pdf')).toBe(false)
+    expect(await isSafeUrl('http://[::1]/file.pdf')).toBe(false)
+    expect(await isSafeUrl('http://[::ffff:127.0.0.1]/file.pdf')).toBe(false)
   })
 
   it('rejects private IP ranges', async () => {
@@ -125,8 +150,31 @@ describe('isSafeUrl', () => {
     expect(await isSafeUrl('')).toBe(false)
   })
 
+  it('rejects hostnames that resolve to private addresses or cannot be resolved', async () => {
+    mockLookup.mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }])
+    expect(await isSafeUrl('https://redirect.example/file.pdf')).toBe(false)
+
+    mockLookup.mockRejectedValueOnce(new Error('DNS unavailable'))
+    expect(await isSafeUrl('https://unresolved.example/file.pdf')).toBe(false)
+  })
+
   it('accepts public http(s) URLs', async () => {
     expect(await isSafeUrl('https://arxiv.org/pdf/2401.12345')).toBe(true)
     expect(await isSafeUrl('https://example.com/paper.pdf')).toBe(true)
+  })
+})
+
+describe('fetchPublicUrl', () => {
+  it('rejects a redirect to a private address before requesting it', async () => {
+    mockFetch.mockResolvedValueOnce({
+      status: 302,
+      headers: new Headers({ location: 'http://127.0.0.1/internal.pdf' }),
+      body: null
+    })
+
+    await expect(
+      fetchPublicUrl('https://public.example/paper.pdf', new AbortController().signal, {})
+    ).rejects.toThrow('not a public')
+    expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 })

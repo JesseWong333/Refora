@@ -243,6 +243,9 @@ export function createAiProvidersService(repos: Repositories) {
   function update(id: string, patch: AiProviderPatch): AiProvider {
     const existing = repos.aiProviders.getRaw(id)
     if (!existing) throw new RepoError('not_found', `provider not found: ${id}`)
+    if (patch.name !== undefined && !patch.name.trim()) {
+      throw new RepoError('invalid_input', 'Provider name is required')
+    }
 
     const fields =
       patch.model !== undefined ||
@@ -256,6 +259,9 @@ export function createAiProvidersService(repos: Repositories) {
             variantFormat: patch.variantFormat ?? existing.variantFormat
           })
         : null
+    if (fields && !fields.model) {
+      throw new RepoError('invalid_input', 'Provider model is required')
+    }
 
     const updateInput: {
       presetId?: string

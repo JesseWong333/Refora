@@ -301,6 +301,18 @@ export function AiProvidersSection() {
         setError(t('settings.aiProviders.modelRequired'))
         return
       }
+      const savedModelInfo = verifiedModels.find((candidate) => candidate.id === model)
+      const inferredReasoningEfforts = reasoningEffortsForModel(form.presetId, model)
+      const allowedReasoningEfforts = savedModelInfo
+        ? savedModelInfo.reasoningEfforts
+        : inferredReasoningEfforts.length > 0 || (model && form.presetId !== 'custom')
+          ? inferredReasoningEfforts
+          : selectedPreset.reasoningEfforts
+      const reasoningEffort = form.reasoningControl === 'none'
+        ? 'none'
+        : allowedReasoningEfforts.includes(form.reasoningEffort)
+          ? form.reasoningEffort
+          : allowedReasoningEfforts[0] ?? form.reasoningEffort
 
       const payload = {
         presetId: form.presetId,
@@ -308,7 +320,7 @@ export function AiProvidersSection() {
         baseUrl: form.baseUrl.trim(),
         apiProtocol: form.apiProtocol,
         reasoningControl: form.reasoningControl,
-        reasoningEffort: form.reasoningEffort,
+        reasoningEffort,
         model,
         baseModel: model,
         variant: '',
