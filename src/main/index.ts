@@ -94,6 +94,16 @@ function buildMenu(): Menu {
           }
         },
         {
+          label: 'Import by Identifier…',
+          accelerator: 'Cmd+Shift+I',
+          click: () => {
+            const w = getWin()
+            if (w && !w.isDestroyed()) {
+              w.webContents.send('menu:import-identifier')
+            }
+          }
+        },
+        {
           label: 'Add Folder',
           click: async () => {
             const w = getWin()

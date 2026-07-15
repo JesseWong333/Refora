@@ -16,6 +16,7 @@ import type {
   ChatThread,
   Document,
   DocumentPatch,
+  IdentifierImportResult,
   ListFilter,
   ListModelsRequest,
   ListModelsResult,
@@ -38,6 +39,7 @@ import { relocate, deleteDocument, bulkDeleteDocuments, findPdfsRecursively } fr
 import { emitDocumentUpdated } from '../ipc/events'
 import { writeExportFile, importFromJsonFile, toBibtex } from '../services/export'
 import { isInsideLibrary, containsLibrary } from '../services/paths'
+import { importFromIdentifier } from '../services/identifierImport'
 import { logger } from '../services/logger'
 import type { createWatcher } from '../services/watcher'
 import type { AiProvidersService } from '../services/aiProviders'
@@ -53,6 +55,7 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventImportProgress
   | typeof IpcChannel.EventImportToast
   | typeof IpcChannel.EventMenuExportBibtex
+  | typeof IpcChannel.EventMenuImportIdentifier
   | typeof IpcChannel.EventLibraryScanning
   | typeof IpcChannel.EventLibrarySwitched
   | typeof IpcChannel.EventAiSummaryUpdated
@@ -342,6 +345,16 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         const rt = deps.getRuntime()
         if (!rt) throw new Error('Runtime not ready')
         return importFromJsonFile(rt.repos, filePath, mode, rt.db)
+      }),
+
+    [IpcChannel.ImportFromIdentifier]: async (identifier: string): Promise<Result<IdentifierImportResult>> =>
+      asyncWrap(async () => {
+        const rt = deps.getRuntime()
+        if (!rt) throw new Error('Runtime not ready')
+        return importFromIdentifier(
+          { repos: rt.repos, getLibraryFolder: () => rt.repos.settings.get<string>('libraryFolderPath', '') },
+          identifier
+        )
       }),
 
     [IpcChannel.CategoriesList]: (): Result<Category[]> => wrap(() => {

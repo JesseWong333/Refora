@@ -1,12 +1,14 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { FilePlus, FolderPlus, ArrowLineLeft, ArrowLineRight, CircleNotch } from '@phosphor-icons/react'
+import { FilePlus, PaperclipHorizontal, ArrowLineLeft, ArrowLineRight, CircleNotch } from '@phosphor-icons/react'
 import { useDocumentStore } from '../store/documentStore'
 import { errorMessage } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
+import ImportByIdentifierDialog from './ImportByIdentifierDialog'
 import { Button as UiButton } from './ui'
 import { api } from '../ipc'
+import { IpcChannel } from '../../shared/ipc-channels'
 import SidebarSmartItems from './SidebarSmartItems'
 import SidebarWorkspaces from './SidebarWorkspaces'
 import SidebarCategories from './SidebarCategories'
@@ -25,6 +27,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const importProgress = useDocumentStore((s) => s.importProgress)
   const pendingMetadataCount = useDocumentStore((s) => s.pendingMetadataCount)
   const [showSettings, setShowSettings] = useState(false)
+  const [showIdentifierImport, setShowIdentifierImport] = useState(false)
   const isMac = document.documentElement.dataset.platform === 'mac'
 
   const handleAddFiles = useCallback(async () => {
@@ -34,12 +37,15 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     void fetchDocuments()
   }, [fetchDocuments])
 
-  const handleAddFolder = useCallback(async () => {
-    try {
-      await api.import.addFolder('')
-    } catch (e) { useDocumentStore.getState().showToast(errorMessage(e, 'Failed to import folder')) }
-    void fetchDocuments()
-  }, [fetchDocuments])
+  const handleImportFromIdentifier = useCallback(() => {
+    setShowIdentifierImport(true)
+  }, [])
+
+  useEffect(() => {
+    const cb = () => setShowIdentifierImport(true)
+    api.events.onMenuImportIdentifier(cb)
+    return () => api.events.off(IpcChannel.EventMenuImportIdentifier, cb)
+  }, [])
 
   if (collapsed) {
     const toolbarLeft = isMac ? 92 : 8
@@ -73,11 +79,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           variant="ghost"
           size="sm"
           iconOnly
-          onClick={handleAddFolder}
-          title={t('topbar.addFolder')}
-          aria-label={t('topbar.addFolder')}
+          onClick={handleImportFromIdentifier}
+          title={t('topbar.importFromIdentifier')}
+          aria-label={t('topbar.importFromIdentifier')}
         >
-          <FolderPlus className="h-4 w-4" />
+          <PaperclipHorizontal className="h-4 w-4" />
         </UiButton>
       </div>
     )
@@ -85,6 +91,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       <>
         {createPortal(toolbar, document.body)}
         <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+        <ImportByIdentifierDialog open={showIdentifierImport} onClose={() => setShowIdentifierImport(false)} />
       </>
     )
   }
@@ -117,11 +124,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             variant="ghost"
             size="sm"
             iconOnly
-            onClick={handleAddFolder}
-            title={t('topbar.addFolder')}
-            aria-label={t('topbar.addFolder')}
+            onClick={handleImportFromIdentifier}
+            title={t('topbar.importFromIdentifier')}
+            aria-label={t('topbar.importFromIdentifier')}
           >
-            <FolderPlus className="h-4 w-4" />
+            <PaperclipHorizontal className="h-4 w-4" />
           </UiButton>
         </div>
       </div>
@@ -161,6 +168,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <ImportByIdentifierDialog open={showIdentifierImport} onClose={() => setShowIdentifierImport(false)} />
     </aside>
   )
 }

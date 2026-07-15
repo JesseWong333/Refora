@@ -21,6 +21,7 @@ import type {
   Document,
   DocumentPatch,
   EventChannel,
+  IdentifierImportResult,
   ImportProgress,
   LibrarySwitchResult,
   ListFilter,
@@ -125,7 +126,8 @@ const api: ReforaApi = {
   import: {
     addFiles: (paths: string[]) => invoke<string[]>(IpcChannel.ImportAddFiles, paths),
     addFolder: (dir: string) => invoke<string[]>(IpcChannel.ImportAddFolder, dir),
-    fromJson: (file: string) => invoke<number>(IpcChannel.ImportFromJson, file)
+    fromJson: (file: string) => invoke<number>(IpcChannel.ImportFromJson, file),
+    fromIdentifier: (identifier: string) => invoke<IdentifierImportResult>(IpcChannel.ImportFromIdentifier, identifier)
   },
 
   categories: {
@@ -234,6 +236,8 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventImportToast, cb),
     onMenuExportBibtex: (cb: () => void) =>
       subscribe(IpcChannel.EventMenuExportBibtex, cb),
+    onMenuImportIdentifier: (cb: () => void) =>
+      subscribe(IpcChannel.EventMenuImportIdentifier, cb),
     onLibraryScanning: (cb: (payload: ImportProgress) => void) =>
       subscribe(IpcChannel.EventLibraryScanning, cb),
     onLibrarySwitched: (cb: (payload: LibrarySwitchResult) => void) =>

@@ -58,6 +58,7 @@ const noop = async () => undefined
     addFiles: async () => [],
     addFolder: async () => [],
     fromJson: async () => 0,
+    fromIdentifier: async () => ({ added: [] }),
   },
 
   categories: {
@@ -172,6 +173,7 @@ const noop = async () => undefined
     onImportProgress: (_cb: unknown) => undefined,
     onImportToast: (_cb: unknown) => undefined,
     onMenuExportBibtex: (_cb: unknown) => undefined,
+    onMenuImportIdentifier: (_cb: unknown) => undefined,
     onLibraryScanning: (_cb: unknown) => undefined,
     onLibrarySwitched: (_cb: unknown) => undefined,
     onAiSummaryUpdated: (_cb: unknown) => undefined,

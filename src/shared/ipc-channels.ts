@@ -20,6 +20,7 @@ export const IpcChannel = {
   ImportAddFiles: 'import:addFiles',
   ImportAddFolder: 'import:addFolder',
   ImportFromJson: 'import:fromJson',
+  ImportFromIdentifier: 'import:fromIdentifier',
 
   CategoriesList: 'categories:list',
   CategoriesCreate: 'categories:create',
@@ -82,6 +83,7 @@ export const IpcChannel = {
   EventImportProgress: 'import:progress',
   EventImportToast: 'import:toast',
   EventMenuExportBibtex: 'menu:export-bibtex',
+  EventMenuImportIdentifier: 'menu:import-identifier',
   EventLibraryScanning: 'library:scanning',
   EventLibrarySwitched: 'library:switched',
   EventAiSummaryUpdated: 'ai:summary:updated',

@@ -153,6 +153,13 @@ export interface LibrarySwitchResult {
   errors: Array<{ path: string; message: string }>
 }
 
+export type IdentifierType = 'doi' | 'arxiv' | 'isbn' | 'url'
+
+export interface IdentifierImportResult {
+  added: string[]
+  message?: string
+}
+
 export type WorkspaceItemKind = 'document' | 'report'
 
 export interface Workspace {
@@ -365,6 +372,7 @@ export interface DocumentEvents {
   onImportProgress(cb: (payload: ImportProgress) => void): void
   onImportToast(cb: (message: string) => void): void
   onMenuExportBibtex(cb: () => void): void
+  onMenuImportIdentifier(cb: () => void): void
   onLibraryScanning(cb: (payload: ImportProgress) => void): void
   onLibrarySwitched(cb: (payload: LibrarySwitchResult) => void): void
   onAiSummaryUpdated(cb: (docId: string) => void): void
@@ -403,6 +411,7 @@ export interface ReforaApi {
     addFiles(paths: string[]): Promise<string[]>
     addFolder(dir: string): Promise<string[]>
     fromJson(file: string): Promise<number>
+    fromIdentifier(identifier: string): Promise<IdentifierImportResult>
   }
   categories: {
     list(): Promise<Category[]>
