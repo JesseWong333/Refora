@@ -135,6 +135,21 @@ function buildMenu(): Menu {
         },
         { type: 'separator' },
         {
+          label: 'Import from Zotero\u2026',
+          click: () => {
+            const w = getWin()
+            if (w) w.webContents.send('menu:import-zotero')
+          }
+        },
+        {
+          label: 'Import from Mendeley\u2026',
+          click: () => {
+            const w = getWin()
+            if (w) w.webContents.send('menu:import-mendeley')
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Export JSON\u2026',
           accelerator: 'Cmd+E',
           click: async () => {

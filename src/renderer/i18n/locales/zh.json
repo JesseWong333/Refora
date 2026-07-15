@@ -28,6 +28,9 @@
     "exportBibtex": "导出 BibTeX…",
     "exportJson": "导出 JSON…",
     "importing": "正在导入 {{current}}/{{total}} 个PDF…",
+    "zoteroImported": "从 Zotero 导入 {{added}} 篇（跳过 {{skipped}} 篇）",
+    "mendeleyImported": "从 Mendeley 导入 {{added}} 篇（跳过 {{skipped}} 篇）",
+    "importFailed": "导入失败",
     "refreshingMetadata": "正在刷新元数据 ({{count}})…",
     "search": "搜索标题、作者、期刊…",
     "settings": "设置"

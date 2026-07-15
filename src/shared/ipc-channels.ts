@@ -20,6 +20,8 @@ export const IpcChannel = {
   ImportAddFiles: 'import:addFiles',
   ImportAddFolder: 'import:addFolder',
   ImportFromJson: 'import:fromJson',
+  ImportFromZotero: 'import:fromZotero',
+  ImportFromMendeley: 'import:fromMendeley',
 
   CategoriesList: 'categories:list',
   CategoriesCreate: 'categories:create',
@@ -82,6 +84,8 @@ export const IpcChannel = {
   EventImportProgress: 'import:progress',
   EventImportToast: 'import:toast',
   EventMenuExportBibtex: 'menu:export-bibtex',
+  EventMenuImportZotero: 'menu:import-zotero',
+  EventMenuImportMendeley: 'menu:import-mendeley',
   EventLibraryScanning: 'library:scanning',
   EventLibrarySwitched: 'library:switched',
   EventAiSummaryUpdated: 'ai:summary:updated',

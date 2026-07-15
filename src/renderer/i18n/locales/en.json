@@ -28,6 +28,9 @@
     "exportBibtex": "Export BibTeX…",
     "exportJson": "Export JSON…",
     "importing": "Importing {{current}}/{{total}} PDFs…",
+    "zoteroImported": "Imported {{added}} from Zotero ({{skipped}} skipped)",
+    "mendeleyImported": "Imported {{added}} from Mendeley ({{skipped}} skipped)",
+    "importFailed": "Import failed",
     "refreshingMetadata": "Refreshing metadata ({{count}})…",
     "search": "Search title, authors, venue…",
     "settings": "Settings"

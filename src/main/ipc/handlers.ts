@@ -9,6 +9,7 @@ import type {
   AiProviderPatch,
   AiReport,
   AiSummary,
+  BibImportResult,
   BootstrapData,
   Category,
   ChatMessage,
@@ -37,6 +38,7 @@ import { moveToLibrary, restoreToOriginal } from '../services/library'
 import { relocate, deleteDocument, bulkDeleteDocuments, findPdfsRecursively } from '../services/files'
 import { emitDocumentUpdated } from '../ipc/events'
 import { writeExportFile, importFromJsonFile, toBibtex } from '../services/export'
+import { importFromBibtex, type BibImportSource } from '../services/bibImport'
 import { isInsideLibrary, containsLibrary } from '../services/paths'
 import { logger } from '../services/logger'
 import type { createWatcher } from '../services/watcher'
@@ -53,6 +55,8 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventImportProgress
   | typeof IpcChannel.EventImportToast
   | typeof IpcChannel.EventMenuExportBibtex
+  | typeof IpcChannel.EventMenuImportZotero
+  | typeof IpcChannel.EventMenuImportMendeley
   | typeof IpcChannel.EventLibraryScanning
   | typeof IpcChannel.EventLibrarySwitched
   | typeof IpcChannel.EventAiSummaryUpdated
@@ -155,6 +159,28 @@ export interface IpcHandlerDeps {
   getWin: () => BrowserWindow | null
   getRuntime: () => RuntimeRef | null
   switchLibraryFolder?: (folder: string) => Promise<LibrarySwitchResult>
+}
+
+async function importBibtex(
+  deps: IpcHandlerDeps,
+  source: BibImportSource
+): Promise<BibImportResult> {
+  const w = deps.getWin()
+  if (!w || w.isDestroyed()) throw new Error('No active window')
+  w.focus()
+  const title = source === 'zotero' ? 'Import from Zotero (BibTeX)' : 'Import from Mendeley (BibTeX)'
+  const result = await dialog.showOpenDialog(w, {
+    title,
+    properties: ['openFile'],
+    filters: [{ name: 'BibTeX files', extensions: ['bib', 'bibtex'] }]
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return { added: 0, skipped: 0, errors: [] }
+  }
+  const rt = deps.getRuntime()
+  if (!rt) throw new Error('Runtime not ready')
+  const res = await importFromBibtex(rt.repos, result.filePaths[0], source)
+  return { added: res.added.length, skipped: res.skipped.length, errors: res.errors }
 }
 
 export function createIpcHandlers(deps: IpcHandlerDeps) {
@@ -343,6 +369,12 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (!rt) throw new Error('Runtime not ready')
         return importFromJsonFile(rt.repos, filePath, mode, rt.db)
       }),
+
+    [IpcChannel.ImportFromZotero]: async (): Promise<Result<BibImportResult>> =>
+      asyncWrap(() => importBibtex(deps, 'zotero')),
+
+    [IpcChannel.ImportFromMendeley]: async (): Promise<Result<BibImportResult>> =>
+      asyncWrap(() => importBibtex(deps, 'mendeley')),
 
     [IpcChannel.CategoriesList]: (): Result<Category[]> => wrap(() => {
       const r = repos()

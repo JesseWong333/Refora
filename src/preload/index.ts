@@ -7,6 +7,7 @@ import type {
   AiProviderPatch,
   AiReport,
   AiSummary,
+  BibImportResult,
   BootstrapData,
   Category,
   ChatDoneEvent,
@@ -125,7 +126,9 @@ const api: ReforaApi = {
   import: {
     addFiles: (paths: string[]) => invoke<string[]>(IpcChannel.ImportAddFiles, paths),
     addFolder: (dir: string) => invoke<string[]>(IpcChannel.ImportAddFolder, dir),
-    fromJson: (file: string) => invoke<number>(IpcChannel.ImportFromJson, file)
+    fromJson: (file: string) => invoke<number>(IpcChannel.ImportFromJson, file),
+    fromZotero: () => invoke<BibImportResult>(IpcChannel.ImportFromZotero),
+    fromMendeley: () => invoke<BibImportResult>(IpcChannel.ImportFromMendeley)
   },
 
   categories: {
@@ -234,6 +237,10 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventImportToast, cb),
     onMenuExportBibtex: (cb: () => void) =>
       subscribe(IpcChannel.EventMenuExportBibtex, cb),
+    onMenuImportZotero: (cb: () => void) =>
+      subscribe(IpcChannel.EventMenuImportZotero, cb),
+    onMenuImportMendeley: (cb: () => void) =>
+      subscribe(IpcChannel.EventMenuImportMendeley, cb),
     onLibraryScanning: (cb: (payload: ImportProgress) => void) =>
       subscribe(IpcChannel.EventLibraryScanning, cb),
     onLibrarySwitched: (cb: (payload: LibrarySwitchResult) => void) =>
