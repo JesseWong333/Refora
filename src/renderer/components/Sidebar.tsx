@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { FilePlus, FolderPlus, ArrowLineLeft, ArrowLineRight, CircleNotch } from '@phosphor-icons/react'
+import { FilePlus, FolderPlus, ArrowLineLeft, ArrowLineRight } from '@phosphor-icons/react'
 import { useDocumentStore } from '../store/documentStore'
 import { errorMessage } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
@@ -23,7 +23,6 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { t } = useTranslation()
   const fetchDocuments = useDocumentStore((s) => s.fetchDocuments)
   const importProgress = useDocumentStore((s) => s.importProgress)
-  const pendingMetadataCount = useDocumentStore((s) => s.pendingMetadataCount)
   const [showSettings, setShowSettings] = useState(false)
   const isMac = document.documentElement.dataset.platform === 'mac'
 
@@ -138,15 +137,6 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           </div>
           <span className="whitespace-nowrap">
             {t('topbar.importing', { current: importProgress.current, total: importProgress.total })}
-          </span>
-        </div>
-      )}
-
-      {!importProgress && pendingMetadataCount > 0 && (
-        <div className="mx-2 mb-1 flex items-center gap-2 text-label text-muted">
-          <CircleNotch className="h-3 w-3 animate-spin text-accent" />
-          <span className="whitespace-nowrap">
-            {t('topbar.refreshingMetadata', { count: pendingMetadataCount })}
           </span>
         </div>
       )}

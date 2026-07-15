@@ -28,7 +28,6 @@
     "exportBibtex": "导出 BibTeX…",
     "exportJson": "导出 JSON…",
     "importing": "正在导入 {{current}}/{{total}} 个PDF…",
-    "refreshingMetadata": "正在刷新元数据 ({{count}})…",
     "search": "搜索标题、作者、期刊…",
     "settings": "设置"
   },

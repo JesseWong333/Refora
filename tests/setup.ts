@@ -46,7 +46,6 @@ const noop = async () => undefined
     bulkDelete: noop,
     bulkCategorize: noop,
     bulkRefreshMetadata: noop,
-    countPendingMetadata: async () => 0,
     openPdf: noop,
     openInFinder: noop,
     refreshMetadata: noop,

@@ -453,17 +453,17 @@ function SingleDetail({ doc }: { doc: Document }) {
         >
           <span>{t('detail.refreshMetadata')}</span>
           {refreshing && (
-            <span className="text-caption font-normal normal-case text-muted">
+            <span className="ml-1 text-caption font-normal normal-case text-muted">
               {t('detail.refreshing')}
             </span>
           )}
           {refreshResult === 'success' && (
-            <span className="text-caption font-normal normal-case text-success">
+            <span className="ml-1 text-caption font-normal normal-case text-success">
               {t('detail.refreshSuccess')}
             </span>
           )}
           {refreshResult === 'failed' && (
-            <span className="text-caption font-normal normal-case text-error">
+            <span className="ml-1 text-caption font-normal normal-case text-error">
               {t('detail.refreshFailed')}
             </span>
           )}

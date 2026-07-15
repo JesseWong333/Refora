@@ -29,6 +29,17 @@ const WORKER_IDLE_TIMEOUT_MS = 60_000
 
 type MetadataJob = () => Promise<void>
 
+class NetworkError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NetworkError'
+  }
+}
+
+function isNetworkError(e: unknown): boolean {
+  return e instanceof NetworkError
+}
+
 const REFERENCE_HEADINGS = /references|bibliography|参考文献|参考资料|references\s*$/i
 const DOI_REGEX = /10\.\d{4,9}\/[-._;()/:a-zA-Z0-9+]+/g
 const ARXIV_ID_REGEX = /(?:arxiv\s*:?\s*|arxiv\.org\/abs\/)(\d{4}\.\d{4,5}(?:v\d+)?)/i
@@ -336,6 +347,7 @@ async function fetchCrossref(doi: string, mailto: string): Promise<{ data: Parti
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
+  let body: { message?: Parameters<typeof parseCrossrefMessage>[0] }
   try {
     const userAgent = mailto
       ? `Refora/0.1 (mailto:${mailto})`
@@ -345,22 +357,24 @@ async function fetchCrossref(doi: string, mailto: string): Promise<{ data: Parti
       headers: { 'User-Agent': userAgent }
     })
     if (!response.ok) return null
-    const body = await response.json() as { message?: Parameters<typeof parseCrossrefMessage>[0] }
-    const msg = body.message
-    if (!msg) return null
-    const data = parseCrossrefMessage(msg)
-    return data ? { data } : null
-  } catch {
-    return null
+    body = await response.json() as { message?: Parameters<typeof parseCrossrefMessage>[0] }
+  } catch (e) {
+    throw new NetworkError(e instanceof Error ? e.message : String(e))
   } finally {
     clearTimeout(timer)
   }
+
+  const msg = body.message
+  if (!msg) return null
+  const data = parseCrossrefMessage(msg)
+  return data ? { data } : null
 }
 
 async function fetchCrossrefByTitle(title: string, mailto: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
+  let body: { message?: { items?: Array<Parameters<typeof parseCrossrefMessage>[0]> } }
   try {
     const userAgent = mailto
       ? `Refora/0.1 (mailto:${mailto})`
@@ -375,24 +389,25 @@ async function fetchCrossrefByTitle(title: string, mailto: string): Promise<{ da
       headers: { 'User-Agent': userAgent }
     })
     if (!response.ok) return null
-    const body = await response.json() as { message?: { items?: Array<Parameters<typeof parseCrossrefMessage>[0]> } }
-    const items = body.message?.items
-    if (!items || items.length === 0) return null
-
-    let best: { data: Partial<Document> | null; confidence: number } = { data: null, confidence: 0 }
-    for (const item of items) {
-      const data = parseCrossrefMessage(item)
-      if (!data?.title) continue
-      const confidence = titleSimilarity(title, data.title)
-      if (confidence > best.confidence) best = { data, confidence }
-    }
-    if (!best.data) return null
-    return { data: best.data, confidence: best.confidence }
-  } catch {
-    return null
+    body = await response.json() as { message?: { items?: Array<Parameters<typeof parseCrossrefMessage>[0]> } }
+  } catch (e) {
+    throw new NetworkError(e instanceof Error ? e.message : String(e))
   } finally {
     clearTimeout(timer)
   }
+
+  const items = body.message?.items
+  if (!items || items.length === 0) return null
+
+  let best: { data: Partial<Document> | null; confidence: number } = { data: null, confidence: 0 }
+  for (const item of items) {
+    const data = parseCrossrefMessage(item)
+    if (!data?.title) continue
+    const confidence = titleSimilarity(title, data.title)
+    if (confidence > best.confidence) best = { data, confidence }
+  }
+  if (!best.data) return null
+  return { data: best.data, confidence: best.confidence }
 }
 
 const arxivXmlParser = new XMLParser({ parseTagValue: false, trimValues: true })
@@ -446,32 +461,33 @@ async function fetchArxiv(id: string): Promise<{ data: Partial<Document>; confid
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
+  let text: string
   try {
     const url = `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}&max_results=1`
     const response = await net.fetch(url, { signal: controller.signal })
     if (!response.ok) return null
-    const text = await response.text()
-
-    const entry = parseArxivEntry(text)
-    if (!entry) return null
-
-    const arxivUrl = entry.id ?? `https://arxiv.org/abs/${id}`
-
-    return {
-      data: {
-        title: entry.title,
-        authors: normalizeAuthors(entry.authors),
-        year: entry.year,
-        abstract: entry.abstract,
-        url: arxivUrl,
-        metadataSource: 'arxiv' as MetadataSource
-      },
-      confidence: 1
-    }
-  } catch {
-    return null
+    text = await response.text()
+  } catch (e) {
+    throw new NetworkError(e instanceof Error ? e.message : String(e))
   } finally {
     clearTimeout(timer)
+  }
+
+  const entry = parseArxivEntry(text)
+  if (!entry) return null
+
+  const arxivUrl = entry.id ?? `https://arxiv.org/abs/${id}`
+
+  return {
+    data: {
+      title: entry.title,
+      authors: normalizeAuthors(entry.authors),
+      year: entry.year,
+      abstract: entry.abstract,
+      url: arxivUrl,
+      metadataSource: 'arxiv' as MetadataSource
+    },
+    confidence: 1
   }
 }
 
@@ -520,6 +536,26 @@ async function fetchDblpByTitle(title: string): Promise<{ data: Partial<Document
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
+  let body: {
+    result?: {
+      hits?: {
+        hit?: Array<{
+          '@score'?: string
+          info?: {
+            title?: string
+            authors?: { author?: Array<{ text?: string }> | { text?: string } }
+            year?: string
+            venue?: string
+            volume?: string
+            pages?: string
+            doi?: string
+            ee?: string
+            type?: string
+          }
+        }>
+      }
+    }
+  }
   try {
     const url = `https://dblp.org/search/publ/api?q=${encodeURIComponent(title)}&format=json&h=1`
     const response = await net.fetch(url, {
@@ -527,102 +563,84 @@ async function fetchDblpByTitle(title: string): Promise<{ data: Partial<Document
       headers: { 'User-Agent': 'Refora/0.1 (mailto:support@refora.app)' }
     })
     if (!response.ok) return null
-    const body = await response.json() as {
-      result?: {
-        hits?: {
-          hit?: Array<{
-            '@score'?: string
-            info?: {
-              title?: string
-              authors?: { author?: Array<{ text?: string }> | { text?: string } }
-              year?: string
-              venue?: string
-              volume?: string
-              pages?: string
-              doi?: string
-              ee?: string
-              type?: string
-            }
-          }>
-        }
-      }
-    }
-
-    const hits = body.result?.hits?.hit
-    if (!hits || hits.length === 0) return null
-    const hit = hits[0]
-    const info = hit.info
-    if (!info?.title) return null
-
-    const confidence = titleSimilarity(title, info.title)
-    if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
-
-    const rawAuthors = info.authors?.author
-    let authors: string | null = null
-    if (Array.isArray(rawAuthors)) {
-      authors = rawAuthors.map((a) => a.text ?? '').filter(Boolean).join('; ') || null
-    } else if (rawAuthors?.text) {
-      authors = rawAuthors.text
-    }
-
-    const year = nonEmptyString(info.year) ?? null
-    const venue = nonEmptyString(info.venue) ?? null
-    const normalizedVenue = venue ? normalizeVenue(venue) : null
-    const volume = nonEmptyString(info.volume) ?? null
-    const pages = nonEmptyString(info.pages) ?? null
-    const doi = nonEmptyString(info.doi) ?? null
-    const ee = nonEmptyString(info.ee) ?? null
-    const url2 = ee ?? doi ? (doi ? `https://doi.org/${doi}` : ee ?? null) : null
-
-    const data: Partial<Document> = { metadataSource: 'dblp' as MetadataSource }
-    data.title = info.title.replace(/\.\s*$/, '')
-    if (authors) data.authors = normalizeAuthors(authors)
-    if (year) data.year = year
-    if (normalizedVenue) data.venue = normalizedVenue
-    if (volume) data.volume = volume
-    if (pages) data.pages = pages
-    if (doi) data.doi = doi
-    if (url2) data.url = url2
-
-    return { data, confidence }
-  } catch {
-    return null
+    body = await response.json() as typeof body
+  } catch (e) {
+    throw new NetworkError(e instanceof Error ? e.message : String(e))
   } finally {
     clearTimeout(timer)
   }
+
+  const hits = body.result?.hits?.hit
+  if (!hits || hits.length === 0) return null
+  const hit = hits[0]
+  const info = hit.info
+  if (!info?.title) return null
+
+  const confidence = titleSimilarity(title, info.title)
+  if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
+
+  const rawAuthors = info.authors?.author
+  let authors: string | null = null
+  if (Array.isArray(rawAuthors)) {
+    authors = rawAuthors.map((a) => a.text ?? '').filter(Boolean).join('; ') || null
+  } else if (rawAuthors?.text) {
+    authors = rawAuthors.text
+  }
+
+  const year = nonEmptyString(info.year) ?? null
+  const venue = nonEmptyString(info.venue) ?? null
+  const normalizedVenue = venue ? normalizeVenue(venue) : null
+  const volume = nonEmptyString(info.volume) ?? null
+  const pages = nonEmptyString(info.pages) ?? null
+  const doi = nonEmptyString(info.doi) ?? null
+  const ee = nonEmptyString(info.ee) ?? null
+  const url2 = ee ?? doi ? (doi ? `https://doi.org/${doi}` : ee ?? null) : null
+
+  const data: Partial<Document> = { metadataSource: 'dblp' as MetadataSource }
+  data.title = info.title.replace(/\.\s*$/, '')
+  if (authors) data.authors = normalizeAuthors(authors)
+  if (year) data.year = year
+  if (normalizedVenue) data.venue = normalizedVenue
+  if (volume) data.volume = volume
+  if (pages) data.pages = pages
+  if (doi) data.doi = doi
+  if (url2) data.url = url2
+
+  return { data, confidence }
 }
 
 async function fetchArxivByTitle(title: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
+  let text: string
   try {
     const url = `https://export.arxiv.org/api/query?search_query=ti:${encodeURIComponent(`"${title}"`)}&max_results=1`
     const response = await net.fetch(url, { signal: controller.signal })
     if (!response.ok) return null
-    const text = await response.text()
-
-    const entry = parseArxivEntry(text)
-    if (!entry) return null
-
-    const confidence = titleSimilarity(title, entry.title)
-    if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
-
-    return {
-      data: {
-        title: entry.title,
-        authors: normalizeAuthors(entry.authors),
-        year: entry.year,
-        abstract: entry.abstract,
-        url: entry.id,
-        metadataSource: 'arxiv' as MetadataSource
-      },
-      confidence
-    }
-  } catch {
-    return null
+    text = await response.text()
+  } catch (e) {
+    throw new NetworkError(e instanceof Error ? e.message : String(e))
   } finally {
     clearTimeout(timer)
+  }
+
+  const entry = parseArxivEntry(text)
+  if (!entry) return null
+
+  const confidence = titleSimilarity(title, entry.title)
+  if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
+
+  return {
+    data: {
+      title: entry.title,
+      authors: normalizeAuthors(entry.authors),
+      year: entry.year,
+      abstract: entry.abstract,
+      url: entry.id,
+      metadataSource: 'arxiv' as MetadataSource
+    },
+    confidence
   }
 }
 
@@ -803,11 +821,18 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
 
     let fetchedData: Partial<Document> | null = null
     let source: MetadataSource = 'pdf'
+    let networkFailed = false
 
     if (doi) {
       await rateGate('crossref')
       const mailto = repos.settings.get<string>('crossrefMailto', '')
-      const result = await fetchCrossref(doi, mailto)
+      let result: { data: Partial<Document> } | null = null
+      try {
+        result = await fetchCrossref(doi, mailto)
+      } catch (e) {
+        if (isNetworkError(e)) networkFailed = true
+        else throw e
+      }
       logger.info(`metadata:processJob crossref id=${docId} ok=${!!result}`)
       if (result) {
         fetchedData = result.data
@@ -819,7 +844,13 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       const arxivId = extractArxivFromText(text)
       if (arxivId) {
         await rateGate('arxiv')
-        const result = await fetchArxiv(arxivId)
+        let result: { data: Partial<Document>; confidence: number } | null = null
+        try {
+          result = await fetchArxiv(arxivId)
+        } catch (e) {
+          if (isNetworkError(e)) networkFailed = true
+          else throw e
+        }
         logger.info(`metadata:processJob arxiv id=${docId} ok=${!!result}`)
         if (result && isReliableTitle(result.data.title ?? null, text)) {
           if (textTitle && titleSimilarity(textTitle, result.data.title ?? '') < TITLE_SIMILARITY_THRESHOLD) {
@@ -836,7 +867,13 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       logger.info(`metadata:processJob title-search id=${docId} title=${JSON.stringify(searchTitle).slice(0, 80)}`)
       let weakMatch = false
       await rateGate('dblp')
-      const dblpResult = await fetchDblpByTitle(searchTitle)
+      let dblpResult: { data: Partial<Document>; confidence: number } | null = null
+      try {
+        dblpResult = await fetchDblpByTitle(searchTitle)
+      } catch (e) {
+        if (isNetworkError(e)) networkFailed = true
+        else throw e
+      }
       logger.info(`metadata:processJob dblp id=${docId} ok=${!!dblpResult}${dblpResult ? ` confidence=${dblpResult.confidence.toFixed(2)}` : ''}`)
       if (dblpResult) {
         if (dblpResult.confidence >= TITLE_USE_THRESHOLD) {
@@ -848,7 +885,13 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       }
       if (!fetchedData) {
         await rateGate('arxiv')
-        const arxivResult = await fetchArxivByTitle(searchTitle)
+        let arxivResult: { data: Partial<Document>; confidence: number } | null = null
+        try {
+          arxivResult = await fetchArxivByTitle(searchTitle)
+        } catch (e) {
+          if (isNetworkError(e)) networkFailed = true
+          else throw e
+        }
         logger.info(`metadata:processJob arxiv-title id=${docId} ok=${!!arxivResult}${arxivResult ? ` confidence=${arxivResult.confidence.toFixed(2)}` : ''}`)
         if (arxivResult) {
           if (arxivResult.confidence >= TITLE_USE_THRESHOLD) {
@@ -864,6 +907,16 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       }
     }
 
+    if (destroyed) return
+
+    if (!fetchedData && networkFailed) {
+      logger.info(`metadata:processJob network-failed id=${docId}`)
+      repos.documents.incrementMetadataAttempts(docId)
+      repos.documents.setMetadataStatus(docId, 'failed')
+      emitFailedUpdate(docId)
+      return
+    }
+
     if (!fetchedData) {
       const authorsFromInfo = nonEmptyString(info['Author']) ?? nonEmptyString(info['author'])
       const finalTitle = fileNameTitle ?? fallbackTitle
@@ -877,11 +930,16 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
 
     if (destroyed) return
 
-    await supplementVenueFields(docId, fetchedData, {
-      searchTitle,
-      text,
-      mailto: repos.settings.get<string>('crossrefMailto', '')
-    })
+    try {
+      await supplementVenueFields(docId, fetchedData, {
+        searchTitle,
+        text,
+        mailto: repos.settings.get<string>('crossrefMailto', '')
+      })
+    } catch (e) {
+      if (!isNetworkError(e)) throw e
+      logger.info(`metadata:processJob supplement-network-failed id=${docId}`)
+    }
 
     if (destroyed) return
 

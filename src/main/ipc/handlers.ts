@@ -227,8 +227,6 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       const ms = deps.getRuntime()?.metadataService
       return ms ? (ms.bulkRefreshMetadata(ids), { ok: true, data: undefined }) : notImplemented('documents.bulkRefreshMetadata')
     },
-    [IpcChannel.DocumentsCountPendingMetadata]: (): Result<number> =>
-      wrap(() => repos().documents.countPendingMetadata()),
     [IpcChannel.DocumentsOpenPdf]: async (id: string): Promise<Result<Document>> =>
       asyncWrap(() => openPdf(repos(), getWin(), id)),
     [IpcChannel.DocumentsOpenInFinder]: (id: string): Result<void> =>
