@@ -9,7 +9,8 @@ const mockAddDocs = vi.fn()
 const mockFetchItems = vi.fn()
 const mockRemoveItem = vi.fn()
 const mockDeleteReport = vi.fn()
-const { mockTranslate } = vi.hoisted(() => ({
+const { mockShowToast, mockTranslate } = vi.hoisted(() => ({
+  mockShowToast: vi.fn(),
   mockTranslate: (key: string, fallback?: string) => fallback ?? key
 }))
 
@@ -38,11 +39,20 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
+vi.mock('@renderer/store/documentStore', () => ({
+  useDocumentStore: {
+    getState: () => ({ showToast: mockShowToast })
+  }
+}))
+
+vi.mock('@lobehub/ui', async () => import('../mocks/lobehub-ui'))
+
 beforeEach(() => {
   mockAddDocs.mockReset().mockResolvedValue(undefined)
   mockFetchItems.mockReset().mockResolvedValue(undefined)
   mockRemoveItem.mockReset()
   mockDeleteReport.mockReset()
+  mockShowToast.mockReset()
   mockItems = []
   mockReports = []
   mockNotes = []
@@ -92,7 +102,7 @@ describe('Board drag-and-drop', () => {
     })
   })
 
-  it('ignores text/plain payloads without the document MIME type', async () => {
+  it('ignores text/plain payloads without the document MIME type', () => {
     const { container } = render(<Board />)
     const board = container.firstElementChild as HTMLElement
 
@@ -104,12 +114,10 @@ describe('Board drag-and-drop', () => {
     }
 
     fireEvent.drop(board, { dataTransfer })
-
-    await new Promise((resolve) => setTimeout(resolve, 20))
     expect(mockAddDocs).not.toHaveBeenCalled()
   })
 
-  it('ignores drops with no document payload', async () => {
+  it('ignores drops with no document payload', () => {
     const { container } = render(<Board />)
     const board = container.firstElementChild as HTMLElement
 
@@ -121,13 +129,12 @@ describe('Board drag-and-drop', () => {
     }
 
     fireEvent.drop(board, { dataTransfer })
-    await new Promise((r) => setTimeout(r, 20))
     expect(mockAddDocs).not.toHaveBeenCalled()
   })
 })
 
 describe('Board error handling', () => {
-  it('does not crash when api.documents.get rejects', async () => {
+  it('reports document loading failures through the toast', async () => {
     mockItems = [
       {
         id: 'item-1',
@@ -143,9 +150,9 @@ describe('Board error handling', () => {
     const documents = api.documents as Record<string, unknown>
     documents.get = vi.fn().mockRejectedValue(new Error('DB error'))
 
-    const { container } = render(<Board />)
+    render(<Board />)
     await waitFor(() => {
-      expect(container.firstElementChild).toBeTruthy()
+      expect(mockShowToast).toHaveBeenCalledWith('DB error')
     })
   })
 })

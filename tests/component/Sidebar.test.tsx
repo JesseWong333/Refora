@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ListFilter, Category, Document } from '../../src/shared/ipc-types'
 
@@ -53,15 +53,23 @@ vi.mock('@renderer/store/documentStore', () => ({
   ),
 }))
 
+vi.mock('@lobehub/ui', async () => import('../mocks/lobehub-ui'))
+
+vi.mock('../../src/renderer/hooks/useTheme', () => ({
+  useTheme: () => ({ mode: 'system', resolvedTheme: 'light', setMode: vi.fn() })
+}))
+
 vi.mock('../../src/renderer/components/SettingsModal', () => ({
   default: vi.fn(() => null)
 }))
 
-import Sidebar from '../../src/renderer/components/Sidebar'
-import { AppThemeProvider } from '../../src/renderer/hooks/useTheme'
+vi.mock('../../src/renderer/components/ImportByIdentifierDialog', () => ({
+  default: vi.fn(() => null)
+}))
 
-const renderWithTheme = (ui: React.ReactElement) =>
-  render(ui, { wrapper: ({ children }) => <AppThemeProvider>{children}</AppThemeProvider> })
+import Sidebar from '../../src/renderer/components/Sidebar'
+
+const renderSidebar = () => render(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
 
 describe('Sidebar', () => {
   beforeEach(() => {
@@ -77,13 +85,8 @@ describe('Sidebar', () => {
     cleanup()
   })
 
-  it('renders without crashing', () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    expect(screen.getByText('sidebar.allFiles')).toBeInTheDocument()
-  })
-
-  it('renders all 4 smart list items', () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+  it('renders all smart list items', () => {
+    renderSidebar()
     expect(screen.getByText('sidebar.allFiles')).toBeInTheDocument()
     expect(screen.getByText('sidebar.recentlyRead')).toBeInTheDocument()
     expect(screen.getByText('sidebar.recentlyAdded')).toBeInTheDocument()
@@ -91,13 +94,14 @@ describe('Sidebar', () => {
   })
 
   it('calls setListMode with { mode: "all" } when All Files is clicked', async () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    await userEvent.click(screen.getByText('sidebar.allFiles'))
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByText('sidebar.allFiles'))
     expect(mocks.setListMode).toHaveBeenCalledWith({ mode: 'all' })
   })
 
   it('renders categories section with names and counts', () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderSidebar()
     expect(screen.getByText('sidebar.categories')).toBeInTheDocument()
     expect(screen.getByText('ML (5)')).toBeInTheDocument()
     expect(screen.getByText('NLP (3)')).toBeInTheDocument()
@@ -106,62 +110,64 @@ describe('Sidebar', () => {
 
   it('shows empty state placeholder when categories array is empty', () => {
     mocks.state.categories = []
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    const emptyMessages = screen.getAllByText('sidebar.emptyCategories')
-    expect(emptyMessages.length).toBeGreaterThanOrEqual(1)
+    renderSidebar()
+    expect(screen.getByText('sidebar.emptyCategories')).toBeInTheDocument()
     expect(screen.queryByText('ML (5)')).not.toBeInTheDocument()
   })
 
   it('shows an inline input when the create-category button is clicked', async () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    await userEvent.click(screen.getByLabelText('sidebar.createCategory'))
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByLabelText('sidebar.createCategory'))
     expect(screen.getByPlaceholderText('sidebar.categoryName')).toBeInTheDocument()
   })
 
   it('creates a category when typing and pressing Enter in the inline input', async () => {
+    const user = userEvent.setup()
     mocks.createCategory.mockResolvedValue({ id: 'new', name: 'Foo', sortOrder: 0, createdAt: 0 })
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    await userEvent.click(screen.getByLabelText('sidebar.createCategory'))
+    renderSidebar()
+    await user.click(screen.getByLabelText('sidebar.createCategory'))
     const input = screen.getByPlaceholderText('sidebar.categoryName')
-    await userEvent.type(input, 'Foo{Enter}')
-    expect(mocks.createCategory).toHaveBeenCalledWith('Foo')
+    await user.type(input, 'Foo{Enter}')
+    await waitFor(() => expect(mocks.createCategory).toHaveBeenCalledWith('Foo'))
   })
 
   it('cancels inline create on Escape without creating', async () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    await userEvent.click(screen.getByLabelText('sidebar.createCategory'))
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByLabelText('sidebar.createCategory'))
     const input = screen.getByPlaceholderText('sidebar.categoryName')
-    await userEvent.type(input, 'Bar{Escape}')
+    await user.type(input, 'Bar{Escape}')
     expect(mocks.createCategory).not.toHaveBeenCalled()
     expect(screen.queryByPlaceholderText('sidebar.categoryName')).not.toBeInTheDocument()
   })
 
   it('calls setListMode with category mode and correct categoryId on category click', async () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    await userEvent.click(screen.getByText('ML (5)'))
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByText('ML (5)'))
     expect(mocks.setListMode).toHaveBeenCalledWith({ mode: 'category', categoryId: 'cat1' })
   })
 
   it('applies sidebar-item-active class to the active smart list item', () => {
     mocks.state.listMode = { mode: 'starred' }
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderSidebar()
 
     const starredItem = screen.getByText('sidebar.starred').closest('[class*="sidebar-item"]')
-    expect(starredItem?.className).toContain('sidebar-item-active')
+    expect(starredItem).toHaveClass('sidebar-item-active')
 
     const allFilesItem = screen.getByText('sidebar.allFiles').closest('[class*="sidebar-item"]')
-    expect(allFilesItem?.className).not.toContain('sidebar-item-active')
+    expect(allFilesItem).not.toHaveClass('sidebar-item-active')
   })
 
   it('applies sidebar-item-active class to the active category item', () => {
     mocks.state.listMode = { mode: 'category', categoryId: 'cat2' }
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderSidebar()
 
     const nlpItem = screen.getByText('NLP (3)').closest('[class*="sidebar-item"]')
-    expect(nlpItem?.className).toContain('sidebar-item-active')
+    expect(nlpItem).toHaveClass('sidebar-item-active')
 
     const mlItem = screen.getByText('ML (5)').closest('[class*="sidebar-item"]')
-    expect(mlItem?.className).not.toContain('sidebar-item-active')
+    expect(mlItem).not.toHaveClass('sidebar-item-active')
   })
-
 })

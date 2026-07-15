@@ -8,7 +8,6 @@ build/*
 !build/entitlements.mac.plist
 !build/entitlements.mac.inherit.plist
 *.tsbuildinfo
-.DS_Store
 node_modules/.tmp/
 .kilo/
 .zcode/
@@ -22,3 +21,4 @@ playwright-report/
 .vite/
 .cache/
 .tmp/
+.DS_Store

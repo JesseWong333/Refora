@@ -64,18 +64,27 @@ const mockReportsList = vi.fn()
 const mockReportsDelete = vi.fn()
 const mockReportsUpdate = vi.fn()
 const mockChatThreads = vi.fn()
+const mockChatDeleteThread = vi.fn()
+const mockRenameThread = vi.fn()
 const mockEventsOff = vi.fn()
 const mockOnWorkspaceItemsChanged = vi.fn()
 const mockOnAiSummaryUpdated = vi.fn()
 const mockOnAiReportCreated = vi.fn()
 const mockWorkspacesList = vi.fn()
+const mockWorkspacesCreate = vi.fn()
+const mockWorkspacesRename = vi.fn()
+const mockWorkspacesDelete = vi.fn()
 const mockWorkspaceItemsList = vi.fn()
+const mockWorkspaceItemsAdd = vi.fn()
+const mockWorkspaceItemsRemove = vi.fn()
 const mockWorkspaceItemsReorder = vi.fn()
 const mockWorkspaceItemsResize = vi.fn()
 const mockWorkspaceItemsMove = vi.fn()
 const mockWorkspaceNotesList = vi.fn()
 const mockWorkspaceNotesCreate = vi.fn()
+const mockWorkspaceNotesDelete = vi.fn()
 const mockWorkspaceNotesUpdate = vi.fn()
+const mockShowToast = vi.fn()
 
 function resetStoreState(): void {
   useWorkspaceStore.setState({
@@ -97,25 +106,46 @@ beforeEach(() => {
   mockReportsDelete.mockReset()
   mockReportsUpdate.mockReset()
   mockChatThreads.mockReset()
+  mockChatDeleteThread.mockReset()
+  mockRenameThread.mockReset()
   mockEventsOff.mockReset()
   mockOnWorkspaceItemsChanged.mockReset()
   mockOnAiSummaryUpdated.mockReset()
   mockOnAiReportCreated.mockReset()
   mockWorkspacesList.mockReset()
+  mockWorkspacesCreate.mockReset()
+  mockWorkspacesRename.mockReset()
+  mockWorkspacesDelete.mockReset()
   mockWorkspaceItemsList.mockReset()
+  mockWorkspaceItemsAdd.mockReset()
+  mockWorkspaceItemsRemove.mockReset()
   mockWorkspaceItemsReorder.mockReset()
   mockWorkspaceItemsResize.mockReset()
   mockWorkspaceItemsMove.mockReset()
   mockWorkspaceNotesList.mockReset()
   mockWorkspaceNotesCreate.mockReset()
+  mockWorkspaceNotesDelete.mockReset()
   mockWorkspaceNotesUpdate.mockReset()
+  mockShowToast.mockReset()
 
   mockReportsList.mockResolvedValue([])
   mockReportsDelete.mockResolvedValue(undefined)
   mockReportsUpdate.mockResolvedValue(makeReport())
   mockChatThreads.mockResolvedValue([])
+  mockChatDeleteThread.mockResolvedValue(undefined)
+  mockRenameThread.mockResolvedValue(undefined)
   mockWorkspacesList.mockResolvedValue([])
+  mockWorkspacesCreate.mockImplementation(async (name: string) => ({
+    id: 'ws-new',
+    name,
+    createdAt: 1,
+    updatedAt: 1
+  }))
+  mockWorkspacesRename.mockResolvedValue(undefined)
+  mockWorkspacesDelete.mockResolvedValue(undefined)
   mockWorkspaceItemsList.mockResolvedValue([])
+  mockWorkspaceItemsAdd.mockResolvedValue([])
+  mockWorkspaceItemsRemove.mockResolvedValue(undefined)
   mockWorkspaceItemsReorder.mockResolvedValue([])
   mockWorkspaceItemsResize.mockImplementation(async (_id: string, width: number, height: number) =>
     makeItem({ width, height })
@@ -125,6 +155,7 @@ beforeEach(() => {
   )
   mockWorkspaceNotesList.mockResolvedValue([])
   mockWorkspaceNotesCreate.mockResolvedValue(makeNote())
+  mockWorkspaceNotesDelete.mockResolvedValue(undefined)
   mockWorkspaceNotesUpdate.mockResolvedValue(makeNote())
 
   const api = window.api as unknown as Record<string, unknown>
@@ -135,6 +166,8 @@ beforeEach(() => {
 
   const ai = api.ai as Record<string, unknown>
   ai.chatThreads = mockChatThreads
+  ai.chatDeleteThread = mockChatDeleteThread
+  ai.renameThread = mockRenameThread
 
   const events = api.events as Record<string, unknown>
   events.off = mockEventsOff
@@ -144,9 +177,14 @@ beforeEach(() => {
 
   const workspaces = api.workspaces as Record<string, unknown>
   workspaces.list = mockWorkspacesList
+  workspaces.create = mockWorkspacesCreate
+  workspaces.rename = mockWorkspacesRename
+  workspaces.delete = mockWorkspacesDelete
 
   const workspaceItems = api.workspaceItems as Record<string, unknown>
   workspaceItems.list = mockWorkspaceItemsList
+  workspaceItems.add = mockWorkspaceItemsAdd
+  workspaceItems.remove = mockWorkspaceItemsRemove
   workspaceItems.reorder = mockWorkspaceItemsReorder
   workspaceItems.resize = mockWorkspaceItemsResize
   workspaceItems.move = mockWorkspaceItemsMove
@@ -154,9 +192,10 @@ beforeEach(() => {
   const workspaceNotes = api.workspaceNotes as Record<string, unknown>
   workspaceNotes.list = mockWorkspaceNotesList
   workspaceNotes.create = mockWorkspaceNotesCreate
+  workspaceNotes.delete = mockWorkspaceNotesDelete
   workspaceNotes.update = mockWorkspaceNotesUpdate
 
-  useDocumentStore.setState({ showToast: vi.fn() })
+  useDocumentStore.setState({ showToast: mockShowToast })
 
   resetStoreState()
 })
@@ -406,6 +445,176 @@ describe('WorkspaceStore', () => {
 
       await update
       expect(useWorkspaceStore.getState().notes).toEqual(nextNotes)
+    })
+  })
+
+  describe('workspace lifecycle actions', () => {
+    it('creates, renames, and deletes the active workspace', async () => {
+      const created = await useWorkspaceStore.getState().createWorkspace('New workspace')
+      expect(created).toMatchObject({ id: 'ws-new', name: 'New workspace' })
+      expect(useWorkspaceStore.getState().workspaces).toEqual([created])
+
+      await useWorkspaceStore.getState().renameWorkspace('ws-new', 'Renamed')
+      expect(mockWorkspacesRename).toHaveBeenCalledWith('ws-new', 'Renamed')
+      expect(useWorkspaceStore.getState().workspaces[0].name).toBe('Renamed')
+
+      useWorkspaceStore.setState({
+        activeWorkspaceId: 'ws-new',
+        activeThreadId: 'thread-1',
+        panelOpen: true,
+        items: [makeItem({ workspaceId: 'ws-new' })],
+        reports: [makeReport({ workspaceId: 'ws-new' })],
+        notes: [makeNote({ workspaceId: 'ws-new' })]
+      })
+      await useWorkspaceStore.getState().deleteWorkspace('ws-new')
+
+      expect(mockWorkspacesDelete).toHaveBeenCalledWith('ws-new')
+      expect(useWorkspaceStore.getState()).toMatchObject({
+        activeWorkspaceId: null,
+        activeThreadId: null,
+        panelOpen: false,
+        items: [],
+        reports: [],
+        notes: []
+      })
+    })
+
+    it('shows errors when workspace mutations fail', async () => {
+      mockWorkspacesCreate.mockRejectedValueOnce(new Error('create failed'))
+      mockWorkspacesRename.mockRejectedValueOnce(new Error('rename failed'))
+      mockWorkspacesDelete.mockRejectedValueOnce(new Error('delete failed'))
+
+      expect(await useWorkspaceStore.getState().createWorkspace('Bad')).toBeNull()
+      await useWorkspaceStore.getState().renameWorkspace('ws-1', 'Bad')
+      await useWorkspaceStore.getState().deleteWorkspace('ws-1')
+      expect(mockShowToast).toHaveBeenCalledTimes(3)
+    })
+
+    it('routes AI events and unregisters them on destroy', async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1' })
+      useWorkspaceStore.getState().init()
+
+      const summaryUpdated = mockOnAiSummaryUpdated.mock.calls[0][0] as (docId: string) => void
+      const reportCreated = mockOnAiReportCreated.mock.calls[0][0] as (report: AiReport) => void
+      summaryUpdated('doc-1')
+      reportCreated(makeReport())
+
+      await vi.waitFor(() => {
+        expect(mockWorkspaceItemsList).toHaveBeenCalledWith('ws-1')
+      })
+      expect(useWorkspaceStore.getState().reports).toHaveLength(1)
+
+      reportCreated(makeReport({ title: 'Updated report' }))
+      expect(useWorkspaceStore.getState().reports[0].title).toBe('Updated report')
+
+      useWorkspaceStore.getState().destroy()
+      expect(mockEventsOff).toHaveBeenCalledWith('ai:summary:updated', summaryUpdated)
+      expect(mockEventsOff).toHaveBeenCalledWith('ai:report:created', reportCreated)
+      expect(mockEventsOff).toHaveBeenCalledWith('workspace:items:changed', expect.any(Function))
+      expect(useWorkspaceStore.getState().initialized).toBe(false)
+    })
+  })
+
+  describe('thread and panel actions', () => {
+    it('updates thread, streaming, panel, and fullscreen state', () => {
+      useWorkspaceStore.getState().setActiveThreadId('thread-1')
+      useWorkspaceStore.getState().setChatStreaming(true)
+      useWorkspaceStore.getState().openPanel()
+      useWorkspaceStore.getState().toggleFullscreen()
+
+      expect(useWorkspaceStore.getState()).toMatchObject({
+        activeThreadId: 'thread-1',
+        chatStreaming: true,
+        panelOpen: true,
+        fullscreen: true
+      })
+
+      useWorkspaceStore.getState().closePanel()
+      expect(useWorkspaceStore.getState().panelOpen).toBe(false)
+    })
+
+    it('deletes the active thread and renames threads optimistically', async () => {
+      const thread = {
+        id: 'thread-1',
+        workspaceId: 'ws-1',
+        providerId: 'provider-1',
+        title: 'Original',
+        createdAt: 0
+      }
+      useWorkspaceStore.setState({ threads: [thread], activeThreadId: 'thread-1' })
+
+      await useWorkspaceStore.getState().deleteThread('thread-1')
+      expect(mockChatDeleteThread).toHaveBeenCalledWith('thread-1')
+      expect(useWorkspaceStore.getState().activeThreadId).toBeNull()
+
+      await useWorkspaceStore.getState().renameThread('thread-1', 'Renamed')
+      expect(mockRenameThread).toHaveBeenCalledWith('thread-1', 'Renamed')
+      expect(useWorkspaceStore.getState().threads[0].title).toBe('Renamed')
+
+      mockRenameThread.mockRejectedValueOnce(new Error('rename failed'))
+      await useWorkspaceStore.getState().renameThread('thread-1', 'Rejected')
+      expect(useWorkspaceStore.getState().threads[0].title).toBe('Renamed')
+      expect(mockShowToast).toHaveBeenCalled()
+    })
+
+    it('shows an error when deleting a thread fails', async () => {
+      mockChatDeleteThread.mockRejectedValueOnce(new Error('delete failed'))
+      await useWorkspaceStore.getState().deleteThread('thread-1')
+      expect(mockShowToast).toHaveBeenCalledWith('delete failed')
+    })
+  })
+
+  describe('item actions', () => {
+    it('adds documents and other items with placement and refreshes items', async () => {
+      const placement = { x: 120, y: 240 }
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1' })
+
+      await useWorkspaceStore.getState().addDocs(['doc-1'], placement)
+      expect(mockWorkspaceItemsAdd).toHaveBeenCalledWith(
+        'ws-1',
+        'document',
+        ['doc-1'],
+        placement
+      )
+
+      await useWorkspaceStore.getState().addItem('report', ['report-1'])
+      expect(mockWorkspaceItemsAdd).toHaveBeenCalledWith('ws-1', 'report', ['report-1'])
+      expect(mockWorkspaceItemsList).toHaveBeenCalledWith('ws-1')
+    })
+
+    it('removes items and reports add failures', async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1' })
+      await useWorkspaceStore.getState().removeItem('item-1')
+      expect(mockWorkspaceItemsRemove).toHaveBeenCalledWith('item-1')
+
+      mockWorkspaceItemsAdd.mockRejectedValueOnce(new Error('add failed'))
+      await expect(useWorkspaceStore.getState().addDocs(['doc-1'])).rejects.toThrow('add failed')
+      expect(mockShowToast).toHaveBeenCalledWith('add failed')
+
+      mockWorkspaceItemsAdd.mockRejectedValueOnce(new Error('item failed'))
+      await useWorkspaceStore.getState().addItem('report', ['report-1'])
+      expect(mockShowToast).toHaveBeenCalledWith('item failed')
+
+      mockWorkspaceItemsRemove.mockRejectedValueOnce(new Error('remove failed'))
+      await useWorkspaceStore.getState().removeItem('item-1')
+      expect(mockShowToast).toHaveBeenCalledWith('remove failed')
+    })
+
+    it('deletes notes optimistically and restores them on failure', async () => {
+      const note = makeNote()
+      const item = makeItem({ kind: 'note', docId: null, noteId: note.id })
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1', notes: [note], items: [item] })
+
+      await useWorkspaceStore.getState().deleteNote(note.id)
+      expect(mockWorkspaceNotesDelete).toHaveBeenCalledWith(note.id)
+      expect(useWorkspaceStore.getState().notes).toEqual([])
+      expect(useWorkspaceStore.getState().items).toEqual([])
+
+      useWorkspaceStore.setState({ notes: [note], items: [item] })
+      mockWorkspaceNotesDelete.mockRejectedValueOnce(new Error('delete failed'))
+      await useWorkspaceStore.getState().deleteNote(note.id)
+      expect(useWorkspaceStore.getState().notes).toEqual([note])
+      expect(useWorkspaceStore.getState().items).toEqual([item])
     })
   })
 

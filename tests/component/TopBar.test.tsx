@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReforaApi } from '@shared/ipc-types'
 
 const mocks = vi.hoisted(() => {
   const state: Record<string, unknown> = {
@@ -39,17 +40,29 @@ vi.mock('@renderer/store/documentStore', () => ({
   },
 }))
 
+vi.mock('@lobehub/ui', async () => import('../mocks/lobehub-ui'))
+
+vi.mock('@renderer/hooks/useTheme', () => ({
+  useTheme: () => ({ mode: 'system', resolvedTheme: 'light', setMode: vi.fn() })
+}))
+
 vi.mock('@renderer/components/SettingsModal', () => ({
-  default: () => null
+  default: ({ open }: { open: boolean }) => open ? <div role="dialog" aria-label="settings" /> : null
+}))
+
+vi.mock('@renderer/components/ImportByIdentifierDialog', () => ({
+  default: ({ open }: { open: boolean }) => open ? <div role="dialog" aria-label="identifier import" /> : null
 }))
 
 import Sidebar from '@renderer/components/Sidebar'
-import { AppThemeProvider } from '@renderer/hooks/useTheme'
 
-const renderWithTheme = (ui: React.ReactElement) =>
-  render(ui, { wrapper: ({ children }) => <AppThemeProvider>{children}</AppThemeProvider> })
+const api = window.api as ReforaApi
+const originalAddFiles = api.import.addFiles
 
-describe('Sidebar header actions', () => {
+const renderSidebar = (collapsed = false, onToggleCollapse = vi.fn()) =>
+  render(<Sidebar collapsed={collapsed} onToggleCollapse={onToggleCollapse} />)
+
+describe('Sidebar actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.state.importProgress = null
@@ -59,51 +72,63 @@ describe('Sidebar header actions', () => {
 
   afterEach(() => {
     cleanup()
+    api.import.addFiles = originalAddFiles
   })
 
   it('renders add file / identifier import / collapse buttons in header', () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderSidebar()
     expect(screen.getByLabelText('topbar.addFile')).toBeInTheDocument()
     expect(screen.getByLabelText('topbar.importFromIdentifier')).toBeInTheDocument()
     expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
   })
 
-  it('renders settings and theme buttons in footer', () => {
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    expect(screen.getByTitle('topbar.settings')).toBeInTheDocument()
+  it('opens settings from the footer', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByTitle('topbar.settings'))
+    expect(screen.getByRole('dialog', { name: 'settings' })).toBeInTheDocument()
     expect(screen.queryByText('topbar.exportJson')).not.toBeInTheDocument()
     expect(screen.queryByText('topbar.exportBibtex')).not.toBeInTheDocument()
   })
 
   it('shows import progress bar when importProgress is set', () => {
     mocks.state.importProgress = { current: 2, total: 5 }
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderSidebar()
     expect(screen.getByText('topbar.importing')).toBeInTheDocument()
   })
 
   it('hides progress bar when importProgress is null', () => {
     mocks.state.importProgress = null
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
+    renderSidebar()
     expect(screen.queryByText('topbar.importing')).not.toBeInTheDocument()
   })
 
   it('calls onToggleCollapse when collapse button is clicked', async () => {
+    const user = userEvent.setup()
     const toggleSpy = vi.fn()
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={toggleSpy} />)
-    await userEvent.click(screen.getByLabelText('settings.sidebarCollapsed'))
+    renderSidebar(false, toggleSpy)
+    await user.click(screen.getByLabelText('settings.sidebarCollapsed'))
     expect(toggleSpy).toHaveBeenCalledOnce()
   })
 
   it('renders expand button when collapsed', () => {
-    renderWithTheme(<Sidebar collapsed={true} onToggleCollapse={vi.fn()} />)
+    renderSidebar(true)
     expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
   })
 
+  it('opens identifier import from the header', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByLabelText('topbar.importFromIdentifier'))
+    expect(screen.getByRole('dialog', { name: 'identifier import' })).toBeInTheDocument()
+  })
+
   it('calls api.import.addFiles when add file button is clicked', async () => {
+    const user = userEvent.setup()
     const addFilesSpy = vi.fn().mockResolvedValue([])
-    ;(window.api as Record<string, unknown> & { import: { addFiles: () => Promise<unknown> } }).import.addFiles = addFilesSpy
-    renderWithTheme(<Sidebar collapsed={false} onToggleCollapse={vi.fn()} />)
-    await userEvent.click(screen.getByLabelText('topbar.addFile'))
-    expect(addFilesSpy).toHaveBeenCalled()
+    api.import.addFiles = addFilesSpy
+    renderSidebar()
+    await user.click(screen.getByLabelText('topbar.addFile'))
+    expect(addFilesSpy).toHaveBeenCalledWith([])
   })
 })

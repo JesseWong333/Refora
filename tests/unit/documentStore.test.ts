@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useDocumentStore } from '../../src/renderer/store/documentStore'
-import type { Document } from '../../src/shared/ipc-types'
+import type { Category, Document, ListColumnState } from '../../src/shared/ipc-types'
 
 function makeDoc(overrides: Partial<Document> = {}): Document {
   return {
@@ -40,13 +40,42 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
 const mockList = vi.fn()
 const mockSearch = vi.fn()
 const mockSetStarred = vi.fn()
+const mockSettingsSet = vi.fn()
+const mockOpenPdf = vi.fn()
+const mockOpenInFinder = vi.fn()
+const mockDelete = vi.fn()
+const mockBulkDelete = vi.fn()
+const mockRefreshMetadata = vi.fn()
+const mockBulkRefreshMetadata = vi.fn()
+const mockBulkCategorize = vi.fn()
+const mockUpdate = vi.fn()
+const mockImportFromZotero = vi.fn()
+const mockImportFromMendeley = vi.fn()
+const mockExportBibtex = vi.fn()
+const mockCategoriesList = vi.fn()
+const mockCategoriesCreate = vi.fn()
+const mockCategoriesRename = vi.fn()
+const mockCategoriesDelete = vi.fn()
 const mockOnDocUpdated = vi.fn()
 const mockOnImportProgress = vi.fn()
 const mockOnImportToast = vi.fn()
 const mockOnMenuExportBibtex = vi.fn()
+const mockOnMenuImportZotero = vi.fn()
+const mockOnMenuImportMendeley = vi.fn()
 const mockOnLibrarySwitched = vi.fn()
-const mockFetchCategories = vi.fn()
 const mockEventsOff = vi.fn()
+
+const defaultListColumnState: ListColumnState = {
+  columns: [
+    { id: 'title', visible: true, width: 300, order: 0 },
+    { id: 'authors', visible: true, width: 192, order: 1 },
+    { id: 'year', visible: true, width: 64, order: 2 },
+    { id: 'venue', visible: true, width: 128, order: 3 },
+    { id: 'addedAt', visible: true, width: 96, order: 4 },
+    { id: 'filePath', visible: true, width: 192, order: 5 }
+  ],
+  sort: { field: 'addedAt', dir: 'desc' }
+}
 
 function resetStoreState(): void {
   useDocumentStore.setState({
@@ -59,8 +88,12 @@ function resetStoreState(): void {
     searchResults: [],
     isLoading: false,
     listMode: { mode: 'all' },
+    listColumnState: defaultListColumnState,
     isImporting: false,
-    importProgress: null
+    importProgress: null,
+    toastMessage: null,
+    confirmDelete: null,
+    categories: []
   })
 }
 
@@ -68,30 +101,93 @@ beforeEach(() => {
   mockList.mockReset()
   mockSearch.mockReset()
   mockSetStarred.mockReset()
+  mockSettingsSet.mockReset()
+  mockOpenPdf.mockReset()
+  mockOpenInFinder.mockReset()
+  mockDelete.mockReset()
+  mockBulkDelete.mockReset()
+  mockRefreshMetadata.mockReset()
+  mockBulkRefreshMetadata.mockReset()
+  mockBulkCategorize.mockReset()
+  mockUpdate.mockReset()
+  mockImportFromZotero.mockReset()
+  mockImportFromMendeley.mockReset()
+  mockExportBibtex.mockReset()
+  mockCategoriesList.mockReset()
+  mockCategoriesCreate.mockReset()
+  mockCategoriesRename.mockReset()
+  mockCategoriesDelete.mockReset()
   mockOnDocUpdated.mockReset()
   mockOnImportProgress.mockReset()
   mockOnImportToast.mockReset()
   mockOnMenuExportBibtex.mockReset()
+  mockOnMenuImportZotero.mockReset()
+  mockOnMenuImportMendeley.mockReset()
   mockOnLibrarySwitched.mockReset()
-  mockFetchCategories.mockReset()
   mockEventsOff.mockReset()
 
   mockList.mockResolvedValue([])
   mockSearch.mockResolvedValue([])
   mockSetStarred.mockResolvedValue(undefined)
-  mockFetchCategories.mockResolvedValue(undefined)
+  mockSettingsSet.mockResolvedValue(undefined)
+  mockOpenPdf.mockImplementation(async (id: string) => makeDoc({ id, lastReadAt: 1 }))
+  mockOpenInFinder.mockResolvedValue(undefined)
+  mockDelete.mockResolvedValue(undefined)
+  mockBulkDelete.mockResolvedValue(undefined)
+  mockRefreshMetadata.mockImplementation(async (id: string) => makeDoc({ id, metadataStatus: 'success' }))
+  mockBulkRefreshMetadata.mockResolvedValue(undefined)
+  mockBulkCategorize.mockResolvedValue(undefined)
+  mockUpdate.mockImplementation(async (id: string, patch: Partial<Document>) => makeDoc({ id, ...patch }))
+  mockImportFromZotero.mockResolvedValue({ added: 1, skipped: 0, errors: [] })
+  mockImportFromMendeley.mockResolvedValue({ added: 1, skipped: 0, errors: [] })
+  mockExportBibtex.mockResolvedValue('')
+  mockCategoriesList.mockResolvedValue([])
+  mockCategoriesCreate.mockImplementation(async (name: string) => ({
+    id: 'cat-new',
+    name,
+    sortOrder: 0,
+    createdAt: 0
+  }))
+  mockCategoriesRename.mockResolvedValue(undefined)
+  mockCategoriesDelete.mockResolvedValue(undefined)
 
   const api = window.api as unknown as Record<string, unknown>
   const docs = api.documents as Record<string, unknown>
   docs.list = mockList
   docs.search = mockSearch
   docs.setStarred = mockSetStarred
+  docs.openPdf = mockOpenPdf
+  docs.openInFinder = mockOpenInFinder
+  docs.delete = mockDelete
+  docs.bulkDelete = mockBulkDelete
+  docs.refreshMetadata = mockRefreshMetadata
+  docs.bulkRefreshMetadata = mockBulkRefreshMetadata
+  docs.bulkCategorize = mockBulkCategorize
+  docs.update = mockUpdate
+
+  const settings = api.settings as Record<string, unknown>
+  settings.set = mockSettingsSet
+
+  const importApi = api.import as Record<string, unknown>
+  importApi.fromZotero = mockImportFromZotero
+  importApi.fromMendeley = mockImportFromMendeley
+
+  const exportApi = api.export as Record<string, unknown>
+  exportApi.toBibtex = mockExportBibtex
+
+  const categories = api.categories as Record<string, unknown>
+  categories.list = mockCategoriesList
+  categories.create = mockCategoriesCreate
+  categories.rename = mockCategoriesRename
+  categories.delete = mockCategoriesDelete
 
   const events = api.events as Record<string, unknown>
   events.onDocumentUpdated = mockOnDocUpdated
   events.onImportProgress = mockOnImportProgress
   events.onImportToast = mockOnImportToast
   events.onMenuExportBibtex = mockOnMenuExportBibtex
+  events.onMenuImportZotero = mockOnMenuImportZotero
+  events.onMenuImportMendeley = mockOnMenuImportMendeley
   events.onLibrarySwitched = mockOnLibrarySwitched
   events.off = mockEventsOff
 
@@ -381,6 +477,237 @@ describe('DocumentStore', () => {
       await useDocumentStore.getState().toggleStar('nonexistent')
 
       expect(mockSetStarred).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('list controls', () => {
+    it('updates filters, selection, columns, and sort state', async () => {
+      vi.useFakeTimers()
+      const docs = [makeDoc(), makeDoc({ id: 'doc-2' })]
+      useDocumentStore.setState({
+        documents: docs,
+        selectedIds: ['doc-1'],
+        focusedDocId: 'doc-1'
+      })
+
+      useDocumentStore.getState().setListMode({ mode: 'starred' })
+      expect(useDocumentStore.getState().listMode).toEqual({ mode: 'starred' })
+      expect(useDocumentStore.getState().selectedIds).toEqual([])
+      expect(useDocumentStore.getState().focusedDocId).toBeNull()
+      expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ mode: 'starred' }))
+
+      useDocumentStore.getState().selectAll()
+      expect(useDocumentStore.getState().selectedIds).toEqual(['doc-1', 'doc-2'])
+      useDocumentStore.getState().clearSelection()
+      expect(useDocumentStore.getState().selectedIds).toEqual([])
+
+      const columns = defaultListColumnState.columns.map((column) => ({
+        ...column,
+        visible: column.id !== 'filePath'
+      }))
+      useDocumentStore.getState().setColumns(columns)
+      expect(useDocumentStore.getState().listColumnState.columns).toEqual(columns)
+
+      useDocumentStore.getState().setSort('title')
+      expect(useDocumentStore.getState().listColumnState.sort).toEqual({ field: 'title', dir: 'asc' })
+      useDocumentStore.getState().setSort('title')
+      expect(useDocumentStore.getState().listColumnState.sort).toEqual({ field: 'title', dir: 'desc' })
+      useDocumentStore.getState().setSort('title')
+      expect(useDocumentStore.getState().listColumnState.sort).toEqual({ field: 'addedAt', dir: 'desc' })
+
+      useDocumentStore.getState().setListColumnState({
+        columns,
+        sort: { field: 'year', dir: 'asc' }
+      })
+      await vi.advanceTimersByTimeAsync(500)
+      expect(mockSettingsSet).toHaveBeenLastCalledWith('listColumnState', {
+        columns,
+        sort: { field: 'year', dir: 'asc' }
+      })
+      vi.useRealTimers()
+    })
+  })
+
+  describe('document actions', () => {
+    it('updates documents through individual and bulk actions', async () => {
+      const first = makeDoc()
+      const second = makeDoc({ id: 'doc-2', title: 'Second' })
+      useDocumentStore.setState({ documents: [first, second], selectedIds: ['doc-1'] })
+
+      await useDocumentStore.getState().openPdf('doc-1')
+      expect(mockOpenPdf).toHaveBeenCalledWith('doc-1')
+      expect(useDocumentStore.getState().documents[0].lastReadAt).toBe(1)
+
+      await useDocumentStore.getState().openInFinder('doc-1')
+      expect(mockOpenInFinder).toHaveBeenCalledWith('doc-1')
+
+      expect(await useDocumentStore.getState().refreshMetadata('doc-1')).toBe(true)
+      expect(useDocumentStore.getState().documents[0].metadataStatus).toBe('success')
+
+      const updated = await useDocumentStore.getState().updateDocument('doc-1', { title: 'Updated' })
+      expect(updated.title).toBe('Updated')
+      expect(useDocumentStore.getState().documents[0].title).toBe('Updated')
+
+      await useDocumentStore.getState().bulkRefreshMetadata(['doc-1'])
+      expect(useDocumentStore.getState().documents[0].metadataStatus).toBe('pending')
+      expect(mockBulkRefreshMetadata).toHaveBeenCalledWith(['doc-1'])
+
+      await useDocumentStore.getState().bulkCategorize(['doc-1'], 'cat-1')
+      expect(mockBulkCategorize).toHaveBeenCalledWith(['doc-1'], 'cat-1')
+      expect(useDocumentStore.getState().selectedIds).toEqual([])
+
+      await useDocumentStore.getState().deleteDoc('doc-1')
+      expect(mockDelete).toHaveBeenCalledWith('doc-1')
+      expect(useDocumentStore.getState().documents.map((doc) => doc.id)).toEqual(['doc-2'])
+
+      await useDocumentStore.getState().bulkDelete(['doc-2'])
+      expect(mockBulkDelete).toHaveBeenCalledWith(['doc-2'])
+      expect(useDocumentStore.getState().documents).toEqual([])
+    })
+
+    it('restores optimistic state and surfaces action failures', async () => {
+      const doc = makeDoc()
+      useDocumentStore.setState({ documents: [doc], selectedIds: ['doc-1'] })
+      mockOpenPdf.mockRejectedValueOnce(new Error('open failed'))
+      mockOpenInFinder.mockRejectedValueOnce(new Error('finder failed'))
+      mockRefreshMetadata.mockRejectedValueOnce(new Error('refresh failed'))
+      mockBulkRefreshMetadata.mockRejectedValueOnce(new Error('bulk refresh failed'))
+      mockBulkCategorize.mockRejectedValueOnce(new Error('categorize failed'))
+      mockDelete.mockRejectedValueOnce(new Error('delete failed'))
+
+      await useDocumentStore.getState().openPdf('doc-1')
+      expect(useDocumentStore.getState().toastMessage).toBe('open failed')
+      await useDocumentStore.getState().openInFinder('doc-1')
+      expect(await useDocumentStore.getState().refreshMetadata('doc-1')).toBe(false)
+      await useDocumentStore.getState().bulkRefreshMetadata(['doc-1'])
+      await useDocumentStore.getState().bulkCategorize(['doc-1'], 'cat-1')
+      await useDocumentStore.getState().deleteDoc('doc-1')
+
+      expect(useDocumentStore.getState().documents).toContainEqual(doc)
+
+      mockBulkDelete.mockRejectedValueOnce(new Error('bulk delete failed'))
+      await useDocumentStore.getState().bulkDelete(['doc-1'])
+      expect(useDocumentStore.getState().documents).toContainEqual(doc)
+    })
+
+    it('skips opening missing or unknown documents', async () => {
+      useDocumentStore.setState({ documents: [makeDoc({ fileMissing: 1 })] })
+      await useDocumentStore.getState().openPdf('doc-1')
+      await useDocumentStore.getState().openPdf('unknown')
+      expect(mockOpenPdf).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('confirmation, toast, and import actions', () => {
+    it('manages toast and confirmation state', async () => {
+      useDocumentStore.getState().showToast('Saved')
+      expect(useDocumentStore.getState().toastMessage).toBe('Saved')
+      useDocumentStore.getState().clearToast()
+      expect(useDocumentStore.getState().toastMessage).toBeNull()
+
+      useDocumentStore.getState().requestDeleteConfirm(['doc-1'], 'Delete it?')
+      expect(useDocumentStore.getState().confirmDelete).toEqual({
+        ids: ['doc-1'],
+        message: 'Delete it?'
+      })
+      useDocumentStore.getState().cancelDelete()
+      expect(useDocumentStore.getState().confirmDelete).toBeNull()
+
+      useDocumentStore.setState({ documents: [makeDoc()] })
+      useDocumentStore.getState().requestDeleteConfirm(['doc-1'], '')
+      await useDocumentStore.getState().confirmDeleteAction()
+      expect(mockDelete).toHaveBeenCalledWith('doc-1')
+
+      useDocumentStore.setState({ documents: [makeDoc(), makeDoc({ id: 'doc-2' })] })
+      useDocumentStore.getState().requestDeleteConfirm(['doc-1', 'doc-2'], '')
+      await useDocumentStore.getState().confirmDeleteAction()
+      expect(mockBulkDelete).toHaveBeenCalledWith(['doc-1', 'doc-2'])
+    })
+
+    it('ends imports and handles Zotero and Mendeley results', async () => {
+      useDocumentStore.getState().startImport(3)
+      useDocumentStore.getState().endImport()
+      expect(useDocumentStore.getState().isImporting).toBe(false)
+      expect(useDocumentStore.getState().importProgress).toBeNull()
+
+      await useDocumentStore.getState().importFromZotero()
+      await useDocumentStore.getState().importFromMendeley()
+      expect(mockImportFromZotero).toHaveBeenCalledOnce()
+      expect(mockImportFromMendeley).toHaveBeenCalledOnce()
+
+      mockImportFromZotero.mockRejectedValueOnce(new Error('zotero failed'))
+      mockImportFromMendeley.mockRejectedValueOnce(new Error('mendeley failed'))
+      await useDocumentStore.getState().importFromZotero()
+      await useDocumentStore.getState().importFromMendeley()
+      expect(useDocumentStore.getState().toastMessage).toBeTruthy()
+    })
+  })
+
+  describe('event callbacks', () => {
+    it('routes document, import, export, and menu events into store actions', async () => {
+      const original = makeDoc()
+      const updated = makeDoc({ title: 'Updated by event' })
+      useDocumentStore.setState({ documents: [original], selectedIds: ['doc-1'] })
+      useDocumentStore.getState().init()
+
+      const documentUpdated = mockOnDocUpdated.mock.calls[0][0] as (doc: Document) => void
+      const importProgress = mockOnImportProgress.mock.calls[0][0] as (progress: { current: number; total: number }) => void
+      const importToast = mockOnImportToast.mock.calls[0][0] as (message: string) => void
+      const exportBibtex = mockOnMenuExportBibtex.mock.calls[0][0] as () => void
+      const importZotero = mockOnMenuImportZotero.mock.calls[0][0] as () => void
+      const importMendeley = mockOnMenuImportMendeley.mock.calls[0][0] as () => void
+
+      documentUpdated(updated)
+      expect(useDocumentStore.getState().documents[0].title).toBe('Updated by event')
+      importProgress({ current: 1, total: 2 })
+      expect(useDocumentStore.getState().importProgress).toEqual({ current: 1, total: 2 })
+      importToast('Imported')
+      expect(useDocumentStore.getState().toastMessage).toBe('Imported')
+      exportBibtex()
+      expect(mockExportBibtex).toHaveBeenCalledWith(['doc-1'])
+      importZotero()
+      importMendeley()
+      await vi.waitFor(() => {
+        expect(mockImportFromZotero).toHaveBeenCalled()
+        expect(mockImportFromMendeley).toHaveBeenCalled()
+      })
+
+      useDocumentStore.getState().destroy()
+    })
+  })
+
+  describe('category actions', () => {
+    it('fetches, creates, renames, and deletes categories', async () => {
+      const category: Category = {
+        id: 'cat-1',
+        name: 'Reading',
+        sortOrder: 0,
+        createdAt: 0,
+        count: 2
+      }
+      mockCategoriesList.mockResolvedValue([category])
+      await useDocumentStore.getState().fetchCategories()
+      expect(useDocumentStore.getState().categories).toEqual([category])
+
+      const created = await useDocumentStore.getState().createCategory('New')
+      expect(created?.name).toBe('New')
+      expect(useDocumentStore.getState().categories.at(-1)).toMatchObject({ name: 'New', count: 0 })
+
+      await useDocumentStore.getState().renameCategory('cat-1', 'Renamed')
+      expect(useDocumentStore.getState().categories[0].name).toBe('Renamed')
+      await useDocumentStore.getState().deleteCategory('cat-1')
+      expect(useDocumentStore.getState().categories.some((item) => item.id === 'cat-1')).toBe(false)
+    })
+
+    it('returns null and shows errors when category mutations fail', async () => {
+      mockCategoriesCreate.mockRejectedValueOnce(new Error('create failed'))
+      mockCategoriesRename.mockRejectedValueOnce(new Error('rename failed'))
+      mockCategoriesDelete.mockRejectedValueOnce(new Error('delete failed'))
+
+      expect(await useDocumentStore.getState().createCategory('Bad')).toBeNull()
+      await useDocumentStore.getState().renameCategory('cat-1', 'Bad')
+      await useDocumentStore.getState().deleteCategory('cat-1')
+      expect(useDocumentStore.getState().toastMessage).toBeTruthy()
     })
   })
 })

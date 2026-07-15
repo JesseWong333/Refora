@@ -1,82 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createRequire } from 'node:module'
-import { runMigrations, type SqliteLike } from '../../src/main/db/migrations'
 import { createRepositories } from '../../src/main/db/repositories'
-import type { NewDocument } from '../../src/main/db/repositories/documents'
 import { RepoError } from '../../src/main/db/repositories/errors'
 import { seedDefaultSettings } from '../../src/main/db/settings-seed'
-import type { SqliteDb } from '../../src/main/db/types'
 import type { ListFilter } from '../../src/shared/ipc-types'
-
-const nodeRequire = createRequire(import.meta.url)
-const { DatabaseSync } = nodeRequire('node:sqlite') as {
-  DatabaseSync: new (location: string) => unknown
-}
-
-interface RawStatement {
-  get(...params: unknown[]): Record<string, unknown> | undefined
-  all(...params: unknown[]): Record<string, unknown>[]
-  run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint }
-}
-interface RawDb {
-  exec(sql: string): void
-  prepare(sql: string): RawStatement
-}
-
-function createDb(): RawDb {
-  const db = new DatabaseSync(':memory:') as unknown as RawDb
-  db.exec('PRAGMA foreign_keys = ON')
-  return db
-}
-
-function adapt(db: RawDb): SqliteLike {
-  return {
-    exec: (sql) => {
-      db.exec(sql)
-    },
-    getUserVersion: () => {
-      const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined
-      return row?.user_version ?? 0
-    },
-    setUserVersion: (version) => {
-      db.exec(`PRAGMA user_version = ${version}`)
-    }
-  }
-}
-
-function makeDoc(id: string, overrides: Partial<NewDocument> = {}): NewDocument {
-  return {
-    id,
-    filePath: `/abs/${id}.pdf`,
-    originalFolderPath: '/abs',
-    fileName: `${id}.pdf`,
-    fileSize: 100,
-    fileHash: null,
-    title: `Title ${id}`,
-    authors: null,
-    year: null,
-    venue: null,
-    volume: null,
-    issue: null,
-    pages: null,
-    abstract: null,
-    keywords: null,
-    url: null,
-    doi: null,
-    note: null,
-    starred: 0,
-    addedAt: 1000,
-    lastReadAt: null,
-    updatedAt: 1000,
-    metadataSource: null,
-    metadataStatus: 'pending',
-    metadataAttempts: 0,
-    editedFields: [],
-    remoteValues: null,
-    fileMissing: 0,
-    ...overrides
-  }
-}
+import {
+  adaptMainTestDb,
+  createMainTestDb,
+  makeNewDocument as makeDoc,
+  migrateMainTestDb,
+  type MainTestDb
+} from '../helpers/mainDb'
 
 function ids(docs: { id: string }[]): string[] {
   return docs.map((d) => d.id)
@@ -94,13 +27,12 @@ function expectRepoError(fn: () => unknown, code: string): void {
 }
 
 describe('documents repository', () => {
-  let db: RawDb
+  let db: MainTestDb
   let repos: ReturnType<typeof createRepositories>
 
   beforeEach(() => {
-    db = createDb()
-    runMigrations(adapt(db))
-    repos = createRepositories(db as unknown as SqliteDb)
+    db = createMainTestDb()
+    repos = createRepositories(migrateMainTestDb(db))
   })
 
   function seedListDocs(): void {
@@ -292,13 +224,12 @@ describe('documents repository', () => {
 })
 
 describe('categories repository', () => {
-  let db: RawDb
+  let db: MainTestDb
   let repos: ReturnType<typeof createRepositories>
 
   beforeEach(() => {
-    db = createDb()
-    runMigrations(adapt(db))
-    repos = createRepositories(db as unknown as SqliteDb)
+    db = createMainTestDb()
+    repos = createRepositories(migrateMainTestDb(db))
   })
 
   it('create/list/rename/delete', () => {
@@ -337,13 +268,12 @@ describe('categories repository', () => {
 })
 
 describe('watchFolders repository', () => {
-  let db: RawDb
+  let db: MainTestDb
   let repos: ReturnType<typeof createRepositories>
 
   beforeEach(() => {
-    db = createDb()
-    runMigrations(adapt(db))
-    repos = createRepositories(db as unknown as SqliteDb)
+    db = createMainTestDb()
+    repos = createRepositories(migrateMainTestDb(db))
   })
 
   it('add/list/toggle/getEnabled/remove', () => {
@@ -362,13 +292,12 @@ describe('watchFolders repository', () => {
 })
 
 describe('settings repository', () => {
-  let db: RawDb
+  let db: MainTestDb
   let repos: ReturnType<typeof createRepositories>
 
   beforeEach(() => {
-    db = createDb()
-    runMigrations(adapt(db))
-    repos = createRepositories(db as unknown as SqliteDb)
+    db = createMainTestDb()
+    repos = createRepositories(migrateMainTestDb(db))
   })
 
   it('set/get round-trips JSON values', () => {
@@ -386,7 +315,7 @@ describe('settings repository', () => {
   })
 
   it('getBootstrapSettings returns seeded defaults', () => {
-    seedDefaultSettings(adapt(db), 'en')
+    seedDefaultSettings(adaptMainTestDb(db), 'en')
     const bs = repos.settings.getBootstrapSettings()
     expect(bs.language).toBe('en')
     expect(bs.sidebarCollapsed).toBe(false)
@@ -397,7 +326,7 @@ describe('settings repository', () => {
   })
 
   it('set updates an existing key', () => {
-    seedDefaultSettings(adapt(db), 'en')
+    seedDefaultSettings(adaptMainTestDb(db), 'en')
     repos.settings.set('language', 'zh')
     expect(repos.settings.get('language', 'en')).toBe('zh')
     expect(repos.settings.getBootstrapSettings().language).toBe('zh')

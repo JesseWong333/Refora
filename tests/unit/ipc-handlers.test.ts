@@ -1,23 +1,39 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { createRequire } from 'node:module'
-import { runMigrations, type SqliteLike } from '../../src/main/db/migrations'
 import { createRepositories } from '../../src/main/db/repositories'
-import type { NewDocument } from '../../src/main/db/repositories/documents'
 import { seedDefaultSettings } from '../../src/main/db/settings-seed'
-import type { SqliteDb } from '../../src/main/db/types'
-import { createIpcHandlers } from '../../src/main/ipc/handlers'
+import { createIpcHandlers, validateProxyUrl } from '../../src/main/ipc/handlers'
 import { IpcChannel } from '../../src/shared/ipc-channels'
 import type { ListFilter, Result } from '../../src/shared/ipc-types'
+import {
+  adaptMainTestDb,
+  createMainTestDb,
+  makeNewDocument as makeDoc,
+  migrateMainTestDb,
+  type MainTestDb
+} from '../helpers/mainDb'
 
-const { mockTrashItem } = vi.hoisted(() => ({
-  mockTrashItem: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined)
+const electronMocks = vi.hoisted(() => ({
+  trashItem: vi.fn<[string], Promise<void>>(),
+  showOpenDialog: vi.fn(),
+  showSaveDialog: vi.fn(),
+  showMessageBox: vi.fn(),
+  showItemInFolder: vi.fn(),
+  setProxy: vi.fn()
 }))
 
 vi.mock('electron', () => ({
-  dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn(), showMessageBox: vi.fn() },
+  dialog: {
+    showOpenDialog: electronMocks.showOpenDialog,
+    showSaveDialog: electronMocks.showSaveDialog,
+    showMessageBox: electronMocks.showMessageBox
+  },
   ipcMain: { handle: vi.fn() },
-  shell: { trashItem: mockTrashItem, showItemInFolder: vi.fn(), openExternal: vi.fn() },
-  session: { defaultSession: { setProxy: vi.fn() } }
+  shell: {
+    trashItem: electronMocks.trashItem,
+    showItemInFolder: electronMocks.showItemInFolder,
+    openExternal: vi.fn()
+  },
+  session: { defaultSession: { setProxy: electronMocks.setProxy } }
 }))
 
 vi.mock('../../src/main/services/logger', () => ({
@@ -29,76 +45,6 @@ vi.mock('../../src/main/services/logger', () => ({
   }
 }))
 
-const nodeRequire = createRequire(import.meta.url)
-const { DatabaseSync } = nodeRequire('node:sqlite') as {
-  DatabaseSync: new (location: string) => unknown
-}
-
-interface RawStatement {
-  get(...params: unknown[]): Record<string, unknown> | undefined
-  all(...params: unknown[]): Record<string, unknown>[]
-  run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint }
-}
-interface RawDb {
-  exec(sql: string): void
-  prepare(sql: string): RawStatement
-}
-
-function createDb(): RawDb {
-  const db = new DatabaseSync(':memory:') as unknown as RawDb
-  db.exec('PRAGMA foreign_keys = ON')
-  return db
-}
-
-function adapt(db: RawDb): SqliteLike {
-  return {
-    exec: (sql) => {
-      db.exec(sql)
-    },
-    getUserVersion: () => {
-      const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined
-      return row?.user_version ?? 0
-    },
-    setUserVersion: (version) => {
-      db.exec(`PRAGMA user_version = ${version}`)
-    }
-  }
-}
-
-function makeDoc(id: string, overrides: Partial<NewDocument> = {}): NewDocument {
-  return {
-    id,
-    filePath: `/abs/${id}.pdf`,
-    originalFolderPath: '/abs',
-    fileName: `${id}.pdf`,
-    fileSize: 100,
-    fileHash: null,
-    title: `Title ${id}`,
-    authors: null,
-    year: null,
-    venue: null,
-    volume: null,
-    issue: null,
-    pages: null,
-    abstract: null,
-    keywords: null,
-    url: null,
-    doi: null,
-    note: null,
-    starred: 0,
-    addedAt: 1000,
-    lastReadAt: null,
-    updatedAt: 1000,
-    metadataSource: null,
-    metadataStatus: 'pending',
-    metadataAttempts: 0,
-    editedFields: [],
-    remoteValues: null,
-    fileMissing: 0,
-    ...overrides
-  }
-}
-
 function ids(docs: { id: string }[]): string[] {
   return docs.map((d) => d.id)
 }
@@ -108,21 +54,21 @@ function isOk<T>(r: Result<T>): r is { ok: true; data: T } {
 }
 
 describe('IPC handlers (data layer)', () => {
-  let db: RawDb
+  let db: MainTestDb
   let repos: ReturnType<typeof createRepositories>
   let handlers: ReturnType<typeof createIpcHandlers>
 
   beforeEach(() => {
-    db = createDb()
-    runMigrations(adapt(db))
-    seedDefaultSettings(adapt(db), 'en')
-    repos = createRepositories(db as unknown as SqliteDb)
+    db = createMainTestDb()
+    repos = createRepositories(migrateMainTestDb(db))
+    seedDefaultSettings(adaptMainTestDb(db), 'en')
     handlers = createIpcHandlers({
       getWin: () => null,
       getRuntime: () => ({ repos })
     })
-    mockTrashItem.mockReset()
-    mockTrashItem.mockResolvedValue(undefined)
+    vi.clearAllMocks()
+    electronMocks.trashItem.mockResolvedValue(undefined)
+    electronMocks.setProxy.mockResolvedValue(undefined)
   })
 
   function seedListDocs(): void {
@@ -195,6 +141,59 @@ describe('IPC handlers (data layer)', () => {
     expect((r as { ok: false; error: { code: string } }).error.code).toBe('not_found')
   })
 
+  it('gets, searches, stars, and reveals documents through IPC', () => {
+    repos.documents.insert(makeDoc('d1', { title: 'Searchable paper' }))
+
+    expect(handlers[IpcChannel.DocumentsGet]('d1')).toEqual(
+      expect.objectContaining({ ok: true, data: expect.objectContaining({ id: 'd1' }) })
+    )
+    expect(handlers[IpcChannel.DocumentsSearch]('Searchable')).toEqual(
+      expect.objectContaining({ ok: true, data: [expect.objectContaining({ id: 'd1' })] })
+    )
+    expect(handlers[IpcChannel.DocumentsSetStarred]('d1', true).ok).toBe(true)
+    expect(repos.documents.get('d1')?.starred).toBe(1)
+    expect(handlers[IpcChannel.DocumentsOpenInFinder]('d1').ok).toBe(true)
+    expect(electronMocks.showItemInFolder).toHaveBeenCalledWith('/abs/d1.pdf')
+  })
+
+  it('delegates metadata refresh operations when the service is ready', () => {
+    repos.documents.insert(makeDoc('d1'))
+    const metadataService = {
+      enqueue: vi.fn(),
+      refreshMetadata: vi.fn(),
+      bulkRefreshMetadata: vi.fn(),
+      resumeOnStartup: vi.fn(),
+      destroy: vi.fn()
+    }
+    const localHandlers = createIpcHandlers({
+      getWin: () => null,
+      getRuntime: () => ({ repos, metadataService })
+    })
+
+    expect(localHandlers[IpcChannel.DocumentsBulkRefreshMetadata](['d1']).ok).toBe(true)
+    expect(metadataService.bulkRefreshMetadata).toHaveBeenCalledWith(['d1'])
+    const refreshed = localHandlers[IpcChannel.DocumentsRefreshMetadata]('d1')
+    expect(refreshed).toEqual(
+      expect.objectContaining({ ok: true, data: expect.objectContaining({ id: 'd1' }) })
+    )
+    expect(metadataService.refreshMetadata).toHaveBeenCalledWith('d1')
+  })
+
+  it('returns the current document when relocation selection is cancelled', async () => {
+    repos.documents.insert(makeDoc('d1'))
+    const win = { isDestroyed: vi.fn(() => false), focus: vi.fn() }
+    electronMocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
+    const localHandlers = createIpcHandlers({
+      getWin: () => win as never,
+      getRuntime: () => ({ repos })
+    })
+
+    const result = await localHandlers[IpcChannel.DocumentsRelocateFile]('d1', '')
+    expect(result).toEqual(
+      expect.objectContaining({ ok: true, data: expect.objectContaining({ id: 'd1' }) })
+    )
+  })
+
   it('getBootstrap returns BootstrapData with safe defaults', () => {
     const r = handlers[IpcChannel.Bootstrap]()
     expect(isOk(r)).toBe(true)
@@ -222,6 +221,30 @@ describe('IPC handlers (data layer)', () => {
     expect(setR.ok).toBe(false)
   })
 
+  it('validates proxy URLs and applies valid or cleared proxy settings', async () => {
+    expect(validateProxyUrl('http://127.0.0.1:8080')).toBe(true)
+    expect(validateProxyUrl('https://proxy.example.com')).toBe(true)
+    expect(validateProxyUrl('socks5://127.0.0.1:1080')).toBe(true)
+    expect(validateProxyUrl('ftp://example.com')).toBe(false)
+    expect(validateProxyUrl('not a url')).toBe(false)
+
+    expect(handlers[IpcChannel.SettingsSet]('proxyUrl', ' http://127.0.0.1:8080 ').ok).toBe(true)
+    expect(electronMocks.setProxy).toHaveBeenCalledWith({ proxyRules: 'http://127.0.0.1:8080' })
+    expect(handlers[IpcChannel.SettingsSet]('proxyUrl', '').ok).toBe(true)
+    expect(electronMocks.setProxy).toHaveBeenCalledWith({ proxyRules: '' })
+
+    expect(handlers[IpcChannel.SettingsSet]('proxyUrl', 'ftp://invalid').ok).toBe(true)
+    await Promise.resolve()
+    expect(electronMocks.setProxy).toHaveBeenCalledTimes(2)
+  })
+
+  it('requires library changes to use the library switch handler', () => {
+    const result = handlers[IpcChannel.SettingsSet]('libraryFolderPath', '/new/library')
+    expect(result).toEqual(
+      expect.objectContaining({ ok: false, error: expect.objectContaining({ code: 'use_library_switch' }) })
+    )
+  })
+
   it('categories.create/list through IPC', () => {
     const createR = handlers[IpcChannel.CategoriesCreate]('Physics')
     expect(isOk(createR)).toBe(true)
@@ -230,6 +253,21 @@ describe('IPC handlers (data layer)', () => {
     const listR = handlers[IpcChannel.CategoriesList]()
     expect(isOk(listR)).toBe(true)
     expect((listR as { ok: true; data: { name: string }[] }).data.map((c) => c.name)).toEqual(['Physics'])
+  })
+
+  it('renames, assigns, unassigns, and deletes categories through IPC', () => {
+    repos.documents.insert(makeDoc('d1'))
+    const category = repos.categories.create('Original')
+
+    expect(handlers[IpcChannel.CategoriesRename](category.id, 'Renamed').ok).toBe(true)
+    expect(handlers[IpcChannel.CategoriesAssign]('d1', category.id).ok).toBe(true)
+    expect(repos.categories.listForDocument('d1')).toHaveLength(1)
+    expect(handlers[IpcChannel.CategoriesUnassign]('d1', category.id).ok).toBe(true)
+    expect(repos.categories.listForDocument('d1')).toEqual([])
+    expect(handlers[IpcChannel.CategoriesDelete](category.id).ok).toBe(true)
+    expect(handlers[IpcChannel.CategoriesAssign]('d1', 'missing')).toEqual(
+      expect.objectContaining({ ok: false, error: expect.objectContaining({ code: 'not_found' }) })
+    )
   })
 
   it('documents.delete cascades to document_categories through IPC', async () => {
@@ -261,6 +299,100 @@ describe('IPC handlers (data layer)', () => {
     expect(r.ok).toBe(true)
     expect(repos.categories.listForDocument('b1').length).toBe(1)
     expect(repos.categories.listForDocument('b2').length).toBe(1)
+  })
+
+  it('imports explicit files and handles cancelled picker-based imports', async () => {
+    const importer = {
+      importFiles: vi.fn().mockResolvedValue({ added: ['doc-1'], skipped: [], errors: [] }),
+      destroy: vi.fn()
+    }
+    const win = { isDestroyed: vi.fn(() => false), focus: vi.fn() }
+    const localHandlers = createIpcHandlers({
+      getWin: () => win as never,
+      getRuntime: () => ({ repos, importer })
+    })
+
+    const explicit = await localHandlers[IpcChannel.ImportAddFiles](['/tmp/paper.pdf'])
+    expect(explicit).toEqual({ ok: true, data: ['doc-1'] })
+    expect(importer.importFiles).toHaveBeenCalledWith(['/tmp/paper.pdf'], false)
+
+    electronMocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
+    expect(await localHandlers[IpcChannel.ImportAddFiles]([])).toEqual({ ok: true, data: [] })
+    expect(await localHandlers[IpcChannel.ImportAddFolder]('')).toEqual({ ok: true, data: [] })
+    expect(await localHandlers[IpcChannel.ImportFromJson]('')).toEqual({ ok: true, data: 0 })
+    expect(await localHandlers[IpcChannel.ImportFromZotero]()).toEqual({
+      ok: true,
+      data: { added: 0, skipped: 0, errors: [] }
+    })
+    expect(await localHandlers[IpcChannel.ImportFromMendeley]()).toEqual({
+      ok: true,
+      data: { added: 0, skipped: 0, errors: [] }
+    })
+  })
+
+  it('manages watch folders and watcher lifecycle through IPC', async () => {
+    const watcher = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      sync: vi.fn(),
+      destroy: vi.fn()
+    }
+    const localHandlers = createIpcHandlers({
+      getWin: () => null,
+      getRuntime: () => ({ repos, watcher: watcher as never })
+    })
+
+    const added = await localHandlers[IpcChannel.WatchAdd]('/private/tmp')
+    expect(added.ok).toBe(true)
+    if (!added.ok) throw new Error(added.error.message)
+    expect(watcher.start).toHaveBeenCalledWith(added.data)
+    expect(localHandlers[IpcChannel.WatchList]()).toEqual({ ok: true, data: [added.data] })
+
+    expect(localHandlers[IpcChannel.WatchToggle](added.data.id, false).ok).toBe(true)
+    expect(watcher.stop).toHaveBeenCalledWith(added.data.id)
+    expect(localHandlers[IpcChannel.WatchToggle](added.data.id, true).ok).toBe(true)
+    expect(watcher.start).toHaveBeenLastCalledWith(expect.objectContaining({ id: added.data.id }))
+
+    expect(localHandlers[IpcChannel.WatchRemove](added.data.id).ok).toBe(true)
+    expect(localHandlers[IpcChannel.WatchList]()).toEqual({ ok: true, data: [] })
+  })
+
+  it('returns selected directories and cancelled dialog results', async () => {
+    const win = { isDestroyed: vi.fn(() => false), focus: vi.fn() }
+    const localHandlers = createIpcHandlers({
+      getWin: () => win as never,
+      getRuntime: () => ({ repos })
+    })
+
+    electronMocks.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    expect(await localHandlers[IpcChannel.DialogOpenDirectory]()).toEqual({ ok: true, data: null })
+
+    electronMocks.showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['/tmp/../tmp/library']
+    })
+    expect(await localHandlers[IpcChannel.DialogOpenDirectory]()).toEqual({
+      ok: true,
+      data: '/tmp/library'
+    })
+  })
+
+  it('exports BibTeX strings and handles cancelled save dialogs', async () => {
+    repos.documents.insert(makeDoc('d1', { title: 'Exported Paper' }))
+    const win = { isDestroyed: vi.fn(() => false), focus: vi.fn() }
+    const localHandlers = createIpcHandlers({
+      getWin: () => win as never,
+      getRuntime: () => ({ repos })
+    })
+
+    const bibtex = await localHandlers[IpcChannel.ExportBibtexString](['d1'])
+    expect(bibtex.ok && bibtex.data).toContain('Exported Paper')
+    expect(await localHandlers[IpcChannel.ExportBibtexString]([])).toEqual({ ok: true, data: '' })
+    expect(await localHandlers[IpcChannel.ExportToBibtex]([])).toEqual({ ok: true, data: '' })
+
+    electronMocks.showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
+    expect(await localHandlers[IpcChannel.ExportToBibtex](['d1'])).toEqual({ ok: true, data: '' })
+    expect(await localHandlers[IpcChannel.ExportToJson]()).toEqual({ ok: true, data: '' })
   })
 
   it('library:switch delegates to switchLibraryFolder and returns its result', async () => {

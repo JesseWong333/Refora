@@ -32,7 +32,7 @@ function mapWorkspaceItem(row: Record<string, unknown>): WorkspaceItem {
 export function createWorkspaceItemsRepository(db: SqliteDb) {
   function list(workspaceId: string): WorkspaceItem[] {
     const rows = db
-      .prepare('SELECT * FROM workspace_items WHERE workspaceId = ? ORDER BY zIndex, addedAt, id')
+      .prepare('SELECT * FROM workspace_items WHERE workspaceId = ? ORDER BY sortOrder, addedAt, id')
       .all(workspaceId) as Record<string, unknown>[]
     return rows.map(mapWorkspaceItem)
   }

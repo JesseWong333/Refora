@@ -379,6 +379,40 @@ describe('IPC AI Handlers', () => {
       expect(runThreadId).toBe((result as { ok: true; data: { threadId: string } }).data.threadId)
     })
 
+    it('accepts only document attachments already present in the workspace', async () => {
+      const pid = seedProvider()
+      const workspace = repos.workspaces.create('Attachments')
+      db.prepare(
+        `INSERT INTO documents (id, filePath, originalFolderPath, fileName, addedAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).run('doc-1', '/abs/doc-1.pdf', '/abs', 'doc-1.pdf', 1, 1)
+      repos.workspaceItems.add(workspace.id, 'document', ['doc-1'])
+      const thread = repos.chat.createThread(workspace.id, pid)
+
+      const valid = await callAsync(IpcChannel.AiChatSend, {
+        workspaceId: workspace.id,
+        threadId: thread.id,
+        text: 'Use the paper',
+        providerId: pid,
+        attachments: [{ type: 'document', docId: 'doc-1' }]
+      })
+      expect(valid.ok).toBe(true)
+
+      const invalid = await callAsync(IpcChannel.AiChatSend, {
+        workspaceId: workspace.id,
+        threadId: thread.id,
+        text: 'Use another paper',
+        providerId: pid,
+        attachments: [{ type: 'document', docId: 'missing' }]
+      })
+      expect(invalid).toEqual(
+        expect.objectContaining({
+          ok: false,
+          error: expect.objectContaining({ code: 'invalid_attachment' })
+        })
+      )
+    })
+
     it('returns error when agent service not ready', async () => {
       runtime.aiAgentService = undefined
       const req: ChatSendRequest = {
@@ -496,6 +530,16 @@ describe('IPC AI Handlers', () => {
     })
   })
 
+  describe('AiChatRenameThread', () => {
+    it('renames an existing thread', () => {
+      const thread = repos.chat.createThread('ws-1', 'p1')
+      const result = callSync(IpcChannel.AiChatRenameThread, thread.id, 'Renamed')
+
+      expect(result.ok).toBe(true)
+      expect(repos.chat.getThread(thread.id)?.title).toBe('Renamed')
+    })
+  })
+
   describe('AiReportsList', () => {
     it('returns reports for workspace', () => {
       repos.workspaces.create('WS1')
@@ -540,6 +584,30 @@ describe('IPC AI Handlers', () => {
       if (!result.ok) {
         expect(result.error.code).toBe('not_found')
       }
+    })
+  })
+
+  describe('AiReportsUpdate', () => {
+    it('updates report title and content', () => {
+      const workspace = repos.workspaces.create('Reports')
+      const report = repos.aiReports.create({
+        workspaceId: workspace.id,
+        title: 'Draft',
+        contentMd: 'Old',
+        sourceDocIds: [],
+        model: null
+      })
+
+      const result = callSync(IpcChannel.AiReportsUpdate, report.id, {
+        title: 'Final',
+        contentMd: 'New'
+      })
+      expect(result).toEqual(
+        expect.objectContaining({
+          ok: true,
+          data: expect.objectContaining({ title: 'Final', contentMd: 'New' })
+        })
+      )
     })
   })
 

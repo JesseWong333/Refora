@@ -36,6 +36,8 @@ vi.mock('../../src/renderer/hooks/useTheme', () => ({
   useTheme: () => ({ mode: 'system', resolvedTheme: 'light', setMode: vi.fn() })
 }))
 
+vi.mock('@lobehub/ui', async () => import('../mocks/lobehub-ui'))
+
 const { AiProvidersSection } = await import(
   '../../src/renderer/components/AiProvidersSection'
 )
@@ -48,13 +50,8 @@ const api = (window as unknown as { api: ReforaApi }).api
 describe('AiProvidersSection', () => {
   const create = vi.fn()
   const set = vi.fn()
-  let computedStyleSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    const getComputedStyle = window.getComputedStyle
-    computedStyleSpy = vi
-      .spyOn(window, 'getComputedStyle')
-      .mockImplementation((element) => getComputedStyle(element))
     create.mockReset()
     set.mockReset()
     api.aiProviders.list = vi.fn().mockResolvedValue([])
@@ -96,7 +93,6 @@ describe('AiProvidersSection', () => {
   })
 
   afterEach(() => {
-    computedStyleSpy.mockRestore()
     cleanup()
   })
 
