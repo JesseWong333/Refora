@@ -1,62 +1,161 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
-
-const MIN_W = 220
-const MIN_H = 140
-const MAX_W = 640
-const MAX_H = 520
-const DEFAULT_W = 300
-const DEFAULT_H = 200
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  WORKSPACE_CARD_DEFAULT_HEIGHT,
+  WORKSPACE_CARD_DEFAULT_WIDTH,
+  WORKSPACE_CARD_MAX_HEIGHT,
+  WORKSPACE_CARD_MAX_WIDTH,
+  WORKSPACE_CARD_MIN_HEIGHT,
+  WORKSPACE_CARD_MIN_WIDTH
+} from '../../../shared/ipc-types'
 
 export interface CardSize {
   width: number
   height: number
 }
 
+export interface CardPosition {
+  x: number
+  y: number
+  zIndex: number
+}
+
 interface ResizableCardProps {
   sizeKey: string
   size: CardSize
+  position: CardPosition
+  scale: number
+  frontZIndex: number
   onSizeChange: (sizeKey: string, size: CardSize) => void
+  onSizeCommit: (sizeKey: string, size: CardSize) => void
+  onPositionChange: (sizeKey: string, position: CardPosition) => void
+  onPositionCommit: (sizeKey: string, position: CardPosition) => void
+  moveLabel?: string
   children: ReactNode
   className?: string
 }
 
 type Edge = 'e' | 's' | 'se'
+const DRAG_START_DISTANCE = 5
 
 export default function ResizableCard({
   sizeKey,
   size,
+  position,
+  scale,
+  frontZIndex,
   onSizeChange,
+  onSizeCommit,
+  onPositionChange,
+  onPositionCommit,
+  moveLabel,
   children,
   className = ''
 }: ResizableCardProps) {
-  const startRef = useRef({ x: 0, y: 0, w: 0, h: 0, edge: 'se' as Edge })
+  const resizeStartRef = useRef({ x: 0, y: 0, w: 0, h: 0, edge: 'se' as Edge })
+  const moveStartRef = useRef({ x: 0, y: 0, cardX: 0, cardY: 0, zIndex: 0 })
+  const latestSizeRef = useRef(size)
+  const latestPositionRef = useRef(position)
+  const moveCleanupRef = useRef<(() => void) | null>(null)
+  const suppressClickUntilRef = useRef(0)
   const [resizing, setResizing] = useState(false)
+  const [moving, setMoving] = useState(false)
+
+  useEffect(() => {
+    return () => {
+      moveCleanupRef.current?.()
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [])
+
+  const startPointerDrag = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const target = e.target as HTMLElement
+    if (target.closest('button, a, input, textarea, select, [contenteditable="true"], [role="button"], [role="link"], [data-card-resize]')) return
+    moveCleanupRef.current?.()
+    moveStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      cardX: position.x,
+      cardY: position.y,
+      zIndex: frontZIndex
+    }
+    let activated = false
+
+    const cleanup = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      if (moveCleanupRef.current === cleanup) moveCleanupRef.current = null
+    }
+
+    const activate = () => {
+      activated = true
+      const initial = { x: position.x, y: position.y, zIndex: frontZIndex }
+      latestPositionRef.current = initial
+      onPositionChange(sizeKey, initial)
+      setMoving(true)
+      window.getSelection()?.removeAllRanges()
+      document.body.style.cursor = 'grabbing'
+      document.body.style.userSelect = 'none'
+    }
+
+    const onMove = (ev: MouseEvent) => {
+      if (!activated) {
+        if (Math.hypot(ev.clientX - moveStartRef.current.x, ev.clientY - moveStartRef.current.y) < DRAG_START_DISTANCE) return
+        activate()
+      }
+      ev.preventDefault()
+      const next = {
+        x: Math.round(moveStartRef.current.cardX + (ev.clientX - moveStartRef.current.x) / scale),
+        y: Math.round(moveStartRef.current.cardY + (ev.clientY - moveStartRef.current.y) / scale),
+        zIndex: moveStartRef.current.zIndex
+      }
+      latestPositionRef.current = next
+      onPositionChange(sizeKey, next)
+    }
+
+    const onUp = () => {
+      const shouldCommit = activated
+      cleanup()
+      if (!shouldCommit) return
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setMoving(false)
+      suppressClickUntilRef.current = Date.now() + 250
+      onPositionCommit(sizeKey, latestPositionRef.current)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [frontZIndex, onPositionChange, onPositionCommit, position, scale, sizeKey])
 
   const startResize = useCallback(
     (edge: Edge, e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      startRef.current = {
+      resizeStartRef.current = {
         x: e.clientX,
         y: e.clientY,
         w: size.width,
         h: size.height,
         edge
       }
+      latestSizeRef.current = size
       setResizing(true)
 
       const onMove = (ev: MouseEvent) => {
-        const dx = ev.clientX - startRef.current.x
-        const dy = ev.clientY - startRef.current.y
-        let nextW = startRef.current.w
-        let nextH = startRef.current.h
-        if (startRef.current.edge === 'e' || startRef.current.edge === 'se') {
-          nextW = Math.max(MIN_W, Math.min(MAX_W, startRef.current.w + dx))
+        const dx = (ev.clientX - resizeStartRef.current.x) / scale
+        const dy = (ev.clientY - resizeStartRef.current.y) / scale
+        let nextW = resizeStartRef.current.w
+        let nextH = resizeStartRef.current.h
+        if (resizeStartRef.current.edge === 'e' || resizeStartRef.current.edge === 'se') {
+          nextW = Math.max(WORKSPACE_CARD_MIN_WIDTH, Math.min(WORKSPACE_CARD_MAX_WIDTH, Math.round(resizeStartRef.current.w + dx)))
         }
-        if (startRef.current.edge === 's' || startRef.current.edge === 'se') {
-          nextH = Math.max(MIN_H, Math.min(MAX_H, startRef.current.h + dy))
+        if (resizeStartRef.current.edge === 's' || resizeStartRef.current.edge === 'se') {
+          nextH = Math.max(WORKSPACE_CARD_MIN_HEIGHT, Math.min(WORKSPACE_CARD_MAX_HEIGHT, Math.round(resizeStartRef.current.h + dy)))
         }
-        onSizeChange(sizeKey, { width: nextW, height: nextH })
+        latestSizeRef.current = { width: nextW, height: nextH }
+        onSizeChange(sizeKey, latestSizeRef.current)
       }
 
       const onUp = () => {
@@ -65,6 +164,7 @@ export default function ResizableCard({
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
         setResizing(false)
+        onSizeCommit(sizeKey, latestSizeRef.current)
       }
 
       document.addEventListener('mousemove', onMove)
@@ -73,31 +173,63 @@ export default function ResizableCard({
         edge === 'e' ? 'ew-resize' : edge === 's' ? 'ns-resize' : 'nwse-resize'
       document.body.style.userSelect = 'none'
     },
-    [onSizeChange, size.height, size.width, sizeKey]
+    [onSizeChange, onSizeCommit, scale, size, sizeKey]
   )
+
+  const moveByKeyboard = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return
+    const step = e.shiftKey ? 50 : 10
+    let next: CardPosition | null = null
+    if (e.key === 'ArrowLeft') next = { x: position.x - step, y: position.y, zIndex: frontZIndex }
+    if (e.key === 'ArrowRight') next = { x: position.x + step, y: position.y, zIndex: frontZIndex }
+    if (e.key === 'ArrowUp') next = { x: position.x, y: position.y - step, zIndex: frontZIndex }
+    if (e.key === 'ArrowDown') next = { x: position.x, y: position.y + step, zIndex: frontZIndex }
+    if (!next) return
+    e.preventDefault()
+    onPositionChange(sizeKey, next)
+    onPositionCommit(sizeKey, next)
+  }
 
   return (
     <div
-      className={`resizable-card group/card relative ${resizing ? 'z-10' : ''} ${className}`}
+      data-workspace-card
+      role="group"
+      tabIndex={0}
+      aria-label={moveLabel}
+      title={moveLabel}
+      className={`resizable-card group/card absolute outline-none focus-visible:ring-2 focus-visible:ring-accent ${moving ? 'cursor-grabbing ring-2 ring-accent/50' : ''} ${className}`}
+      onMouseDown={startPointerDrag}
+      onKeyDown={moveByKeyboard}
+      onClickCapture={(e) => {
+        if (Date.now() >= suppressClickUntilRef.current) return
+        e.preventDefault()
+        e.stopPropagation()
+      }}
       style={{
+        left: position.x,
+        top: position.y,
+        zIndex: resizing || moving ? Math.max(position.zIndex, frontZIndex) + 100000 : position.zIndex,
         width: size.width,
         height: size.height,
-        minWidth: MIN_W,
-        minHeight: MIN_H
+        minWidth: WORKSPACE_CARD_MIN_WIDTH,
+        minHeight: WORKSPACE_CARD_MIN_HEIGHT
       }}
     >
       <div className="h-full w-full overflow-hidden">{children}</div>
       <div
+        data-card-resize
         className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize opacity-0 transition-opacity group-hover/card:opacity-100"
         onMouseDown={(e) => startResize('e', e)}
         aria-hidden
       />
       <div
+        data-card-resize
         className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize opacity-0 transition-opacity group-hover/card:opacity-100"
         onMouseDown={(e) => startResize('s', e)}
         aria-hidden
       />
       <div
+        data-card-resize
         className="absolute bottom-0 right-0 h-3.5 w-3.5 cursor-nwse-resize opacity-0 transition-opacity group-hover/card:opacity-100"
         onMouseDown={(e) => startResize('se', e)}
         aria-hidden
@@ -109,12 +241,18 @@ export default function ResizableCard({
 }
 
 export function defaultCardSize(): CardSize {
-  return { width: DEFAULT_W, height: DEFAULT_H }
+  return { width: WORKSPACE_CARD_DEFAULT_WIDTH, height: WORKSPACE_CARD_DEFAULT_HEIGHT }
 }
 
 export function clampCardSize(size: Partial<CardSize> | undefined): CardSize {
   return {
-    width: Math.max(MIN_W, Math.min(MAX_W, size?.width ?? DEFAULT_W)),
-    height: Math.max(MIN_H, Math.min(MAX_H, size?.height ?? DEFAULT_H))
+    width: Math.max(
+      WORKSPACE_CARD_MIN_WIDTH,
+      Math.min(WORKSPACE_CARD_MAX_WIDTH, size?.width ?? WORKSPACE_CARD_DEFAULT_WIDTH)
+    ),
+    height: Math.max(
+      WORKSPACE_CARD_MIN_HEIGHT,
+      Math.min(WORKSPACE_CARD_MAX_HEIGHT, size?.height ?? WORKSPACE_CARD_DEFAULT_HEIGHT)
+    )
   }
 }

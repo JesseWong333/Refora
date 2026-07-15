@@ -114,7 +114,65 @@ const noop = async () => undefined
     list: async () => [],
     add: async () => [],
     remove: noop,
-    reorder: noop,
+    reorder: async () => [],
+    resize: async (id: string, width: number, height: number) => ({
+      id,
+      workspaceId: 'ws',
+      kind: 'document' as const,
+      docId: 'doc',
+      reportId: null,
+      noteId: null,
+      sortOrder: 0,
+      width,
+      height,
+      x: 0,
+      y: 0,
+      zIndex: 0,
+      addedAt: 0
+    }),
+    move: async (id: string, x: number, y: number, zIndex: number) => ({
+      id,
+      workspaceId: 'ws',
+      kind: 'document' as const,
+      docId: 'doc',
+      reportId: null,
+      noteId: null,
+      sortOrder: 0,
+      width: 300,
+      height: 200,
+      x,
+      y,
+      zIndex,
+      addedAt: 0
+    }),
+  },
+
+  workspaceNotes: {
+    list: async () => [],
+    create: async (workspaceId: string, title: string, contentMd: string, noteType: 'markdown' | 'plain') => ({
+      id: 'note',
+      workspaceId,
+      noteType,
+      title,
+      contentMd,
+      createdAt: 0,
+      updatedAt: 0
+    }),
+    update: async (id: string, patch: { title?: string; contentMd?: string }) => ({
+      id,
+      workspaceId: 'ws',
+      noteType: 'markdown' as const,
+      title: patch.title ?? '',
+      contentMd: patch.contentMd ?? '',
+      createdAt: 0,
+      updatedAt: 0
+    }),
+    delete: noop,
+  },
+
+  workspaceCanvas: {
+    get: async () => ({ panX: 0, panY: 0, zoom: 1 }),
+    update: async (_workspaceId: string, viewport: { panX: number; panY: number; zoom: number }) => viewport,
   },
 
   aiProviders: {
@@ -164,6 +222,15 @@ const noop = async () => undefined
 
   reports: {
     list: async () => [],
+    update: async (id: string, patch: { title?: string; contentMd?: string }) => ({
+      id,
+      workspaceId: 'ws',
+      title: patch.title ?? '',
+      contentMd: patch.contentMd ?? '',
+      sourceDocIds: [],
+      model: null,
+      createdAt: 0
+    }),
     delete: noop,
   },
 
@@ -177,6 +244,7 @@ const noop = async () => undefined
     onAiSummaryUpdated: (_cb: unknown) => undefined,
     onAiSummaryError: (_cb: unknown) => undefined,
     onAiReportCreated: (_cb: unknown) => undefined,
+    onWorkspaceItemsChanged: (_cb: unknown) => undefined,
     onAiChatToken: (_cb: unknown) => undefined,
     onAiChatReasoning: (_cb: unknown) => undefined,
     onAiChatDone: (_cb: unknown) => undefined,

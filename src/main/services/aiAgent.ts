@@ -442,17 +442,29 @@ export function createAiAgentService(
       }),
       func: async ({ title, contentMd, sourceDocIds }) => {
         if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
-        const ids = parseSourceDocIds(sourceDocIds)
-        const report = repos.aiReports.create({
-          workspaceId: req.workspaceId,
-          title,
-          contentMd,
-          sourceDocIds: ids,
-          model: providerModel
+        const allowedDocIds = new Set(
+          repos.workspaceItems
+            .list(req.workspaceId)
+            .filter((item) => item.kind === 'document' && item.docId)
+            .map((item) => item.docId as string)
+        )
+        const ids = parseSourceDocIds(sourceDocIds).filter((id) => allowedDocIds.has(id))
+        const report = repos.transaction(() => {
+          const created = repos.aiReports.create({
+            workspaceId: req.workspaceId,
+            title,
+            contentMd,
+            sourceDocIds: ids,
+            model: providerModel
+          })
+          repos.workspaceItems.add(req.workspaceId, 'report', [created.id])
+          return created
         })
-        repos.workspaceItems.add(req.workspaceId, 'report', [report.id])
         const w = getWin()
-        if (w) emitAiReportCreated(w, report)
+        if (w) {
+          emitAiReportCreated(w, report)
+          emitWorkspaceItemsChanged(w, { workspaceId: req.workspaceId, reason: 'other' })
+        }
         return 'Report created and pinned to the board.'
       }
     })

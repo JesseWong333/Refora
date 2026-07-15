@@ -32,8 +32,13 @@ import type {
   SummaryErrorEvent,
   WatchFolder,
   Workspace,
+  WorkspaceCanvasViewport,
   WorkspaceItem,
   WorkspaceItemKind,
+  WorkspaceItemPlacement,
+  WorkspaceNote,
+  WorkspaceNotePatch,
+  WorkspaceNoteType,
   WorkspaceItemsChangedEvent
 } from '../shared/ipc-types'
 
@@ -179,11 +184,32 @@ const api: ReforaApi = {
   workspaceItems: {
     list: (workspaceId: string) =>
       invoke<WorkspaceItem[]>(IpcChannel.WorkspaceItemsList, workspaceId),
-    add: (workspaceId: string, kind: WorkspaceItemKind, ids: string[]) =>
-      invoke<WorkspaceItem[]>(IpcChannel.WorkspaceItemsAdd, workspaceId, kind, ids),
+    add: (workspaceId: string, kind: WorkspaceItemKind, ids: string[], placement?: WorkspaceItemPlacement) =>
+      invoke<WorkspaceItem[]>(IpcChannel.WorkspaceItemsAdd, workspaceId, kind, ids, placement),
     remove: (itemId: string) => invoke<void>(IpcChannel.WorkspaceItemsRemove, itemId),
     reorder: (workspaceId: string, orderedIds: string[]) =>
-      invoke<void>(IpcChannel.WorkspaceItemsReorder, workspaceId, orderedIds)
+      invoke<WorkspaceItem[]>(IpcChannel.WorkspaceItemsReorder, workspaceId, orderedIds),
+    resize: (itemId: string, width: number, height: number) =>
+      invoke<WorkspaceItem>(IpcChannel.WorkspaceItemsResize, itemId, width, height),
+    move: (itemId: string, x: number, y: number, zIndex: number) =>
+      invoke<WorkspaceItem>(IpcChannel.WorkspaceItemsMove, itemId, x, y, zIndex)
+  },
+
+  workspaceNotes: {
+    list: (workspaceId: string) =>
+      invoke<WorkspaceNote[]>(IpcChannel.WorkspaceNotesList, workspaceId),
+    create: (workspaceId: string, title: string, contentMd: string, noteType: WorkspaceNoteType, placement?: WorkspaceItemPlacement) =>
+      invoke<WorkspaceNote>(IpcChannel.WorkspaceNotesCreate, workspaceId, title, contentMd, noteType, placement),
+    update: (id: string, patch: WorkspaceNotePatch) =>
+      invoke<WorkspaceNote>(IpcChannel.WorkspaceNotesUpdate, id, patch),
+    delete: (id: string) => invoke<void>(IpcChannel.WorkspaceNotesDelete, id)
+  },
+
+  workspaceCanvas: {
+    get: (workspaceId: string) =>
+      invoke<WorkspaceCanvasViewport>(IpcChannel.WorkspaceCanvasGet, workspaceId),
+    update: (workspaceId: string, viewport: WorkspaceCanvasViewport) =>
+      invoke<WorkspaceCanvasViewport>(IpcChannel.WorkspaceCanvasUpdate, workspaceId, viewport)
   },
 
   aiProviders: {

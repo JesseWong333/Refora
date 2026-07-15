@@ -1,10 +1,11 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsOutSimple, ArrowsInSimple, X } from '@phosphor-icons/react'
+import { ArrowsOutSimple, ArrowsInSimple, CaretDown, Check, NotePencil, SquaresFour, Sticker, X } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
+import { useClickOutside } from '../../hooks/useClickOutside'
 import { api } from '../../ipc'
 import ResizeDivider from '../ResizeDivider'
-import Board from './Board'
+import Board, { type BoardHandle } from './Board'
 import ChatPanel from './ChatPanel'
 
 const CHAT_MIN = 220
@@ -14,11 +15,18 @@ export default function WorkspacePanel() {
   const { t } = useTranslation()
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
   const fullscreen = useWorkspaceStore((s) => s.fullscreen)
+  const chatStreaming = useWorkspaceStore((s) => s.chatStreaming)
   const toggleFullscreen = useWorkspaceStore((s) => s.toggleFullscreen)
   const closePanel = useWorkspaceStore((s) => s.closePanel)
 
   const [chatHeight, setChatHeight] = useState(CHAT_DEFAULT)
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
+  const workspaceMenuRef = useRef<HTMLDivElement | null>(null)
+  const boardRef = useRef<BoardHandle | null>(null)
+
+  useClickOutside(workspaceMenuRef, () => setWorkspaceMenuOpen(false), workspaceMenuOpen)
 
   const chatMax = useMemo(() => {
     if (typeof window === 'undefined') return 520
@@ -58,10 +66,85 @@ export default function WorkspacePanel() {
           padTrafficLights ? 'pl-[86px]' : ''
         }`}
       >
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {name}
-        </span>
+        <div ref={workspaceMenuRef} className="relative flex min-w-0 flex-1 items-center gap-1">
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {name}
+          </span>
+          <button
+            type="button"
+            className="sidebar-header-btn no-drag h-6 w-6 shrink-0"
+            onClick={() => setWorkspaceMenuOpen((open) => !open)}
+            disabled={workspaces.length < 2 || chatStreaming}
+            title={t('workspace.switchWorkspace')}
+            aria-label={t('workspace.switchWorkspace')}
+            aria-haspopup="listbox"
+            aria-expanded={workspaceMenuOpen}
+          >
+            <CaretDown className={`h-3.5 w-3.5 transition-transform ${workspaceMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {workspaceMenuOpen && (
+            <div
+              className="no-drag absolute left-0 top-full z-50 mt-1 max-h-64 w-64 max-w-[calc(100vw-24px)] overflow-y-auto rounded-xl border border-border bg-panel p-1.5 shadow-lg"
+              role="listbox"
+              aria-label={t('workspace.switchWorkspace')}
+              onKeyDown={(e) => {
+                const options = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]:not(:disabled)'))
+                const currentIndex = options.findIndex((option) => option === document.activeElement)
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  options[Math.min(currentIndex + 1, options.length - 1)]?.focus()
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  options[Math.max(currentIndex - 1, 0)]?.focus()
+                }
+              }}
+            >
+              {workspaces.map((workspace) => {
+                const isActive = workspace.id === activeWorkspaceId
+                return (
+                  <button
+                    key={workspace.id}
+                    type="button"
+                    role="option"
+                    aria-selected={isActive}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs transition-colors duration-150 hover:bg-hover ${
+                      isActive ? 'bg-active text-accent' : 'text-foreground'
+                    }`}
+                    onClick={() => {
+                      if (!isActive) setActiveWorkspace(workspace.id)
+                      setWorkspaceMenuOpen(false)
+                    }}
+                  >
+                    <SquaresFour className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+                    {isActive && <Check className="h-3.5 w-3.5 shrink-0" />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
         <div className="flex shrink-0 items-center gap-1 no-drag">
+          <button
+            type="button"
+            className="sidebar-header-btn"
+            onClick={() => boardRef.current?.createNote('markdown')}
+            disabled={!activeWorkspaceId}
+            title={t('workspace.createNote')}
+            aria-label={t('workspace.createNote')}
+          >
+            <NotePencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="sidebar-header-btn"
+            onClick={() => boardRef.current?.createNote('plain')}
+            disabled={!activeWorkspaceId}
+            title={t('workspace.createStickyNote')}
+            aria-label={t('workspace.createStickyNote')}
+          >
+            <Sticker className="h-4 w-4" />
+          </button>
           <button
             type="button"
             className="sidebar-header-btn"
@@ -86,7 +169,7 @@ export default function WorkspacePanel() {
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-          <Board />
+          <Board ref={boardRef} />
         </div>
         <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="line" />
         <div

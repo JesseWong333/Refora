@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
-import type { AiReport } from '../../src/shared/ipc-types'
+import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react'
+import type { AiReport, Document, WorkspaceNote } from '../../src/shared/ipc-types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -10,6 +10,41 @@ vi.mock('react-i18next', () => ({
 }))
 
 const mockShowContextMenu = vi.fn()
+const mockBoardCreateNote = vi.hoisted(() => vi.fn())
+const mockWorkspacePanelState = vi.hoisted(() => ({
+  workspaces: [
+    { id: 'ws-1', name: 'Research', createdAt: 1, updatedAt: 1 },
+    { id: 'ws-2', name: 'Reading notes', createdAt: 2, updatedAt: 2 }
+  ],
+  activeWorkspaceId: 'ws-1' as string | null,
+  fullscreen: false,
+  chatStreaming: false,
+  setActiveWorkspace: vi.fn(),
+  toggleFullscreen: vi.fn(),
+  closePanel: vi.fn()
+}))
+
+vi.mock('../../src/renderer/store/workspaceStore', () => ({
+  useWorkspaceStore: (selector: (state: typeof mockWorkspacePanelState) => unknown) => selector(mockWorkspacePanelState)
+}))
+
+vi.mock('../../src/renderer/components/workspace/Board', async () => {
+  const React = await import('react')
+  return {
+    default: React.forwardRef(function MockBoard(_, ref) {
+      React.useImperativeHandle(ref, () => ({ createNote: mockBoardCreateNote }))
+      return React.createElement('div', null, 'Board')
+    })
+  }
+})
+
+vi.mock('../../src/renderer/components/workspace/ChatPanel', () => ({
+  default: () => <div>Chat panel</div>
+}))
+
+vi.mock('../../src/renderer/components/ResizeDivider', () => ({
+  default: () => <div>Resize divider</div>
+}))
 
 vi.mock('@lobehub/ui', () => ({
   Modal: ({ children, open, title, footer }: {
@@ -28,8 +63,13 @@ vi.mock('@lobehub/ui', () => ({
       )}
     </div>
   ),
-  Button: ({ children, onClick, danger }: { children: React.ReactNode; onClick?: () => void; danger?: boolean }) => (
-    <button data-testid={danger ? 'modal-btn-danger' : 'modal-btn'} onClick={onClick}>
+  Button: ({ children, onClick, danger, disabled }: {
+    children: React.ReactNode
+    onClick?: () => void
+    danger?: boolean
+    disabled?: boolean
+  }) => (
+    <button data-testid={danger ? 'modal-btn-danger' : 'modal-btn'} disabled={disabled} onClick={onClick}>
       {children}
     </button>
   ),
@@ -47,6 +87,11 @@ vi.mock('motion/react', () => ({
 
 const ReportCardModule = await import('../../src/renderer/components/workspace/ReportCard')
 const ReportCard = ReportCardModule.default
+const PaperCard = (await import('../../src/renderer/components/workspace/PaperCard')).default
+const NoteCard = (await import('../../src/renderer/components/workspace/NoteCard')).default
+const StickyNoteCard = (await import('../../src/renderer/components/workspace/StickyNoteCard')).default
+const ResizableCard = (await import('../../src/renderer/components/workspace/ResizableCard')).default
+const WorkspacePanel = (await import('../../src/renderer/components/workspace/WorkspacePanel')).default
 
 function makeReport(overrides: Partial<AiReport> = {}): AiReport {
   return {
@@ -63,27 +108,37 @@ function makeReport(overrides: Partial<AiReport> = {}): AiReport {
 
 beforeEach(() => {
   mockShowContextMenu.mockReset()
+  mockBoardCreateNote.mockReset()
+  mockWorkspacePanelState.workspaces = [
+    { id: 'ws-1', name: 'Research', createdAt: 1, updatedAt: 1 },
+    { id: 'ws-2', name: 'Reading notes', createdAt: 2, updatedAt: 2 }
+  ]
+  mockWorkspacePanelState.activeWorkspaceId = 'ws-1'
+  mockWorkspacePanelState.fullscreen = false
+  mockWorkspacePanelState.chatStreaming = false
+  mockWorkspacePanelState.setActiveWorkspace.mockReset()
 })
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
 describe('ReportCard', () => {
   it('renders the report title and preview content', () => {
-    render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={() => {}} />)
+    render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={async () => true} />)
     expect(screen.getByText('Test Report')).toBeTruthy()
     expect(screen.getByText(/Paragraph one/)).toBeTruthy()
   })
 
   it('renders formatted date', () => {
-    render(<ReportCard report={makeReport({ createdAt: 1700000000000 })} onDelete={() => {}} onUpdate={() => {}} />)
+    render(<ReportCard report={makeReport({ createdAt: 1700000000000 })} onDelete={() => {}} onUpdate={async () => true} />)
     expect(screen.getByText('2023-11-14')).toBeTruthy()
   })
 
   it('shows context menu on right-click with edit, export, and delete options', () => {
-    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={() => {}} />)
+    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={async () => true} />)
     const card = container.querySelector('.card') as HTMLElement
     expect(card).toBeTruthy()
     fireEvent.contextMenu(card)
@@ -105,7 +160,7 @@ describe('ReportCard', () => {
   })
 
   it('opens modal when context menu delete action is clicked', () => {
-    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={() => {}} />)
+    const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={async () => true} />)
     const card = container.querySelector('.card') as HTMLElement
     fireEvent.contextMenu(card)
     const items = mockShowContextMenu.mock.calls[0][0] as Array<{ onClick: () => void }>
@@ -115,9 +170,9 @@ describe('ReportCard', () => {
     expect(screen.getByTestId('modal')).toBeTruthy()
   })
 
-  it('triggers onDelete on second click of danger button (two-step confirm)', () => {
+  it('confirms a context-menu delete before calling onDelete', () => {
     const onDelete = vi.fn()
-    const { container } = render(<ReportCard report={makeReport()} onDelete={onDelete} onUpdate={() => {}} />)
+    const { container } = render(<ReportCard report={makeReport()} onDelete={onDelete} onUpdate={async () => true} />)
     const card = container.querySelector('.card') as HTMLElement
     fireEvent.contextMenu(card)
     const items = mockShowContextMenu.mock.calls[0][0] as Array<{ onClick: () => void }>
@@ -125,11 +180,356 @@ describe('ReportCard', () => {
       items[2].onClick()
     })
     const dangerBtn = screen.getByTestId('modal-btn-danger')
-    expect(dangerBtn.textContent).toContain('workspace.reportDelete')
-    fireEvent.click(dangerBtn)
-    expect(onDelete).not.toHaveBeenCalled()
     expect(dangerBtn.textContent).toContain('common.confirm')
     fireEvent.click(dangerBtn)
     expect(onDelete).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows source papers and opens an available source', () => {
+    const onOpenSource = vi.fn()
+    render(
+      <ReportCard
+        report={makeReport({ sourceDocIds: ['doc-1'] })}
+        sourceDocuments={new Map([['doc-1', { id: 'doc-1', title: 'Source Paper', fileName: 'source.pdf' } as never]])}
+        onOpenSource={onOpenSource}
+        onDelete={() => {}}
+        onUpdate={async () => true}
+      />
+    )
+
+    fireEvent.click(screen.getByText('Test Report'))
+    fireEvent.click(screen.getByRole('button', { name: 'Source Paper' }))
+    expect(onOpenSource).toHaveBeenCalledWith('doc-1')
+  })
+})
+
+describe('Workspace card types', () => {
+  it('gives papers, reports, and notes distinct visible type treatments', () => {
+    const paper: Document = {
+      id: 'doc-1',
+      fileName: 'paper.pdf',
+      title: 'Paper title'
+    } as Document
+    const note: WorkspaceNote = {
+      id: 'note-1',
+      workspaceId: 'ws-1',
+      noteType: 'markdown',
+      title: 'Note title',
+      contentMd: 'Note content',
+      createdAt: 1,
+      updatedAt: 1
+    }
+
+    const { container: paperContainer } = render(
+      <PaperCard
+        doc={paper}
+        summary={null}
+        summarizing={false}
+        summaryError={null}
+        onSummarize={() => {}}
+        onOpenPdf={() => {}}
+        onRemove={() => {}}
+      />
+    )
+    const { container: reportContainer } = render(
+      <ReportCard report={makeReport()} onDelete={() => {}} onUpdate={async () => true} />
+    )
+    const { container: noteContainer } = render(
+      <NoteCard note={note} onDelete={() => {}} onUpdate={async () => true} />
+    )
+    const { container: stickyContainer } = render(
+      <StickyNoteCard
+        note={{ ...note, id: 'sticky-1', noteType: 'plain', contentMd: 'Sticky text' }}
+        onDelete={() => {}}
+        onUpdate={async () => true}
+      />
+    )
+
+    expect(paperContainer.querySelector('[data-card-kind="document"]')).toHaveClass('workspace-content-card--document')
+    expect(reportContainer.querySelector('[data-card-kind="report"]')).toHaveClass('workspace-content-card--report')
+    expect(noteContainer.querySelector('[data-card-kind="note"]')).toHaveClass('workspace-content-card--note')
+    expect(stickyContainer.querySelector('[data-card-kind="sticky"]')).toHaveClass('workspace-content-card--sticky')
+    expect(screen.getByText('workspace.cardTypePaper')).toBeInTheDocument()
+    expect(screen.getByText('workspace.cardTypeReport')).toBeInTheDocument()
+    expect(screen.getByText('workspace.cardTypeNote')).toBeInTheDocument()
+    expect(screen.getByText('workspace.cardTypeSticky')).toBeInTheDocument()
+  })
+})
+
+describe('WorkspacePanel workspace switcher', () => {
+  it('shows all workspaces and marks the active workspace', () => {
+    render(<WorkspacePanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.switchWorkspace' }))
+
+    const listbox = screen.getByRole('listbox', { name: 'workspace.switchWorkspace' })
+    expect(listbox).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Research' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('option', { name: 'Reading notes' })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('switches to another workspace and closes the menu', () => {
+    render(<WorkspacePanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.switchWorkspace' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Reading notes' }))
+
+    expect(mockWorkspacePanelState.setActiveWorkspace).toHaveBeenCalledWith('ws-2')
+    expect(screen.queryByRole('listbox', { name: 'workspace.switchWorkspace' })).not.toBeInTheDocument()
+  })
+
+  it('disables workspace switching while chat is streaming', () => {
+    mockWorkspacePanelState.chatStreaming = true
+
+    render(<WorkspacePanel />)
+
+    expect(screen.getByRole('button', { name: 'workspace.switchWorkspace' })).toBeDisabled()
+  })
+
+  it('creates Markdown notes and sticky notes from the title bar', () => {
+    render(<WorkspacePanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.createNote' }))
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.createStickyNote' }))
+
+    expect(mockBoardCreateNote).toHaveBeenNthCalledWith(1, 'markdown')
+    expect(mockBoardCreateNote).toHaveBeenNthCalledWith(2, 'plain')
+  })
+})
+
+describe('NoteCard', () => {
+  const note: WorkspaceNote = {
+    id: 'note-1',
+    workspaceId: 'ws-1',
+    noteType: 'markdown',
+    title: 'Original',
+    contentMd: 'Original content',
+    createdAt: 1,
+    updatedAt: 1
+  }
+
+  it('keeps the edited draft open when saving fails', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(false)
+    render(
+      <NoteCard
+        note={note}
+        autoEdit
+        onDelete={() => {}}
+        onUpdate={onUpdate}
+      />
+    )
+
+    const title = screen.getByRole('textbox', { name: 'workspace.noteTitleLabel' })
+    const content = screen.getByRole('textbox', { name: 'workspace.noteContentLabel' })
+    fireEvent.change(title, { target: { value: 'Edited title' } })
+    fireEvent.change(content, { target: { value: '# Edited content' } })
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.noteSave' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('workspace.noteSaveFailed')).toBeInTheDocument()
+    })
+    expect(title).toHaveValue('Edited title')
+    expect(content).toHaveValue('# Edited content')
+    expect(onUpdate).toHaveBeenCalledWith('note-1', {
+      title: 'Edited title',
+      contentMd: '# Edited content'
+    })
+  })
+})
+
+describe('StickyNoteCard', () => {
+  const note: WorkspaceNote = {
+    id: 'sticky-1',
+    workspaceId: 'ws-1',
+    noteType: 'plain',
+    title: 'Sticky note',
+    contentMd: 'Original text',
+    createdAt: 1,
+    updatedAt: 1
+  }
+
+  it('edits plain text directly on the card without opening a modal', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(true)
+    render(
+      <StickyNoteCard
+        note={note}
+        onDelete={() => {}}
+        onUpdate={onUpdate}
+      />
+    )
+
+    const content = screen.getByRole('textbox', { name: 'workspace.stickyNoteContentLabel' })
+    fireEvent.change(content, { target: { value: 'Edited plain text' } })
+    fireEvent.blur(content)
+
+    await waitFor(() => {
+      expect(onUpdate).toHaveBeenCalledWith('sticky-1', { contentMd: 'Edited plain text' })
+    })
+    expect(screen.queryByTestId('modal')).not.toBeInTheDocument()
+    expect(content).toHaveValue('Edited plain text')
+  })
+
+  it('keeps the inline draft visible when autosave fails', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(false)
+    render(
+      <StickyNoteCard
+        note={note}
+        onDelete={() => {}}
+        onUpdate={onUpdate}
+      />
+    )
+
+    const content = screen.getByRole('textbox', { name: 'workspace.stickyNoteContentLabel' })
+    fireEvent.change(content, { target: { value: 'Unsaved text' } })
+    fireEvent.blur(content)
+
+    await waitFor(() => {
+      expect(screen.getByText('workspace.stickyNoteSaveFailed')).toBeInTheDocument()
+    })
+    expect(content).toHaveValue('Unsaved text')
+  })
+})
+
+describe('ResizableCard', () => {
+  it('supports keyboard positioning from the card without rendering a move handle', () => {
+    const onPositionChange = vi.fn()
+    const onPositionCommit = vi.fn()
+    render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 100, y: 200, zIndex: 2 }}
+        scale={1}
+        frontZIndex={5}
+        onSizeChange={() => {}}
+        onSizeCommit={() => {}}
+        onPositionChange={onPositionChange}
+        onPositionCommit={onPositionCommit}
+        moveLabel="Move card"
+      >
+        <div>Content</div>
+      </ResizableCard>
+    )
+
+    const card = screen.getByRole('group', { name: 'Move card' })
+    expect(screen.queryByRole('button', { name: 'Move card' })).toBeNull()
+    fireEvent.keyDown(card, { key: 'ArrowLeft' })
+    fireEvent.keyDown(card, { key: 'ArrowDown', shiftKey: true })
+
+    expect(onPositionCommit).toHaveBeenNthCalledWith(1, 'item-1', { x: 90, y: 200, zIndex: 5 })
+    expect(onPositionCommit).toHaveBeenNthCalledWith(2, 'item-1', { x: 100, y: 250, zIndex: 5 })
+  })
+
+  it('commits the final size in world coordinates when resizing a zoomed canvas', () => {
+    const onSizeChange = vi.fn()
+    const onSizeCommit = vi.fn()
+    const { container } = render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 0, y: 0, zIndex: 0 }}
+        scale={2}
+        frontZIndex={1}
+        onSizeChange={onSizeChange}
+        onSizeCommit={onSizeCommit}
+        onPositionChange={() => {}}
+        onPositionCommit={() => {}}
+      >
+        <div>Content</div>
+      </ResizableCard>
+    )
+    const corner = container.querySelector('.cursor-nwse-resize') as HTMLElement
+
+    fireEvent.mouseDown(corner, { clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(document, { clientX: 180, clientY: 150 })
+    fireEvent.mouseUp(document)
+
+    expect(onSizeChange).toHaveBeenLastCalledWith('item-1', { width: 340, height: 225 })
+    expect(onSizeCommit).toHaveBeenCalledWith('item-1', { width: 340, height: 225 })
+  })
+
+  it('starts moving after the pointer crosses the drag threshold and converts through canvas scale', () => {
+    const onPositionChange = vi.fn()
+    const onPositionCommit = vi.fn()
+    render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: -20, y: 40, zIndex: 1 }}
+        scale={0.5}
+        frontZIndex={8}
+        onSizeChange={() => {}}
+        onSizeCommit={() => {}}
+        onPositionChange={onPositionChange}
+        onPositionCommit={onPositionCommit}
+        moveLabel="Move card"
+      >
+        <div>Content</div>
+      </ResizableCard>
+    )
+
+    const content = screen.getByText('Content')
+    fireEvent.mouseDown(content, { button: 0, clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(document, { clientX: 103, clientY: 102 })
+    expect(onPositionChange).not.toHaveBeenCalled()
+    fireEvent.mouseMove(document, { clientX: 130, clientY: 80 })
+    fireEvent.mouseUp(document)
+
+    expect(onPositionChange).toHaveBeenLastCalledWith('item-1', { x: 40, y: 0, zIndex: 8 })
+    expect(onPositionCommit).toHaveBeenCalledWith('item-1', { x: 40, y: 0, zIndex: 8 })
+  })
+
+  it('keeps a normal click from becoming a drag when movement stays below the threshold', () => {
+    const onPositionChange = vi.fn()
+    const onPositionCommit = vi.fn()
+    render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 0, y: 0, zIndex: 0 }}
+        scale={1}
+        frontZIndex={1}
+        onSizeChange={() => {}}
+        onSizeCommit={() => {}}
+        onPositionChange={onPositionChange}
+        onPositionCommit={onPositionCommit}
+        moveLabel="Move card"
+      >
+        <div>Content</div>
+      </ResizableCard>
+    )
+
+    fireEvent.mouseDown(screen.getByText('Content'), { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.mouseMove(document, { clientX: 14, clientY: 10 })
+    fireEvent.mouseUp(document)
+
+    expect(onPositionChange).not.toHaveBeenCalled()
+    expect(onPositionCommit).not.toHaveBeenCalled()
+  })
+
+  it('does not start a drag from an interactive control', () => {
+    const onPositionChange = vi.fn()
+    render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 0, y: 0, zIndex: 0 }}
+        scale={1}
+        frontZIndex={1}
+        onSizeChange={() => {}}
+        onSizeCommit={() => {}}
+        onPositionChange={onPositionChange}
+        onPositionCommit={() => {}}
+        moveLabel="Move card"
+      >
+        <button type="button">Open</button>
+      </ResizableCard>
+    )
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Open' }), { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.mouseMove(document, { clientX: 50, clientY: 50 })
+    fireEvent.mouseUp(document)
+
+    expect(onPositionChange).not.toHaveBeenCalled()
   })
 })
