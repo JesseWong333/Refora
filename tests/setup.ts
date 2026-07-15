@@ -58,6 +58,8 @@ const noop = async () => undefined
     addFiles: async () => [],
     addFolder: async () => [],
     fromJson: async () => 0,
+    fromZotero: async () => ({ added: 0, skipped: 0, errors: [] }),
+    fromMendeley: async () => ({ added: 0, skipped: 0, errors: [] }),
   },
 
   categories: {
@@ -172,6 +174,8 @@ const noop = async () => undefined
     onImportProgress: (_cb: unknown) => undefined,
     onImportToast: (_cb: unknown) => undefined,
     onMenuExportBibtex: (_cb: unknown) => undefined,
+    onMenuImportZotero: (_cb: unknown) => undefined,
+    onMenuImportMendeley: (_cb: unknown) => undefined,
     onLibraryScanning: (_cb: unknown) => undefined,
     onLibrarySwitched: (_cb: unknown) => undefined,
     onAiSummaryUpdated: (_cb: unknown) => undefined,

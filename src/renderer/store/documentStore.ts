@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type {
+  BibImportResult,
   Document,
   DocumentPatch,
   ImportProgress,
@@ -80,6 +81,8 @@ interface DocumentState {
   startImport: (total: number) => void
   updateImportProgress: (payload: ImportProgress) => void
   endImport: () => void
+  importFromZotero: () => Promise<void>
+  importFromMendeley: () => Promise<void>
   init: (listColumnState: ListColumnState | null) => void
   destroy: () => void
   fetchCategories: () => Promise<void>
@@ -94,6 +97,8 @@ const docUpdatedCb: Array<null | ((doc: Document) => void)> = [null]
 const importProgressCb: Array<null | ((payload: ImportProgress) => void)> = [null]
 const importToastCb: Array<null | ((message: string) => void)> = [null]
 const menuExportBibtexCb: Array<null | (() => void)> = [null]
+const menuImportZoteroCb: Array<null | (() => void)> = [null]
+const menuImportMendeleyCb: Array<null | (() => void)> = [null]
 const librarySwitchedCb: Array<null | (() => void)> = [null]
 
 let toastTimeout: ReturnType<typeof setTimeout> | null = null
@@ -376,6 +381,42 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     get().refreshPendingMetadataCount()
   },
 
+  importFromZotero: async () => {
+    try {
+      const result: BibImportResult = await api.import.fromZotero()
+      get().showToast(
+        i18n.t('topbar.zoteroImported', {
+          added: result.added,
+          skipped: result.skipped
+        }) as string
+      )
+      if (result.added > 0 || result.skipped > 0) {
+        void get().fetchDocuments()
+        get().refreshPendingMetadataCount()
+      }
+    } catch (e) {
+      get().showToast(errorMessage(e, i18n.t('topbar.importFailed') as string))
+    }
+  },
+
+  importFromMendeley: async () => {
+    try {
+      const result: BibImportResult = await api.import.fromMendeley()
+      get().showToast(
+        i18n.t('topbar.mendeleyImported', {
+          added: result.added,
+          skipped: result.skipped
+        }) as string
+      )
+      if (result.added > 0 || result.skipped > 0) {
+        void get().fetchDocuments()
+        get().refreshPendingMetadataCount()
+      }
+    } catch (e) {
+      get().showToast(errorMessage(e, i18n.t('topbar.importFailed') as string))
+    }
+  },
+
   init: (listColumnState: ListColumnState | null) => {
     if (get().initialized) return
     set({
@@ -417,6 +458,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       void api.export.toBibtex(ids)
     }
     api.events.onMenuExportBibtex(menuExportBibtexCb[0])
+
+    menuImportZoteroCb[0] = () => {
+      void get().importFromZotero()
+    }
+    api.events.onMenuImportZotero(menuImportZoteroCb[0])
+
+    menuImportMendeleyCb[0] = () => {
+      void get().importFromMendeley()
+    }
+    api.events.onMenuImportMendeley(menuImportMendeleyCb[0])
 
     librarySwitchedCb[0] = () => {
       set({
@@ -518,6 +569,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (menuExportBibtexCb[0]) {
       api.events.off('menu:export-bibtex', menuExportBibtexCb[0])
       menuExportBibtexCb[0] = null
+    }
+    if (menuImportZoteroCb[0]) {
+      api.events.off('menu:import-zotero', menuImportZoteroCb[0])
+      menuImportZoteroCb[0] = null
+    }
+    if (menuImportMendeleyCb[0]) {
+      api.events.off('menu:import-mendeley', menuImportMendeleyCb[0])
+      menuImportMendeleyCb[0] = null
     }
     if (librarySwitchedCb[0]) {
       api.events.off('library:switched', librarySwitchedCb[0])
