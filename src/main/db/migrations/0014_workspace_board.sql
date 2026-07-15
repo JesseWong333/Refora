@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS workspace_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_workspace_notes_ws ON workspace_notes(workspaceId);
 
-CREATE TABLE workspace_items_v12 (
+CREATE TABLE workspace_items_v14 (
   id TEXT PRIMARY KEY,
   workspaceId TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('document', 'report', 'note')),
@@ -31,7 +31,7 @@ CREATE TABLE workspace_items_v12 (
   )
 );
 
-INSERT INTO workspace_items_v12 (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, addedAt)
+INSERT INTO workspace_items_v14 (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, addedAt)
 SELECT wi.id, wi.workspaceId, 'document', wi.docId, NULL, NULL, wi.sortOrder, 300, 200, wi.addedAt
 FROM workspace_items wi
 JOIN documents d ON d.id = wi.docId
@@ -44,7 +44,7 @@ WHERE wi.kind = 'document'
     LIMIT 1
   );
 
-INSERT INTO workspace_items_v12 (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, addedAt)
+INSERT INTO workspace_items_v14 (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, addedAt)
 SELECT wi.id, wi.workspaceId, 'report', NULL, wi.reportId, NULL, wi.sortOrder, 300, 200, wi.addedAt
 FROM workspace_items wi
 JOIN ai_reports r ON r.id = wi.reportId AND r.workspaceId = wi.workspaceId
@@ -57,7 +57,7 @@ WHERE wi.kind = 'report'
     LIMIT 1
   );
 
-INSERT INTO workspace_items_v12 (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, addedAt)
+INSERT INTO workspace_items_v14 (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, addedAt)
 SELECT
   lower(hex(randomblob(16))),
   r.workspaceId,
@@ -65,18 +65,18 @@ SELECT
   NULL,
   r.id,
   NULL,
-  (SELECT COALESCE(MAX(wi.sortOrder), -1) FROM workspace_items_v12 wi WHERE wi.workspaceId = r.workspaceId)
+  (SELECT COALESCE(MAX(wi.sortOrder), -1) FROM workspace_items_v14 wi WHERE wi.workspaceId = r.workspaceId)
     + ROW_NUMBER() OVER (PARTITION BY r.workspaceId ORDER BY r.createdAt, r.id),
   300,
   200,
   r.createdAt
 FROM ai_reports r
 WHERE NOT EXISTS (
-  SELECT 1 FROM workspace_items_v12 wi WHERE wi.kind = 'report' AND wi.reportId = r.id
+  SELECT 1 FROM workspace_items_v14 wi WHERE wi.kind = 'report' AND wi.reportId = r.id
 );
 
 DROP TABLE workspace_items;
-ALTER TABLE workspace_items_v12 RENAME TO workspace_items;
+ALTER TABLE workspace_items_v14 RENAME TO workspace_items;
 
 CREATE INDEX idx_workspace_items_ws ON workspace_items(workspaceId);
 CREATE UNIQUE INDEX uq_workspace_items_document ON workspace_items(workspaceId, docId) WHERE kind = 'document';

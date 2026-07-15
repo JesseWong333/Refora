@@ -3,7 +3,7 @@ import { loadMigrationFiles } from '../../src/main/db/migrations'
 
 describe('AI provider profile migration', () => {
   it('adds protocol and reasoning fields and classifies existing endpoints', () => {
-    const migration = loadMigrationFiles().find((item) => item.version === 12)
+    const migration = loadMigrationFiles().find((item) => item.version === 13)
     expect(migration).toBeDefined()
     expect(migration!.sql).toContain('ADD COLUMN presetId')
     expect(migration!.sql).toContain('ADD COLUMN apiProtocol')

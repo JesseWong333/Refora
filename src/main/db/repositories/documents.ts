@@ -264,7 +264,7 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
       doc.url,
       doc.doi,
       doc.note,
-      doc.affiliations,
+      doc.affiliations ?? null,
       doc.starred,
       doc.addedAt,
       doc.lastReadAt,

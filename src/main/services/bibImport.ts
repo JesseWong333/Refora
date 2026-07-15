@@ -441,6 +441,7 @@ function buildBaseDoc(
     id: newId(),
     title: metadata.title ?? null,
     authors: metadata.authors ?? null,
+    affiliations: null,
     year: metadata.year ?? null,
     venue: metadata.venue ?? null,
     volume: metadata.volume ?? null,

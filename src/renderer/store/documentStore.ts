@@ -374,7 +374,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       )
       if (result.added > 0 || result.skipped > 0) {
         void get().fetchDocuments()
-        get().refreshPendingMetadataCount()
       }
     } catch (e) {
       get().showToast(errorMessage(e, i18n.t('topbar.importFailed') as string))
@@ -392,7 +391,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       )
       if (result.added > 0 || result.skipped > 0) {
         void get().fetchDocuments()
-        get().refreshPendingMetadataCount()
       }
     } catch (e) {
       get().showToast(errorMessage(e, i18n.t('topbar.importFailed') as string))

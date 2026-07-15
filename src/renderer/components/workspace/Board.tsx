@@ -20,6 +20,7 @@ import type {
   WorkspaceCanvasViewport,
   WorkspaceItem,
   WorkspaceItemPlacement,
+  WorkspaceNote,
   WorkspaceNoteType
 } from '../../../shared/ipc-types'
 import PaperCard from './PaperCard'
@@ -35,6 +36,7 @@ import ResizableCard, {
 const DOC_MIME = 'application/x-refora-docids'
 const GRID_SIZE = 32
 const VIEWPORT_SAVE_DELAY = 160
+const EMPTY_NOTES: WorkspaceNote[] = []
 const DEFAULT_VIEWPORT: WorkspaceCanvasViewport = {
   panX: 0,
   panY: 0,
@@ -53,7 +55,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   const { t } = useTranslation()
   const items = useWorkspaceStore((s) => s.items)
   const reports = useWorkspaceStore((s) => s.reports)
-  const notes = useWorkspaceStore((s) => s.notes)
+  const notes = useWorkspaceStore((s) => s.notes) ?? EMPTY_NOTES
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const addDocs = useWorkspaceStore((s) => s.addDocs)
   const removeItem = useWorkspaceStore((s) => s.removeItem)

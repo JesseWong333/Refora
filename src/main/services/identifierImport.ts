@@ -415,6 +415,7 @@ export async function importFromIdentifier(
       fileHash,
       title: meta?.title ?? null,
       authors: meta?.authors ?? null,
+      affiliations: null,
       year: meta?.year ?? null,
       venue: meta?.venue ?? null,
       volume: meta?.volume ?? null,
