@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractTitleFromText, isTemplateNoiseTitle, extractVenueFromText } from '../../src/main/services/metadata'
+import { extractTitleFromText, isTemplateNoiseTitle, extractVenueFromText, extractAbstractFromText, extractDoiFromText, deriveDoiFromArxivId } from '../../src/main/services/metadata'
 
 describe('extractTitleFromText', () => {
   it('returns the first plausible title line', () => {
@@ -128,5 +128,141 @@ describe('extractVenueFromText', () => {
   it('only inspects the head of the text', () => {
     const text = 'Some Paper Title\nAbstract\nLots of body text here.\n'.repeat(20) + 'Published as a conference paper at ICLR 2021'
     expect(extractVenueFromText(text)).toBeNull()
+  })
+
+  it('extracts IEEE Transactions venue without truncating title', () => {
+    const text = 'IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE 1\nSome Paper\nAbstract'
+    const result = extractVenueFromText(text)
+    expect(result).not.toBeNull()
+    expect(result!.venue).toBe('IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE')
+  })
+
+  it('extracts Under review banner', () => {
+    const text = 'Under review as a conference paper at ICLR 2022\nSome Paper\nAbstract'
+    expect(extractVenueFromText(text)).toEqual({ venue: 'ICLR', year: '2022' })
+  })
+})
+
+describe('extractAbstractFromText', () => {
+  it('extracts abstract after Abstract keyword', () => {
+    const text = 'Paper Title\nAuthor Name\nAbstract\nWe present a novel method for image segmentation.\nThe method uses deep learning.'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('We present a novel method for image segmentation')
+  })
+
+  it('extracts abstract with inline Abstract keyword', () => {
+    const text = 'Paper Title\nAuthor Name\nAbstract We present a method for doing things.\nIt works well in practice.'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('We present a method for doing things')
+  })
+
+  it('extracts ABSTRACT in all caps', () => {
+    const text = 'Paper Title\nAuthor Name\nABSTRACT\nWe present a novel approach to solving problems.'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('We present a novel approach')
+  })
+
+  it('stops at Keywords section', () => {
+    const text = 'Title\nAuthor\nAbstract\nWe present a method.\nKeywords: deep learning, vision'
+    const result = extractAbstractFromText(text)
+    expect(result).toBe('We present a method.')
+  })
+
+  it('stops at Introduction section', () => {
+    const text = 'Title\nAuthor\nAbstract\nWe present a method.\n1. Introduction\nIn this section we describe...'
+    const result = extractAbstractFromText(text)
+    expect(result).toBe('We present a method.')
+  })
+
+  it('extracts abstract from paper without Abstract keyword (structural)', () => {
+    const text = 'Paper Title\nAuthor Name\nStanford University\nauthor@example.com\nWe present a novel method for image segmentation.\nThe method uses deep learning techniques.\nIt achieves state-of-the-art results.'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('We present a novel method')
+  })
+
+  it('returns null for text with no abstract', () => {
+    expect(extractAbstractFromText('short text')).toBeNull()
+    expect(extractAbstractFromText('Title\nAuthor\nUniversity')).toBeNull()
+  })
+
+  it('does not false-positive on Introduction in abstract body', () => {
+    const text = 'Title\nAuthor\nAbstract\nIntroduction to deep learning is important.\nWe present our method here.'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('Introduction to deep learning')
+  })
+
+  it('does not false-positive on ACM in affiliations', () => {
+    const text = 'Title\nAuthor\nACM, New York, NY, USA\nAbstract\nWe present a method for solving problems in computer vision.'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('We present a method')
+  })
+
+  it('does not false-positive on Revised in abstract body', () => {
+    const text = 'Title\nAuthor\nAbstract\nThis is a revised version of our previous work.\nWe improved the method significantly.'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('This is a revised version')
+  })
+
+  it('extracts Chinese abstract (摘要)', () => {
+    const text = '论文标题\n作者\n摘要\n本文提出了一种新的方法用于图像分割。\n该方法使用深度学习技术。'
+    const result = extractAbstractFromText(text)
+    expect(result).toContain('本文提出了一种新的方法')
+  })
+})
+
+describe('extractDoiFromText', () => {
+  it('extracts DOI from text with doi: prefix', () => {
+    expect(extractDoiFromText('Some text\ndoi: 10.1109/CVPR.2017.100\nmore text')).toBe('10.1109/CVPR.2017.100')
+  })
+
+  it('extracts DOI from https://doi.org/ URL', () => {
+    expect(extractDoiFromText('See https://doi.org/10.1000/abc123 for details')).toBe('10.1000/abc123')
+  })
+
+  it('extracts DOI from https://dx.doi.org/ URL', () => {
+    expect(extractDoiFromText('Link: https://dx.doi.org/10.1109/TPAMI.2020.123')).toBe('10.1109/TPAMI.2020.123')
+  })
+
+  it('strips trailing punctuation from DOI', () => {
+    expect(extractDoiFromText('DOI: 10.1109/CVPR.2017.100.')).toBe('10.1109/CVPR.2017.100')
+    expect(extractDoiFromText('DOI: 10.1109/CVPR.2017.100,')).toBe('10.1109/CVPR.2017.100')
+  })
+
+  it('returns null when no DOI in text', () => {
+    expect(extractDoiFromText('No DOI here\nJust text')).toBeNull()
+  })
+
+  it('does not extract DOI from references section', () => {
+    const text = 'Body text\nReferences\n1. Author, 10.1234/paper, 2020'
+    expect(extractDoiFromText(text)).toBeNull()
+  })
+})
+
+describe('deriveDoiFromArxivId', () => {
+  it('derives DOI from arXiv ID', () => {
+    expect(deriveDoiFromArxivId('2301.12345')).toBe('10.48550/arXiv.2301.12345')
+  })
+
+  it('strips version suffix from arXiv ID', () => {
+    expect(deriveDoiFromArxivId('2301.12345v3')).toBe('10.48550/arXiv.2301.12345')
+  })
+})
+
+describe('isTemplateNoiseTitle', () => {
+  it('flags preliminary version titles', () => {
+    expect(isTemplateNoiseTitle('PRELIMINARY VERSION DO NOT CITE')).toBe(true)
+  })
+
+  it('flags work in progress titles', () => {
+    expect(isTemplateNoiseTitle('Work in Progress: Some Method')).toBe(true)
+  })
+
+  it('flags draft version titles', () => {
+    expect(isTemplateNoiseTitle('Draft Version: Some Paper')).toBe(true)
+  })
+
+  it('does not flag real paper titles', () => {
+    expect(isTemplateNoiseTitle('Mask R-CNN')).toBe(false)
+    expect(isTemplateNoiseTitle('Attention Is All You Need')).toBe(false)
   })
 })
