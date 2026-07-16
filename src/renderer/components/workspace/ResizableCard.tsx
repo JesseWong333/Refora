@@ -197,7 +197,7 @@ export default function ResizableCard({
       tabIndex={0}
       aria-label={moveLabel}
       title={moveLabel}
-      className={`resizable-card group/card absolute outline-none focus-visible:ring-2 focus-visible:ring-accent ${moving ? 'cursor-grabbing ring-2 ring-accent/50' : ''} ${className}`}
+      className={`resizable-card group/card absolute outline-none focus-visible:ring-2 focus-visible:ring-accent ${moving ? 'cursor-grabbing' : ''} ${className}`}
       onMouseDown={startPointerDrag}
       onKeyDown={moveByKeyboard}
       onClickCapture={(e) => {
@@ -215,7 +215,7 @@ export default function ResizableCard({
         minHeight: WORKSPACE_CARD_MIN_HEIGHT
       }}
     >
-      <div className="h-full w-full overflow-hidden">{children}</div>
+      <div className="h-full w-full">{children}</div>
       <div
         data-card-resize
         className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize opacity-0 transition-opacity group-hover/card:opacity-100"

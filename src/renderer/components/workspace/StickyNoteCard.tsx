@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Sticker, Trash } from '@phosphor-icons/react'
+import { Trash } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import { cardClassName } from '../ui'
 import type { WorkspaceNote, WorkspaceNotePatch } from '../../../shared/ipc-types'
@@ -92,12 +92,11 @@ export default function StickyNoteCard({
       >
         <span className="workspace-sticky-fold" />
         <div className="flex shrink-0 items-center gap-2 pr-3">
-          <span className="workspace-card-type-icon">
-            <Sticker className="h-4 w-4" />
-          </span>
-          <span className="workspace-card-type-label mb-0 flex-1">
-            {t('workspace.cardTypeSticky')}
-          </span>
+          <div className="workspace-card-heading flex-1">
+            <span className="workspace-card-type-label mb-0">
+              {t('workspace.cardTypeSticky')}
+            </span>
+          </div>
           <button
             type="button"
             className="rounded p-1 text-muted opacity-0 transition-all duration-150 hover:text-error group-hover/card:opacity-100 group-focus-within/card:opacity-100"

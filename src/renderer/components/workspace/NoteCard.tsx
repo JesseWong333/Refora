@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal, Button, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { Download, NotePencil, PencilSimple, Trash } from '@phosphor-icons/react'
+import { Download, PencilSimple, Trash } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
@@ -128,15 +128,12 @@ export default function NoteCard({
           data-card-kind="note"
           className={cardClassName('default', false, 'workspace-content-card workspace-content-card--note group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
           onClick={() => setExpanded(true)}
-          onContextMenu={handleContextMenu}
+        onContextMenu={handleContextMenu}
         >
           <div className="flex shrink-0 items-start gap-2">
-            <span className="workspace-card-type-icon">
-              <NotePencil className="h-4 w-4" />
-            </span>
-            <div className="min-w-0 flex-1">
+            <div className="workspace-card-heading min-w-0 flex-1">
               <span className="workspace-card-type-label">{t('workspace.cardTypeNote')}</span>
-              <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{note.title}</h3>
+              <h3 className="workspace-card-title line-clamp-2 text-sm font-semibold text-foreground">{note.title}</h3>
               <p className="mt-0.5 text-xs text-muted">{formatDate(note.updatedAt)}</p>
             </div>
             <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100">
@@ -180,7 +177,7 @@ export default function NoteCard({
               </button>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0">
+          <div className="workspace-note-preview min-h-0 flex-1 overflow-hidden p-3 text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0">
             {note.contentMd ? (
               <div className="line-clamp-[12]">
                 <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>
