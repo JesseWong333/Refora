@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useDocumentStore } from '../../src/renderer/store/documentStore'
+import { initI18n } from '../../src/renderer/i18n'
 import type { Category, Document, ListColumnState } from '../../src/shared/ipc-types'
 
 function makeDoc(overrides: Partial<Document> = {}): Document {
@@ -51,6 +52,7 @@ const mockBulkCategorize = vi.fn()
 const mockUpdate = vi.fn()
 const mockImportFromZotero = vi.fn()
 const mockImportFromMendeley = vi.fn()
+const mockFromIdentifier = vi.fn()
 const mockExportBibtex = vi.fn()
 const mockCategoriesList = vi.fn()
 const mockCategoriesCreate = vi.fn()
@@ -91,6 +93,7 @@ function resetStoreState(): void {
     listColumnState: defaultListColumnState,
     isImporting: false,
     importProgress: null,
+    identifierImporting: 0,
     toastMessage: null,
     confirmDelete: null,
     categories: []
@@ -98,6 +101,7 @@ function resetStoreState(): void {
 }
 
 beforeEach(() => {
+  initI18n('en')
   mockList.mockReset()
   mockSearch.mockReset()
   mockSetStarred.mockReset()
@@ -112,6 +116,7 @@ beforeEach(() => {
   mockUpdate.mockReset()
   mockImportFromZotero.mockReset()
   mockImportFromMendeley.mockReset()
+  mockFromIdentifier.mockReset()
   mockExportBibtex.mockReset()
   mockCategoriesList.mockReset()
   mockCategoriesCreate.mockReset()
@@ -140,6 +145,7 @@ beforeEach(() => {
   mockUpdate.mockImplementation(async (id: string, patch: Partial<Document>) => makeDoc({ id, ...patch }))
   mockImportFromZotero.mockResolvedValue({ added: 1, skipped: 0, errors: [] })
   mockImportFromMendeley.mockResolvedValue({ added: 1, skipped: 0, errors: [] })
+  mockFromIdentifier.mockResolvedValue({ added: [] })
   mockExportBibtex.mockResolvedValue('')
   mockCategoriesList.mockResolvedValue([])
   mockCategoriesCreate.mockImplementation(async (name: string) => ({
@@ -171,6 +177,7 @@ beforeEach(() => {
   const importApi = api.import as Record<string, unknown>
   importApi.fromZotero = mockImportFromZotero
   importApi.fromMendeley = mockImportFromMendeley
+  importApi.fromIdentifier = mockFromIdentifier
 
   const exportApi = api.export as Record<string, unknown>
   exportApi.toBibtex = mockExportBibtex
@@ -716,6 +723,66 @@ describe('DocumentStore', () => {
       await useDocumentStore.getState().importFromZotero()
       await useDocumentStore.getState().importFromMendeley()
       expect(useDocumentStore.getState().toastMessage).toBeTruthy()
+    })
+  })
+
+  describe('importByIdentifier', () => {
+    it('sets identifierImporting and shows success toast on success', async () => {
+      mockFromIdentifier.mockResolvedValueOnce({ added: ['doc-1'] })
+      mockList.mockResolvedValueOnce([])
+
+      useDocumentStore.getState().importByIdentifier('10.1000/test')
+      expect(useDocumentStore.getState().identifierImporting).toBeGreaterThan(0)
+
+      await vi.waitFor(() => {
+        expect(useDocumentStore.getState().identifierImporting).toBe(0)
+      })
+      expect(useDocumentStore.getState().toastMessage).toBe('Imported successfully')
+      expect(mockList).toHaveBeenCalled()
+    })
+
+    it('shows the service message when no document was added', async () => {
+      mockFromIdentifier.mockResolvedValueOnce({ added: [], message: 'Already imported' })
+
+      useDocumentStore.getState().importByIdentifier('2401.12345')
+
+      await vi.waitFor(() => {
+        expect(useDocumentStore.getState().identifierImporting).toBe(0)
+      })
+      expect(useDocumentStore.getState().toastMessage).toBe('Already imported')
+    })
+
+    it('shows error toast and clears identifierImporting on failure', async () => {
+      mockFromIdentifier.mockRejectedValueOnce(new Error('lookup failed'))
+
+      useDocumentStore.getState().importByIdentifier('2401.12345')
+      expect(useDocumentStore.getState().identifierImporting).toBeGreaterThan(0)
+
+      await vi.waitFor(() => {
+        expect(useDocumentStore.getState().identifierImporting).toBe(0)
+      })
+      expect(useDocumentStore.getState().toastMessage).toBe('Import failed: lookup failed')
+    })
+
+    it('does not clobber state when multiple imports run concurrently', async () => {
+      let resolveFirst: (value: { added: string[] }) => void = () => {}
+      let resolveSecond: (value: { added: string[] }) => void = () => {}
+      mockFromIdentifier.mockReturnValueOnce(new Promise((r) => { resolveFirst = r }))
+      mockFromIdentifier.mockReturnValueOnce(new Promise((r) => { resolveSecond = r }))
+
+      useDocumentStore.getState().importByIdentifier('10.1000/a')
+      useDocumentStore.getState().importByIdentifier('10.1000/b')
+      expect(useDocumentStore.getState().identifierImporting).toBe(2)
+
+      resolveFirst({ added: ['doc-1'] })
+      await vi.waitFor(() => {
+        expect(useDocumentStore.getState().identifierImporting).toBe(1)
+      })
+
+      resolveSecond({ added: ['doc-2'] })
+      await vi.waitFor(() => {
+        expect(useDocumentStore.getState().identifierImporting).toBe(0)
+      })
     })
   })
 

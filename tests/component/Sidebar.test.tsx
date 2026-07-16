@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
     selectedIds: [] as string[],
     documents: [] as Document[],
     importProgress: null as { current: number; total: number } | null,
+    identifierImporting: 0 as number,
     setListMode,
     fetchCategories,
     createCategory,
@@ -79,6 +80,7 @@ describe('Sidebar', () => {
     mocks.state.focusedDocId = null
     mocks.state.documents = []
     mocks.state.importProgress = null
+    mocks.state.identifierImporting = 0
   })
 
   afterEach(() => {

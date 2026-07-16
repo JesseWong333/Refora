@@ -4,8 +4,6 @@ import { Modal } from '@lobehub/ui'
 import { FileArrowDown } from '@phosphor-icons/react'
 import { Button as UiButton, Input } from './ui'
 import { useDocumentStore } from '../store/documentStore'
-import { errorMessage } from '../../shared/ipc-types'
-import { api } from '../ipc'
 
 interface ImportByIdentifierDialogProps {
   open: boolean
@@ -15,40 +13,20 @@ interface ImportByIdentifierDialogProps {
 export default function ImportByIdentifierDialog({ open, onClose }: ImportByIdentifierDialogProps) {
   const { t } = useTranslation()
   const [identifier, setIdentifier] = useState('')
-  const [loading, setLoading] = useState(false)
-  const fetchDocuments = useDocumentStore((s) => s.fetchDocuments)
+  const importByIdentifier = useDocumentStore((s) => s.importByIdentifier)
 
   const handleClose = useCallback(() => {
-    if (loading) return
     setIdentifier('')
     onClose()
-  }, [loading, onClose])
+  }, [onClose])
 
-  const handleImport = useCallback(async () => {
+  const handleImport = useCallback(() => {
     const trimmed = identifier.trim()
-    if (!trimmed || loading) return
-
-    setLoading(true)
-    try {
-      const result = await api.import.fromIdentifier(trimmed)
-      if (result.added.length > 0) {
-        useDocumentStore.getState().showToast(t('identifierImport.success'))
-      } else {
-        useDocumentStore.getState().showToast(
-          result.message ?? t('identifierImport.failed', { message: '' })
-        )
-      }
-      void fetchDocuments()
-      setIdentifier('')
-      onClose()
-    } catch (e) {
-      useDocumentStore.getState().showToast(
-        t('identifierImport.failed', { message: errorMessage(e, '') })
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [identifier, loading, fetchDocuments, onClose, t])
+    if (!trimmed) return
+    importByIdentifier(trimmed)
+    setIdentifier('')
+    onClose()
+  }, [identifier, importByIdentifier, onClose])
 
   return (
     <Modal
@@ -58,18 +36,17 @@ export default function ImportByIdentifierDialog({ open, onClose }: ImportByIden
       destroyOnClose
       footer={
         <div className="flex justify-end gap-2">
-          <UiButton variant="ghost" size="md" onClick={handleClose} disabled={loading}>
+          <UiButton variant="ghost" size="md" onClick={handleClose}>
             {t('common.cancel')}
           </UiButton>
           <UiButton
             variant="primary"
             size="md"
-            icon={loading ? undefined : <FileArrowDown className="h-3.5 w-3.5" />}
-            loading={loading}
+            icon={<FileArrowDown className="h-3.5 w-3.5" />}
             disabled={!identifier.trim()}
             onClick={handleImport}
           >
-            {loading ? t('identifierImport.importing') : t('identifierImport.import')}
+            {t('identifierImport.import')}
           </UiButton>
         </div>
       }
@@ -81,7 +58,6 @@ export default function ImportByIdentifierDialog({ open, onClose }: ImportByIden
           onChange={(e) => setIdentifier(e.target.value)}
           placeholder={t('identifierImport.placeholder')}
           onPressEnter={handleImport}
-          disabled={loading}
         />
         <p className="text-xs text-muted leading-relaxed">
           {t('identifierImport.hint')}
