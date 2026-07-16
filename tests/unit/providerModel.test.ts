@@ -106,4 +106,16 @@ describe('provider reasoning request options', () => {
     expect(model.modelKwargs).toEqual({})
     expect(model.reasoning).toBeUndefined()
   })
+
+  it('uses the per-chat reasoning effort instead of the provider default', () => {
+    const model = createProviderChatModel({
+      provider: openAiProvider,
+      apiKey: 'test-key',
+      streaming: false,
+      deepThinking: true,
+      reasoningEffort: 'low'
+    })
+
+    expect(model.reasoning).toEqual({ effort: 'low', summary: 'auto' })
+  })
 })

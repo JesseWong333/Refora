@@ -30,6 +30,7 @@ export function useChatStream({
   activeThreadId,
   requestModel,
   deepThinking,
+  reasoningEffort,
   setActiveThreadId,
   setChatStreaming,
   fetchThreads
@@ -371,7 +372,10 @@ export function useChatStream({
         model,
         replaceLastExchange: replacement.replaceLastExchange,
         replaceRunId: replacement.replaceRunId ?? undefined,
-        features: { deepThinking },
+        features: {
+          deepThinking,
+          ...(reasoningEffort ? { reasoningEffort } : {})
+        },
         attachments: attachments.length > 0
           ? attachments.map((docId) => ({ type: 'document' as const, docId }))
           : undefined
@@ -413,6 +417,7 @@ export function useChatStream({
     setActiveThreadId,
     requestModel,
     deepThinking,
+    reasoningEffort,
     fetchThreads,
     cancelThread,
     t

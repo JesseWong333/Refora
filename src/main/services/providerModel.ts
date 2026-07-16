@@ -62,13 +62,17 @@ export function createProviderChatModel(input: {
   modelId?: string
   streaming: boolean
   deepThinking?: boolean
+  reasoningEffort?: AiReasoningEffort
   temperature?: number | null
   maxTokens?: number | null
 }): ChatOpenAI {
   const modelId = input.modelId?.trim() || input.provider.model
   const capabilities = inferModelCapabilities(input.provider.presetId, modelId)
+  const reasoningProvider = input.reasoningEffort
+    ? { ...input.provider, reasoningEffort: input.reasoningEffort }
+    : input.provider
   const reasoningOptions = buildProviderReasoningOptions(
-    input.provider,
+    reasoningProvider,
     capabilities.supportsReasoning ? input.deepThinking : undefined
   )
   const temperature = input.temperature ?? input.provider.temperature

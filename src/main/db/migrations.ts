@@ -91,6 +91,7 @@ function migrationSchemaPresent(db: SqliteLike, version: number): boolean {
       ])
   }
   if (version === 16) return hasColumns('workspace_notes', ['noteType'])
+  if (version === 17) return hasColumns('ai_providers', ['modelsJson'])
   return version <= db.getUserVersion()
 }
 

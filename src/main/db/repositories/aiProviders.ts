@@ -19,6 +19,7 @@ export interface AiProviderRawRow {
   reasoningControl: AiReasoningControl
   reasoningEffort: AiReasoningEffort
   model: string
+  models: string[] | null
   baseModel: string
   variant: string
   variantFormat: ModelVariantFormat
@@ -36,6 +37,7 @@ export interface AiProviderCreateInput {
   reasoningControl: AiReasoningControl
   reasoningEffort: AiReasoningEffort
   model: string
+  models: string[] | null
   baseModel: string
   variant: string
   variantFormat: ModelVariantFormat
@@ -52,6 +54,7 @@ export interface AiProviderUpdateInput {
   reasoningControl?: AiReasoningControl
   reasoningEffort?: AiReasoningEffort
   model?: string
+  models?: string[] | null
   baseModel?: string
   variant?: string
   variantFormat?: ModelVariantFormat
@@ -63,6 +66,25 @@ export interface AiProviderUpdateInput {
 function asFormat(v: unknown): ModelVariantFormat {
   if (v === 'colon' || v === 'none' || v === 'dash') return v
   return 'dash'
+}
+
+function parseModels(value: unknown): string[] | null {
+  if (typeof value !== 'string') return null
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) return null
+    const models = parsed
+      .filter((model): model is string => typeof model === 'string')
+      .map((model) => model.trim())
+      .filter((model, index, all) => model.length > 0 && all.indexOf(model) === index)
+    return models.length > 0 ? models : null
+  } catch {
+    return null
+  }
+}
+
+function serializeModels(models: string[] | null): string | null {
+  return models && models.length > 0 ? JSON.stringify(models) : null
 }
 
 function mapProvider(row: Record<string, unknown>): AiProvider {
@@ -94,6 +116,7 @@ function mapProvider(row: Record<string, unknown>): AiProvider {
         ? row.reasoningEffort
         : 'medium',
     model: model || composeModelId(baseModel, variant, variantFormat),
+    models: parseModels(row.modelsJson),
     baseModel,
     variant,
     variantFormat,
@@ -115,6 +138,7 @@ function mapRaw(row: Record<string, unknown>): AiProviderRawRow {
     reasoningControl: mapped.reasoningControl,
     reasoningEffort: mapped.reasoningEffort,
     model: mapped.model,
+    models: mapped.models,
     baseModel: mapped.baseModel,
     variant: mapped.variant,
     variantFormat: mapped.variantFormat,
@@ -147,8 +171,8 @@ export function createAiProvidersRepository(db: SqliteDb) {
     const now = Date.now()
     db.prepare(
       `INSERT INTO ai_providers
-        (id, presetId, name, baseUrl, apiProtocol, reasoningControl, reasoningEffort, model, baseModel, variant, variantFormat, apiKeyEnc, temperature, maxTokens, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, presetId, name, baseUrl, apiProtocol, reasoningControl, reasoningEffort, model, modelsJson, baseModel, variant, variantFormat, apiKeyEnc, temperature, maxTokens, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.presetId,
@@ -158,6 +182,7 @@ export function createAiProvidersRepository(db: SqliteDb) {
       input.reasoningControl,
       input.reasoningEffort,
       input.model,
+      serializeModels(input.models),
       input.baseModel,
       input.variant,
       input.variantFormat,
@@ -203,6 +228,10 @@ export function createAiProvidersRepository(db: SqliteDb) {
     if (input.model !== undefined) {
       sets.push('model = ?')
       params.push(input.model)
+    }
+    if (input.models !== undefined) {
+      sets.push('modelsJson = ?')
+      params.push(serializeModels(input.models))
     }
     if (input.baseModel !== undefined) {
       sets.push('baseModel = ?')

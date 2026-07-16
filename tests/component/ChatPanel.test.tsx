@@ -3,6 +3,7 @@ import { render, screen, fireEvent, cleanup, renderHook, act, waitFor } from '@t
 import type {
   AgentTraceStep,
   AiProvider,
+  AiReasoningEffort,
   ChatDoneEvent,
   ChatErrorEvent,
   ChatMessage,
@@ -21,6 +22,7 @@ vi.mock('react-i18next', () => ({
 
 import { useWorkspaceStore } from '../../src/renderer/store/workspaceStore'
 import { useDocumentStore } from '../../src/renderer/store/documentStore'
+import { AI_PROVIDERS_CHANGED_EVENT } from '../../src/renderer/utils/aiProviderEvents'
 
 const ChatPanelModule = await import('../../src/renderer/components/workspace/ChatPanel')
 const ChatPanel = ChatPanelModule.default
@@ -49,6 +51,7 @@ const TEST_PROVIDER: AiProvider = {
   reasoningControl: 'openai',
   reasoningEffort: 'medium',
   model: 'gpt-4o',
+  models: null,
   baseModel: 'gpt-4o',
   variant: '',
   variantFormat: 'dash',
@@ -274,7 +277,7 @@ describe('ChatPanel tool message filtering', () => {
 })
 
 describe('ChatPanel provider restoration', () => {
-  it('falls back to a valid provider model and removes stale recent providers', async () => {
+  it('falls back to a valid provider model when saved settings are stale', async () => {
     setupApi([])
     const settingsSet = vi.fn().mockResolvedValue(undefined)
     const w = window as unknown as { api: Record<string, Record<string, unknown>> }
@@ -282,9 +285,6 @@ describe('ChatPanel provider restoration', () => {
       if (key === 'activeProviderId') return 'removed-provider'
       if (key === 'chatSelectedModel') return 'removed-model'
       if (key === 'chatSelectedVariant') return 'max'
-      if (key === 'chatRecentModels') {
-        return JSON.stringify([{ model: 'stale-recent', providerId: 'removed-provider' }])
-      }
       return defaultValue
     }
     w.api.settings.set = settingsSet
@@ -296,9 +296,59 @@ describe('ChatPanel provider restoration', () => {
     })
     await waitFor(() => expect(selector).toHaveTextContent('gpt-4o'))
     expect(selector).not.toHaveTextContent('removed-model')
+    const effortButton = screen.getByRole('button', {
+      name: 'workspace.chat.reasoningEffort'
+    })
+    expect(effortButton).toHaveTextContent('settings.aiProviders.effort.medium')
+    expect(screen.queryByText('workspace.chat.reasoningEffort')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'workspace.chat.deepThinking' })
+    ).not.toBeInTheDocument()
+    fireEvent.click(effortButton)
+    fireEvent.click(screen.getByRole('option', {
+      name: 'settings.aiProviders.effort.high'
+    }))
+    expect(settingsSet).toHaveBeenCalledWith('chatReasoningEffort', 'high')
     fireEvent.click(selector)
-    expect(screen.queryByText('stale-recent')).toBeNull()
+    expect(screen.queryByPlaceholderText('model-id')).toBeNull()
     expect(settingsSet).toHaveBeenCalledWith('activeProviderId', 'p1')
+  })
+
+  it('refreshes the configured provider and model after settings changes', async () => {
+    setupApi([])
+    const ollamaProvider: AiProvider = {
+      ...TEST_PROVIDER,
+      id: 'ollama-1',
+      presetId: 'ollama-local',
+      name: 'Ollama',
+      model: 'Kimi2.6',
+      baseModel: 'Kimi2.6',
+      hasKey: false
+    }
+    let activeProviderId = TEST_PROVIDER.id
+    const w = window as unknown as { api: Record<string, Record<string, unknown>> }
+    w.api.aiProviders.list = async () => [TEST_PROVIDER, ollamaProvider]
+    w.api.settings.get = async (key: string, defaultValue: unknown) => {
+      if (key === 'activeProviderId' || key === 'chatSelectedProviderId') {
+        return activeProviderId
+      }
+      if (key === 'chatSelectedModel') {
+        return activeProviderId === ollamaProvider.id ? ollamaProvider.model : TEST_PROVIDER.model
+      }
+      return defaultValue
+    }
+
+    render(<ChatPanel />)
+
+    const selector = await screen.findByRole('button', {
+      name: 'workspace.chat.selectProvider'
+    })
+    await waitFor(() => expect(selector).toHaveTextContent('Test Provider/gpt-4o'))
+
+    activeProviderId = ollamaProvider.id
+    window.dispatchEvent(new Event(AI_PROVIDERS_CHANGED_EVENT))
+
+    await waitFor(() => expect(selector).toHaveTextContent('Ollama/Kimi2.6'))
   })
 })
 
@@ -486,7 +536,10 @@ describe('ChatInput attachment loading', () => {
   })
 })
 
-function renderChatStream(activeThreadId: string | null = 'thread-1') {
+function renderChatStream(
+  activeThreadId: string | null = 'thread-1',
+  reasoningEffort?: AiReasoningEffort
+) {
   setupApi([])
   return renderHook(() =>
     useChatStream({
@@ -494,7 +547,8 @@ function renderChatStream(activeThreadId: string | null = 'thread-1') {
       activeProviderId: 'p1',
       activeThreadId,
       requestModel: '',
-      deepThinking: false,
+      deepThinking: reasoningEffort != null && reasoningEffort !== 'none',
+      reasoningEffort,
       setActiveThreadId: vi.fn(),
       setChatStreaming: vi.fn(),
       fetchThreads: vi.fn().mockResolvedValue(undefined)
@@ -503,6 +557,19 @@ function renderChatStream(activeThreadId: string | null = 'thread-1') {
 }
 
 describe('useChatStream lifecycle', () => {
+  it('sends the selected reasoning effort with the chat request', async () => {
+    const { result } = renderChatStream('thread-1', 'high')
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+
+    await act(async () => {
+      await result.current.sendText('Think carefully', [], 'thread-1')
+    })
+
+    expect(mockChatSend.mock.calls[0][0] as ChatSendRequest).toMatchObject({
+      features: { deepThinking: true, reasoningEffort: 'high' }
+    })
+  })
+
   it('merges live reasoning and answer tokens into their timeline steps', async () => {
     const { result } = renderChatStream()
     await waitFor(() => expect(result.current.loadingHistory).toBe(false))

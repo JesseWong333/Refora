@@ -1,6 +1,10 @@
 import { api } from '../ipc'
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react'
-import type { AgentTraceStep, ChatMessage } from '../../shared/ipc-types'
+import type {
+  AgentTraceStep,
+  AiReasoningEffort,
+  ChatMessage
+} from '../../shared/ipc-types'
 
 const RECENT_MODELS_KEY = 'chatRecentModels'
 const MAX_RECENT = 8
@@ -28,6 +32,7 @@ export interface UseChatStreamParams {
   activeThreadId: string | null
   requestModel: string
   deepThinking: boolean
+  reasoningEffort?: AiReasoningEffort
   setActiveThreadId: (id: string) => void
   setChatStreaming: (streaming: boolean) => void
   fetchThreads: (options?: { selectLatestIfNone?: boolean }) => Promise<void>
@@ -84,7 +89,10 @@ export async function pushRecentModel(model: string, providerId: string): Promis
   const id = model.trim()
   if (!id || !providerId) return
   const prev = await loadRecentModels()
-  const next = [{ model: id, providerId }, ...prev.filter((m) => m.model !== id)].slice(0, MAX_RECENT)
+  const next = [
+    { model: id, providerId },
+    ...prev.filter((m) => m.model !== id || m.providerId !== providerId)
+  ].slice(0, MAX_RECENT)
   await api.settings.set(RECENT_MODELS_KEY, JSON.stringify(next))
 }
 

@@ -11,6 +11,7 @@ import type {
   AgentTraceStepKind,
   AgentTraceStepStatus,
   AiProvider,
+  AiReasoningEffort,
   AiSummaryContent,
   ChatAttachment,
   ChatMessage,
@@ -51,6 +52,25 @@ const MAX_RECURSION_LIMIT = 50
 const RECURSION_LIMIT_MESSAGE =
   'The agent reached the maximum number of reasoning steps without completing. ' +
   'Please try refining or simplifying your request.'
+
+const AI_REASONING_EFFORTS = new Set<AiReasoningEffort>([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max'
+])
+
+function normalizeReasoningEffort(
+  value: unknown,
+  fallback: AiReasoningEffort
+): AiReasoningEffort {
+  return typeof value === 'string' && AI_REASONING_EFFORTS.has(value as AiReasoningEffort)
+    ? value as AiReasoningEffort
+    : fallback
+}
 
 const SYSTEM_PROMPT =
   'You are a research assistant working in a workspace of academic papers. ' +
@@ -783,7 +803,13 @@ export function createAiAgentService(
       }
 
       const modelId = (req.model && req.model.trim()) || provider.model
-      const deepThinking = req.features?.deepThinking === true
+      const requestedReasoningEffort = req.features?.reasoningEffort
+      const reasoningEffort = provider.reasoningControl === 'none'
+        ? 'none'
+        : normalizeReasoningEffort(requestedReasoningEffort, provider.reasoningEffort)
+      const deepThinking = requestedReasoningEffort !== undefined
+        ? reasoningEffort !== 'none'
+        : req.features?.deepThinking === true
       const supportsNativeReasoning = inferModelCapabilities(
         provider.presetId,
         modelId
@@ -807,7 +833,8 @@ export function createAiAgentService(
         apiKey: key,
         modelId,
         streaming: true,
-        deepThinking
+        deepThinking,
+        reasoningEffort
       })
 
       const tools = buildTools(req, modelId, controller.signal)

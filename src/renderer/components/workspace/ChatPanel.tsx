@@ -3,19 +3,62 @@ import { useTranslation } from 'react-i18next'
 import { Plus, X, ArrowCounterClockwise } from '@phosphor-icons/react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
-import type { AiProvider, ProviderModelInfo } from '../../../shared/ipc-types'
+import type {
+  AiProvider,
+  AiReasoningEffort,
+  ProviderModelInfo
+} from '../../../shared/ipc-types'
 import { composeModelId, parseModelId } from '../../../shared/modelVariant'
-import { resolveDeepThinkingMode } from '../../../shared/deepThinking'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { Button as UiButton } from '../ui'
 import { useChatStream } from '../../hooks/useChatStream'
-import { loadRecentModels, pushRecentModel, type RecentModelEntry } from '../../utils/chatUtils'
+import { AI_PROVIDERS_CHANGED_EVENT } from '../../utils/aiProviderEvents'
 import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
 import ModelSelector from './ModelSelector'
 import ThreadHistory from './ThreadHistory'
 
 export { parseReforaDocLink } from './ChatMessages'
+
+const AI_REASONING_EFFORTS = new Set<AiReasoningEffort>([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max'
+])
+
+function providerReasoningEffort(provider: AiProvider): AiReasoningEffort {
+  return provider.reasoningControl === 'none' ? 'none' : provider.reasoningEffort
+}
+
+function normalizeReasoningEffort(
+  value: unknown,
+  fallback: AiReasoningEffort
+): AiReasoningEffort {
+  return typeof value === 'string' && AI_REASONING_EFFORTS.has(value as AiReasoningEffort)
+    ? value as AiReasoningEffort
+    : fallback
+}
+
+function defaultModelForProvider(provider: AiProvider): { model: string; variant: string } {
+  const configured = provider.models?.[0] ?? provider.model
+  const parsed = parseModelId(configured)
+  return {
+    model: parsed.baseModel || provider.baseModel || configured,
+    variant: parsed.variant || (configured === provider.model ? provider.variant : '')
+  }
+}
+
+function providerAllowsModel(provider: AiProvider, model: string): boolean {
+  if (!provider.models?.length) return true
+  return provider.models.some((candidate) => {
+    const parsed = parseModelId(candidate)
+    return candidate === model || parsed.baseModel === model
+  })
+}
 
 export default function ChatPanel() {
   const { t } = useTranslation()
@@ -31,9 +74,9 @@ export default function ChatPanel() {
   const [activeProviderId, setActiveProviderId] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedVariant, setSelectedVariant] = useState('')
-  const [deepThinking, setDeepThinking] = useState(false)
-  const [providerModels, setProviderModels] = useState<ProviderModelInfo[]>([])
-  const [recentModels, setRecentModels] = useState<RecentModelEntry[]>([])
+  const [selectedReasoningEffort, setSelectedReasoningEffort] =
+    useState<AiReasoningEffort>('none')
+  const [providerModels, setProviderModels] = useState<Record<string, ProviderModelInfo[]>>({})
   const [modelSwitchHint, setModelSwitchHint] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
 
@@ -73,9 +116,13 @@ export default function ChatPanel() {
     if (left) ro.observe(left)
     if (right) ro.observe(right)
     return () => ro.disconnect()
-  }, [providers.length, providerModels.length])
+  }, [providers.length, Object.keys(providerModels).length])
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
+  const deepThinking =
+    !!activeProvider &&
+    activeProvider.reasoningControl !== 'none' &&
+    selectedReasoningEffort !== 'none'
 
   const activeThread = threads.find((th) => th.id === activeThreadId)
   const activeThreadTitle = activeThread?.title?.trim()
@@ -88,20 +135,13 @@ export default function ChatPanel() {
     return composeModelId(selectedModel, selectedVariant, format)
   }, [selectedModel, selectedVariant, activeProvider?.variantFormat])
 
-  const thinkingMode = useMemo(
-    () =>
-      deepThinking
-        ? resolveDeepThinkingMode(requestModel || selectedModel)
-        : 'none',
-    [deepThinking, requestModel, selectedModel]
-  )
-
   const chat = useChatStream({
     activeWorkspaceId,
     activeProviderId,
     activeThreadId,
     requestModel,
     deepThinking,
+    reasoningEffort: selectedReasoningEffort,
     setActiveThreadId,
     setChatStreaming,
     fetchThreads
@@ -111,32 +151,59 @@ export default function ChatPanel() {
 
   const loadProviders = useCallback(async () => {
     try {
-      const [list, active, recent, savedModel, savedVariant, savedDeep] = await Promise.all([
+      const [
+        list,
+        active,
+        savedProviderId,
+        savedModel,
+        savedVariant,
+        savedReasoningEffort
+      ] = await Promise.all([
         api.aiProviders.list(),
         api.settings.get<string>('activeProviderId', ''),
-        loadRecentModels(),
+        api.settings.get<string>('chatSelectedProviderId', ''),
         api.settings.get<string>('chatSelectedModel', ''),
         api.settings.get<string>('chatSelectedVariant', ''),
-        api.settings.get<boolean>('chatDeepThinking', false)
+        api.settings.get<AiReasoningEffort | ''>('chatReasoningEffort', '')
       ])
       setProviders(list)
       const providerIds = new Set(list.map((provider) => provider.id))
-      setRecentModels(recent.filter((entry) => providerIds.has(entry.providerId)))
       const activeIsValid = !!active && providerIds.has(active)
+      const savedProviderIsValid = !!savedProviderId && providerIds.has(savedProviderId)
       const nextId =
+        (savedProviderIsValid && savedProviderId) ||
         (activeIsValid && active) ||
         (list.length > 0 ? list[0].id : '')
       setActiveProviderId(nextId)
       const p = list.find((x) => x.id === nextId)
       if (p) {
-        const parsed = parseModelId(p.model)
-        setSelectedModel(p.baseModel || parsed.baseModel || p.model)
-        setSelectedVariant(p.variant || parsed.variant)
+        const fallback = defaultModelForProvider(p)
+        const useSavedModel =
+          savedProviderId === nextId && !!savedModel && providerAllowsModel(p, savedModel)
+        const fallbackReasoningEffort = providerReasoningEffort(p)
+        const nextReasoningEffort = savedProviderId === nextId
+          ? normalizeReasoningEffort(savedReasoningEffort, fallbackReasoningEffort)
+          : fallbackReasoningEffort
+        setSelectedModel(useSavedModel ? savedModel : fallback.model)
+        setSelectedVariant(useSavedModel ? savedVariant : fallback.variant)
+        setSelectedReasoningEffort(nextReasoningEffort)
       }
-      if (activeIsValid && savedModel) setSelectedModel(savedModel)
-      if (activeIsValid && savedVariant) setSelectedVariant(savedVariant)
-      if (!activeIsValid && nextId) void api.settings.set('activeProviderId', nextId)
-      setDeepThinking(savedDeep)
+      if (nextId) {
+        void api.settings.set('activeProviderId', nextId)
+        void api.settings.set('chatSelectedProviderId', nextId)
+        if (p) {
+          const fallback = defaultModelForProvider(p)
+          const useSavedModel =
+            savedProviderId === nextId && !!savedModel && providerAllowsModel(p, savedModel)
+          const fallbackReasoningEffort = providerReasoningEffort(p)
+          const nextReasoningEffort = savedProviderId === nextId
+            ? normalizeReasoningEffort(savedReasoningEffort, fallbackReasoningEffort)
+            : fallbackReasoningEffort
+          void api.settings.set('chatSelectedModel', useSavedModel ? savedModel : fallback.model)
+          void api.settings.set('chatSelectedVariant', useSavedModel ? savedVariant : fallback.variant)
+          void api.settings.set('chatReasoningEffort', nextReasoningEffort)
+        }
+      }
     } catch (e) {
       chat.setError(errorMessage(e, 'Failed to load providers'))
     }
@@ -147,20 +214,31 @@ export default function ChatPanel() {
   }, [loadProviders])
 
   useEffect(() => {
-    if (!activeProviderId) {
-      setProviderModels([])
+    const reloadProviders = () => void loadProviders()
+    window.addEventListener(AI_PROVIDERS_CHANGED_EVENT, reloadProviders)
+    return () => window.removeEventListener(AI_PROVIDERS_CHANGED_EVENT, reloadProviders)
+  }, [loadProviders])
+
+  useEffect(() => {
+    if (providers.length === 0) {
+      setProviderModels({})
       return
     }
     let cancelled = false
     setLoadingModels(true)
-    void api.aiProviders
-      .listModels({ providerId: activeProviderId })
-      .then((res) => {
-        if (cancelled) return
-        setProviderModels(res.ok ? res.models : [])
+    void Promise.all(
+      providers.map(async (provider) => {
+        try {
+          const result = await api.aiProviders.listModels({ providerId: provider.id })
+          return [provider.id, result.ok ? result.models : []] as const
+        } catch {
+          return [provider.id, []] as const
+        }
       })
-      .catch(() => {
-        if (!cancelled) setProviderModels([])
+    )
+      .then((entries) => {
+        if (cancelled) return
+        setProviderModels(Object.fromEntries(entries))
       })
       .finally(() => {
         if (!cancelled) setLoadingModels(false)
@@ -168,7 +246,7 @@ export default function ChatPanel() {
     return () => {
       cancelled = true
     }
-  }, [activeProviderId])
+  }, [providers])
 
   useEffect(() => {
     setSelectedAttachments([])
@@ -204,39 +282,36 @@ export default function ChatPanel() {
       const nextProviderId = providerId ?? activeProviderId
       if (!providers.some((provider) => provider.id === nextProviderId)) return
       if (providerId && providerId !== activeProviderId) {
+        const nextProvider = providers.find((provider) => provider.id === providerId)
         setActiveProviderId(providerId)
         void api.settings.set('activeProviderId', providerId)
+        if (nextProvider) {
+          const nextReasoningEffort = providerReasoningEffort(nextProvider)
+          setSelectedReasoningEffort(nextReasoningEffort)
+          void api.settings.set('chatReasoningEffort', nextReasoningEffort)
+        }
       }
       setSelectedModel(baseModel)
       setSelectedVariant(variant)
+      void api.settings.set('chatSelectedProviderId', nextProviderId)
       void api.settings.set('chatSelectedModel', baseModel)
       void api.settings.set('chatSelectedVariant', variant)
       if (chat.hadMessagesRef.current || chat.messages.length > 0) {
         setModelSwitchHint(true)
         window.setTimeout(() => setModelSwitchHint(false), 3500)
       }
-      const p = providers.find((x) => x.id === nextProviderId)
-      const format = p?.variantFormat ?? 'dash'
-      const full = composeModelId(baseModel, variant, format)
-      if (full) {
-        try {
-          await pushRecentModel(full, nextProviderId)
-          setRecentModels(await loadRecentModels())
-        } catch (e) {
-          chat.setError(errorMessage(e, 'Failed to update model'))
-        }
-      }
     },
-    [activeProviderId, chat.messages.length, providers, chat.hadMessagesRef, chat.setError]
+    [activeProviderId, chat.messages.length, providers, chat.hadMessagesRef]
   )
 
-  const toggleDeepThinking = useCallback(() => {
-    setDeepThinking((v) => {
-      const next = !v
-      void api.settings.set('chatDeepThinking', next)
-      return next
-    })
-  }, [])
+  const applyReasoningEffort = useCallback(
+    (effort: AiReasoningEffort) => {
+      const nextEffort = activeProvider?.reasoningControl === 'none' ? 'none' : effort
+      setSelectedReasoningEffort(nextEffort)
+      void api.settings.set('chatReasoningEffort', nextEffort)
+    },
+    [activeProvider?.reasoningControl]
+  )
 
   const handleSend = useCallback(() => {
     if (!input.trim() || chat.streaming) return
@@ -392,14 +467,12 @@ export default function ChatPanel() {
             selectedModel={selectedModel}
             selectedVariant={selectedVariant}
             providerModels={providerModels}
-            recentModels={recentModels}
             loadingModels={loadingModels}
-            deepThinking={deepThinking}
-            thinkingMode={thinkingMode}
+            reasoningEffort={deepThinking ? selectedReasoningEffort : 'none'}
             requestModel={requestModel}
             streaming={chat.streaming}
             onApplyModel={applyModel}
-            onToggleDeepThinking={toggleDeepThinking}
+            onReasoningEffortChange={applyReasoningEffort}
           />
         }
       />

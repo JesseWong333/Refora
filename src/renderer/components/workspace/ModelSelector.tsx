@@ -1,34 +1,59 @@
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Check,
-  CaretDown,
-  Sparkle
-} from '@phosphor-icons/react'
+import { CaretDown, Check } from '@phosphor-icons/react'
 import { useClickOutside } from '../../hooks/useClickOutside'
-import { Button as UiButton, Input as UiInput } from '../ui'
 import {
   COMMON_VARIANTS,
   parseModelId,
   supportsModelVariants
 } from '../../../shared/modelVariant'
-import type { AiProvider, ProviderModelInfo } from '../../../shared/ipc-types'
-import type { RecentModelEntry } from '../../utils/chatUtils'
+import {
+  getProviderPreset,
+  reasoningEffortsForModel
+} from '../../../shared/providerCatalog'
+import type {
+  AiProvider,
+  AiReasoningEffort,
+  ProviderModelInfo
+} from '../../../shared/ipc-types'
 
 export interface ModelSelectorProps {
   providers: AiProvider[]
   activeProviderId: string
   selectedModel: string
   selectedVariant: string
-  providerModels: ProviderModelInfo[]
-  recentModels: RecentModelEntry[]
+  providerModels: Record<string, ProviderModelInfo[]>
   loadingModels: boolean
-  deepThinking: boolean
-  thinkingMode: string
+  reasoningEffort: AiReasoningEffort
   requestModel: string
   streaming: boolean
   onApplyModel: (baseModel: string, variant?: string, providerId?: string) => Promise<void>
-  onToggleDeepThinking: () => void
+  onReasoningEffortChange: (effort: AiReasoningEffort) => void
+}
+
+const REASONING_EFFORT_ORDER: AiReasoningEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max'
+]
+
+function modelsForProvider(
+  provider: AiProvider,
+  providerModels: Record<string, ProviderModelInfo[]>
+): string[] {
+  const fetched = providerModels[provider.id] ?? []
+  const models = provider.models?.length
+    ? provider.models
+    : fetched.map((model) => model.id)
+  const fallback = provider.baseModel || provider.model
+  const available = models.length > 0 ? models : [fallback]
+  return available.filter(
+    (model, index, all) => model.trim().length > 0 && all.indexOf(model) === index
+  )
 }
 
 export default function ModelSelector({
@@ -37,41 +62,65 @@ export default function ModelSelector({
   selectedModel,
   selectedVariant,
   providerModels,
-  recentModels,
   loadingModels,
-  deepThinking,
-  thinkingMode,
+  reasoningEffort,
   requestModel,
   streaming,
   onApplyModel,
-  onToggleDeepThinking
+  onReasoningEffortChange
 }: ModelSelectorProps) {
   const { t } = useTranslation()
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
-  const [customModel, setCustomModel] = useState('')
+  const [reasoningMenuOpen, setReasoningMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const reasoningMenuRef = useRef<HTMLDivElement | null>(null)
 
   useClickOutside(menuRef, () => setModelMenuOpen(false), modelMenuOpen)
+  useClickOutside(
+    reasoningMenuRef,
+    () => setReasoningMenuOpen(false),
+    reasoningMenuOpen
+  )
 
-  const customModelTrimmed = customModel.trim()
-  const customModelInvalid = !customModelTrimmed || /\s/.test(customModelTrimmed)
+  const activeProvider = providers.find((provider) => provider.id === activeProviderId)
+  const selectedModelInfo = (providerModels[activeProviderId] ?? []).find(
+    (model) => model.id === requestModel || model.id === selectedModel
+  )
   const variantCapable =
-    supportsModelVariants(selectedModel) ||
-    providerModels.some((m) => m.id === selectedModel && m.supportsVariants)
-
+    supportsModelVariants(selectedModel) || selectedModelInfo?.supportsVariants === true
   const displayModelLabel = providers.length === 0
     ? t('workspace.chat.notConfigured', 'Not configured')
-    : requestModel || t('workspace.chat.selectProvider', 'Select model / provider')
+    : activeProvider && (requestModel || activeProvider.model)
+      ? `${activeProvider.name}/${requestModel || activeProvider.model}`
+      : t('workspace.chat.selectProvider', 'Select model / provider')
+  const reasoningEffortLabel = t('workspace.chat.reasoningEffort', 'Reasoning effort')
+  const reasoningEffortValue = t(
+    `settings.aiProviders.effort.${reasoningEffort}`,
+    reasoningEffort
+  )
+  const inferredReasoningEfforts = activeProvider
+    ? reasoningEffortsForModel(activeProvider.presetId, requestModel || selectedModel)
+    : []
+  const availableReasoningEfforts = activeProvider?.reasoningControl === 'none'
+    ? ['none' as const]
+    : selectedModelInfo?.reasoningEfforts.length
+      ? selectedModelInfo.reasoningEfforts
+      : inferredReasoningEfforts.length
+        ? inferredReasoningEfforts
+        : activeProvider
+          ? getProviderPreset(activeProvider.presetId).reasoningEfforts
+          : []
+  const allowedReasoningEfforts = new Set<AiReasoningEffort>([
+    'none',
+    ...availableReasoningEfforts,
+    reasoningEffort
+  ])
+  const reasoningEffortOptions = REASONING_EFFORT_ORDER.filter((effort) =>
+    allowedReasoningEfforts.has(effort)
+  )
 
   const handleApply = (baseModel: string, variant = '', providerId?: string) => {
     void onApplyModel(baseModel, variant, providerId)
-    setModelMenuOpen(false)
-  }
-
-  const handleCustomModel = () => {
-    const parsed = parseModelId(customModelTrimmed)
-    void onApplyModel(parsed.baseModel, parsed.variant)
-    setCustomModel('')
     setModelMenuOpen(false)
   }
 
@@ -80,8 +129,11 @@ export default function ModelSelector({
       <div className="relative" ref={menuRef}>
         <button
           type="button"
-          className="inline-flex max-w-[120px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
-          onClick={() => setModelMenuOpen((v) => !v)}
+          className="inline-flex max-w-[200px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
+          onClick={() => {
+            setReasoningMenuOpen(false)
+            setModelMenuOpen((value) => !value)
+          }}
           disabled={providers.length === 0 || streaming}
           aria-label={t('workspace.chat.selectProvider', 'Select model / provider')}
           aria-expanded={modelMenuOpen}
@@ -93,143 +145,64 @@ export default function ModelSelector({
 
         {modelMenuOpen && (
           <div
-            className="absolute bottom-full right-0 z-50 mb-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
+            className="absolute bottom-full right-0 z-50 mb-1 max-h-72 w-72 overflow-y-auto rounded-xl border border-border bg-panel p-2 shadow-lg"
             role="listbox"
             tabIndex={0}
-            onKeyDown={(e) => {
-              const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]'))
-              const currentIndex = buttons.findIndex((b) => b === document.activeElement)
-              if (e.key === 'ArrowDown') {
-                e.preventDefault()
+            onKeyDown={(event) => {
+              const buttons = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]')
+              )
+              const currentIndex = buttons.findIndex((button) => button === document.activeElement)
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
                 const next = buttons[Math.min(currentIndex + 1, buttons.length - 1)] ?? buttons[0]
                 next?.focus()
-              } else if (e.key === 'ArrowUp') {
-                e.preventDefault()
-                const prev = buttons[Math.max(currentIndex - 1, 0)] ?? buttons[0]
-                prev?.focus()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                const previous = buttons[Math.max(currentIndex - 1, 0)] ?? buttons[0]
+                previous?.focus()
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
                 setModelMenuOpen(false)
               }
             }}
           >
-            <p className="px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-              {t('workspace.chat.providerModels', 'Provider models')}
-            </p>
-            {providers.map((p) => (
-              <button
-                key={`p-${p.id}`}
-                type="button"
-                role="option"
-                aria-selected={p.id === activeProviderId}
-                className={`mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover ${
-                  p.id === activeProviderId ? 'bg-active' : ''
-                }`}
-                onClick={() => {
-                  const parsed = parseModelId(p.model)
-                  handleApply(
-                    p.baseModel || parsed.baseModel || p.model,
-                    p.variant || parsed.variant,
-                    p.id
-                  )
-                }}
-              >
-                <span className="truncate text-xs font-medium text-foreground">
-                  {p.name}
-                </span>
-                <span className="truncate text-caption text-muted">{p.model}</span>
-              </button>
-            ))}
-
-            {providerModels.length > 0 && (
-              <>
-                <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-                  {t('workspace.chat.availableModels', 'Available models')}
-                  {loadingModels ? '…' : ''}
-                </p>
-                {providerModels.slice(0, 40).map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    role="option"
-                    aria-selected={m.id === selectedModel}
-                    className="mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover"
-                    onClick={() => handleApply(m.id, '')}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-xs text-foreground">{m.id}</span>
-                    <span className="flex shrink-0 items-center gap-1">
-                      {m.supportsVariants && (
-                        <span className="text-caption text-accent">
-                          {t('settings.aiProviders.hasVariants', 'variants')}
+            {providers.map((provider, index) => {
+              const configuredModels = modelsForProvider(provider, providerModels)
+              return (
+                <div key={provider.id} className={index > 0 ? 'mt-2' : ''}>
+                  <p className="px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
+                    {provider.name}
+                    {loadingModels && provider.models == null ? '…' : ''}
+                  </p>
+                  {configuredModels.map((model) => {
+                    const parsed = parseModelId(model)
+                    const baseModel = parsed.baseModel || model
+                    const selected =
+                      provider.id === activeProviderId &&
+                      baseModel === selectedModel &&
+                      parsed.variant === selectedVariant
+                    return (
+                      <button
+                        key={`${provider.id}-${model}`}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover ${
+                          selected ? 'bg-active' : ''
+                        }`}
+                        onClick={() => handleApply(baseModel, parsed.variant, provider.id)}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                          {provider.name}/{model}
                         </span>
-                      )}
-                      {m.id === selectedModel && <Check className="h-3 w-3 text-accent" />}
-                    </span>
-                  </button>
-                ))}
-              </>
-            )}
-
-            {recentModels.length > 0 && (
-              <>
-                <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-                  {t('workspace.chat.recentModels', 'Recent')}
-                </p>
-                {recentModels.map((entry) => {
-                  const parsed = parseModelId(entry.model)
-                  const providerName = providers.find((p) => p.id === entry.providerId)?.name
-                  return (
-                    <button
-                      key={`r-${entry.model}`}
-                      type="button"
-                      role="option"
-                      className="mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-hover"
-                      onClick={() =>
-                        handleApply(parsed.baseModel || entry.model, parsed.variant, entry.providerId)
-                      }
-                    >
-                      <span className="truncate">{entry.model}</span>
-                      {providerName && (
-                        <span className="truncate text-caption text-muted">{providerName}</span>
-                      )}
-                    </button>
-                  )
-                })}
-              </>
-            )}
-
-            <p className="mt-2 px-1 pb-1 text-caption font-semibold uppercase tracking-wide text-muted">
-              {t('workspace.chat.customModel', 'Custom model')}
-            </p>
-            <div className="flex gap-1 px-1">
-              <UiInput
-                variant="outlined"
-                inputSize="sm"
-                className="min-w-0 flex-1"
-                value={customModel}
-                onChange={(e) => setCustomModel(e.target.value)}
-                placeholder="model-id"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !customModelInvalid) {
-                    e.preventDefault()
-                    handleCustomModel()
-                  }
-                }}
-              />
-              <UiButton
-                variant="primary"
-                size="sm"
-                disabled={customModelInvalid}
-                onClick={handleCustomModel}
-              >
-                {t('common.add', 'Add')}
-              </UiButton>
-            </div>
-            {customModel && customModelInvalid && (
-              <p className="px-1 pt-1 text-caption text-muted">
-                {t('workspace.chat.customModelHint', 'Model ID cannot contain spaces.')}
-              </p>
-            )}
+                        {selected && <Check className="h-3 w-3 shrink-0 text-accent" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
 
             {variantCapable && (
               <>
@@ -244,22 +217,22 @@ export default function ModelSelector({
                         ? 'border-accent bg-accent/10 text-accent'
                         : 'border-border text-muted'
                     }`}
-                    onClick={() => handleApply(selectedModel, '')}
+                    onClick={() => handleApply(selectedModel, '', activeProviderId)}
                   >
                     {t('settings.aiProviders.variantNone', 'None (base only)')}
                   </button>
-                  {COMMON_VARIANTS.map((v) => (
+                  {COMMON_VARIANTS.map((variant) => (
                     <button
-                      key={v}
+                      key={variant}
                       type="button"
                       className={`rounded-md border px-2 py-0.5 text-caption ${
-                        selectedVariant === v
+                        selectedVariant === variant
                           ? 'border-accent bg-accent/10 text-accent'
                           : 'border-border text-muted'
                       }`}
-                      onClick={() => handleApply(selectedModel, v)}
+                      onClick={() => handleApply(selectedModel, variant, activeProviderId)}
                     >
-                      {v}
+                      {variant}
                     </button>
                   ))}
                 </div>
@@ -269,33 +242,81 @@ export default function ModelSelector({
         )}
       </div>
 
-      <button
-        type="button"
-        className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-label ${
-          deepThinking
-            ? 'bg-accent text-white'
-            : 'text-muted transition-colors duration-150 hover:bg-hover hover:text-foreground'
-        } disabled:opacity-40`}
-        onClick={onToggleDeepThinking}
-        disabled={providers.length === 0 || streaming}
-        aria-pressed={deepThinking}
-        title={
-          deepThinking && thinkingMode === 'native'
-            ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
-            : deepThinking && thinkingMode === 'prompt'
-              ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
-              : t('workspace.chat.deepThinking', 'Deep thinking')
-        }
-        aria-label={
-          deepThinking && thinkingMode === 'native'
-            ? t('workspace.chat.deepThinkingNative', 'Native reasoning (model-powered)')
-            : deepThinking && thinkingMode === 'prompt'
-              ? t('workspace.chat.deepThinkingPrompt', 'Prompt-enhanced (compatibility mode)')
-              : t('workspace.chat.deepThinking', 'Deep thinking')
-        }
-      >
-        <Sparkle className="h-3.5 w-3.5" />
-      </button>
+      {activeProvider && (
+        <div className="relative" ref={reasoningMenuRef}>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
+            aria-label={reasoningEffortLabel}
+            aria-expanded={reasoningMenuOpen}
+            aria-haspopup="listbox"
+            title={`${reasoningEffortLabel}: ${reasoningEffortValue}`}
+            disabled={streaming}
+            onClick={() => {
+              setModelMenuOpen(false)
+              setReasoningMenuOpen((value) => !value)
+            }}
+          >
+            <span className="font-medium">{reasoningEffortValue}</span>
+            <CaretDown className="h-3 w-3 shrink-0 text-muted" />
+          </button>
+
+          {reasoningMenuOpen && (
+            <div
+              className="absolute bottom-full right-0 z-50 mb-1 min-w-32 rounded-xl border border-border bg-panel p-2 shadow-lg"
+              role="listbox"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                const buttons = Array.from(
+                  event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                    'button[role="option"]'
+                  )
+                )
+                const currentIndex = buttons.findIndex(
+                  (button) => button === document.activeElement
+                )
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  const next =
+                    buttons[Math.min(currentIndex + 1, buttons.length - 1)] ?? buttons[0]
+                  next?.focus()
+                } else if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  const previous = buttons[Math.max(currentIndex - 1, 0)] ?? buttons[0]
+                  previous?.focus()
+                } else if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setReasoningMenuOpen(false)
+                }
+              }}
+            >
+              {reasoningEffortOptions.map((effort) => {
+                const selected = effort === reasoningEffort
+                return (
+                  <button
+                    key={effort}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={`mb-0.5 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-hover ${
+                      selected ? 'bg-active' : ''
+                    }`}
+                    onClick={() => {
+                      onReasoningEffortChange(effort)
+                      setReasoningMenuOpen(false)
+                    }}
+                  >
+                    <span className="text-xs text-foreground">
+                      {t(`settings.aiProviders.effort.${effort}`, effort)}
+                    </span>
+                    {selected && <Check className="h-3 w-3 shrink-0 text-accent" />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </>
   )
 }

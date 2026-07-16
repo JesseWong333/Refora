@@ -23,6 +23,7 @@ const provider: AiProvider = {
   reasoningControl: 'openai',
   reasoningEffort: 'medium',
   model: 'gpt-5-high',
+  models: ['gpt-5-high', 'model-beta'],
   baseModel: 'gpt-5',
   variant: 'high',
   variantFormat: 'dash',
@@ -47,15 +48,13 @@ const defaultProps: React.ComponentProps<typeof ModelSelector> = {
   activeProviderId: provider.id,
   selectedModel: 'gpt-5',
   selectedVariant: 'high',
-  providerModels: [providerModel],
-  recentModels: [{ model: 'recent-model-high', providerId: provider.id }],
+  providerModels: { [provider.id]: [providerModel] },
   loadingModels: false,
-  deepThinking: false,
-  thinkingMode: 'none',
+  reasoningEffort: 'medium',
   requestModel: 'gpt-5-high',
   streaming: false,
   onApplyModel: vi.fn().mockResolvedValue(undefined),
-  onToggleDeepThinking: vi.fn()
+  onReasoningEffortChange: vi.fn()
 }
 
 function renderSelector(overrides: Partial<React.ComponentProps<typeof ModelSelector>> = {}) {
@@ -65,72 +64,77 @@ function renderSelector(overrides: Partial<React.ComponentProps<typeof ModelSele
 describe('ModelSelector', () => {
   beforeEach(() => {
     defaultProps.onApplyModel = vi.fn().mockResolvedValue(undefined)
-    defaultProps.onToggleDeepThinking = vi.fn()
+    defaultProps.onReasoningEffortChange = vi.fn()
   })
 
   afterEach(cleanup)
 
-  it('disables model and thinking controls without configured providers', () => {
+  it('disables model selection and hides reasoning effort without configured providers', () => {
     renderSelector({ providers: [], requestModel: '' })
     expect(screen.getByRole('button', { name: 'Select model / provider' })).toBeDisabled()
     expect(screen.getByText('Not configured')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Deep thinking' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Reasoning effort' })).not.toBeInTheDocument()
   })
 
-  it('applies a configured provider model and closes the menu', async () => {
+  it('shows only explicitly configured provider models and applies one', async () => {
     const user = userEvent.setup()
     renderSelector()
-    await user.click(screen.getByRole('button', { name: 'Select model / provider' }))
-    await user.click(screen.getByRole('option', { name: /^Provider One gpt-5-high$/ }))
+    const trigger = screen.getByRole('button', { name: 'Select model / provider' })
+    expect(trigger).toHaveTextContent('Provider One/gpt-5-high')
+    await user.click(trigger)
+    await user.click(screen.getByRole('option', { name: 'Provider One/gpt-5-high' }))
 
     expect(defaultProps.onApplyModel).toHaveBeenCalledWith('gpt-5', 'high', 'provider-1')
+    expect(screen.queryByRole('option', { name: 'Provider One/model-alpha' })).not.toBeInTheDocument()
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
-  it('applies available and recent model entries', async () => {
+  it('shows all fetched models when a provider has no explicit model list', async () => {
     const user = userEvent.setup()
-    renderSelector()
+    renderSelector({
+      providers: [{ ...provider, models: null }],
+      providerModels: {
+        [provider.id]: [
+          providerModel,
+          { ...providerModel, id: 'model-beta', supportsVariants: false }
+        ]
+      }
+    })
 
     const trigger = screen.getByRole('button', { name: 'Select model / provider' })
     await user.click(trigger)
-    await user.click(screen.getByRole('option', { name: /model-alpha/ }))
-    expect(defaultProps.onApplyModel).toHaveBeenCalledWith('model-alpha', '', undefined)
-
-    await user.click(trigger)
-    await user.click(screen.getByRole('option', { name: /recent-model-high/ }))
-    expect(defaultProps.onApplyModel).toHaveBeenCalledWith(
-      'recent-model',
-      'high',
-      'provider-1'
-    )
+    await user.click(screen.getByRole('option', { name: 'Provider One/model-alpha' }))
+    expect(defaultProps.onApplyModel).toHaveBeenCalledWith('model-alpha', '', 'provider-1')
   })
 
-  it('validates and applies a custom model with Enter', async () => {
+  it('does not expose a custom model id input in chat', async () => {
     const user = userEvent.setup()
     renderSelector()
     await user.click(screen.getByRole('button', { name: 'Select model / provider' }))
 
-    const input = screen.getByPlaceholderText('model-id')
-    await user.type(input, 'invalid model')
-    expect(screen.getByText('Model ID cannot contain spaces.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
-
-    await user.clear(input)
-    await user.type(input, 'custom-model-high{Enter}')
-    expect(defaultProps.onApplyModel).toHaveBeenCalledWith('custom-model', 'high')
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('model-id')).not.toBeInTheDocument()
+    expect(screen.queryByText('Custom model')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
   })
 
-  it('applies explicit variants and toggles deep thinking', async () => {
+  it('applies explicit variants and switches reasoning effort without a visible prefix', async () => {
     const user = userEvent.setup()
-    renderSelector({ deepThinking: true, thinkingMode: 'native' })
+    renderSelector({ reasoningEffort: 'high' })
+
+    const modelButton = screen.getByRole('button', { name: 'Select model / provider' })
+    const effortButton = screen.getByRole('button', { name: 'Reasoning effort' })
+    expect(effortButton).toHaveTextContent('high')
+    expect(screen.queryByText('Reasoning effort')).not.toBeInTheDocument()
+    expect(effortButton).toHaveClass('rounded-lg', 'px-2', 'py-1', 'text-label', 'hover:bg-hover')
+    expect(modelButton).toHaveClass('rounded-lg', 'px-2', 'py-1', 'text-label', 'hover:bg-hover')
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    await user.click(effortButton)
+    await user.click(screen.getByRole('option', { name: 'low' }))
+    expect(defaultProps.onReasoningEffortChange).toHaveBeenCalledWith('low')
 
     await user.click(screen.getByRole('button', { name: 'Select model / provider' }))
     await user.click(screen.getByRole('button', { name: 'xhigh' }))
-    expect(defaultProps.onApplyModel).toHaveBeenCalledWith('gpt-5', 'xhigh', undefined)
-
-    await user.click(screen.getByRole('button', { name: 'Native reasoning (model-powered)' }))
-    expect(defaultProps.onToggleDeepThinking).toHaveBeenCalledOnce()
+    expect(defaultProps.onApplyModel).toHaveBeenCalledWith('gpt-5', 'xhigh', 'provider-1')
   })
 
   it('supports keyboard navigation and Escape in the model list', async () => {

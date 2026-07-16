@@ -25,6 +25,16 @@ vi.mock('react-i18next', () => ({
         'settings.aiProviders.connect': 'Connect',
         'settings.aiProviders.customProvider': 'Custom provider',
         'settings.aiProviders.providerApi': 'Provider API',
+        'settings.aiProviders.advancedSettings': 'Advanced settings',
+        'settings.aiProviders.model': 'Model',
+        'settings.aiProviders.searchModels': 'Search models…',
+        'settings.aiProviders.fetchModels': 'Fetch models',
+        'settings.aiProviders.allModels': 'All provider models',
+        'settings.aiProviders.modelSelectionHint': 'Choose models',
+        'settings.aiProviders.modelsNotLoaded': 'Fetch models to choose them',
+        'settings.aiProviders.addModel': 'Add model',
+        'settings.aiProviders.active': 'Active',
+        'settings.aiProviders.setActive': 'Set Active',
         'settings.aiProviders.reasoningControl': 'Reasoning parameter',
         'common.done': 'Done'
       } as Record<string, string>)[key] ?? (typeof fallback === 'string' ? fallback : key),
@@ -79,6 +89,7 @@ describe('AiProvidersSection', () => {
         reasoningControl: input.reasoningControl ?? 'openai',
         reasoningEffort: input.reasoningEffort ?? 'medium',
         model: input.model,
+        models: input.models ?? null,
         baseModel: input.baseModel ?? input.model,
         variant: input.variant ?? '',
         variantFormat: input.variantFormat ?? 'none',
@@ -94,9 +105,11 @@ describe('AiProvidersSection', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
-  it('connects OpenAI with only an API key and selects its recommended model', async () => {
+  it('connects OpenAI with all provider models when advanced settings are untouched', async () => {
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent')
     const { container } = render(<AiProvidersSection />)
 
     expect(container.querySelector('[data-provider-icon="openai"] svg')).toBeInTheDocument()
@@ -118,10 +131,66 @@ describe('AiProvidersSection', () => {
         apiProtocol: 'openai-responses',
         apiKey: 'sk-test',
         model: 'gpt-5.6-terra',
+        models: null,
         reasoningEffort: 'medium'
       })
     )
-    expect(set).toHaveBeenCalledWith('activeProviderId', 'provider-openai')
+    expect(api.aiProviders.listModels).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalledWith('activeProviderId', expect.anything())
+    expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'refora:ai-providers-changed' })
+    )
+  })
+
+  it('fetches, searches, and selects multiple models inline in one dialog', async () => {
+    api.aiProviders.listModels = vi.fn().mockResolvedValue({
+      ok: true,
+      models: [
+        {
+          id: 'gpt-5.6-terra',
+          supportsVariants: false,
+          supportsReasoning: true,
+          reasoningEfforts: ['medium'],
+          supportsVision: true,
+          supportsTools: true,
+          supportedParameters: []
+        },
+        {
+          id: 'gpt-5.6-mini',
+          supportsVariants: false,
+          supportsReasoning: false,
+          reasoningEfforts: [],
+          supportsVision: false,
+          supportsTools: true,
+          supportedParameters: []
+        }
+      ]
+    })
+    render(<AiProvidersSection />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Connect' })[0])
+    const providerDialog = screen.getByRole('dialog')
+    fireEvent.change(within(providerDialog).getByPlaceholderText('sk-…'), {
+      target: { value: 'sk-test' }
+    })
+    fireEvent.click(within(providerDialog).getByRole('button', { name: 'Advanced settings' }))
+
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    const search = within(providerDialog).getByPlaceholderText('Search models…')
+    fireEvent.click(within(providerDialog).getByRole('button', { name: 'Fetch models' }))
+    await waitFor(() => expect(api.aiProviders.listModels).toHaveBeenCalledTimes(1))
+    fireEvent.change(search, {
+      target: { value: 'terra' }
+    })
+    fireEvent.click(await within(providerDialog).findByRole('option', { name: /gpt-5\.6-terra/ }))
+    fireEvent.change(search, { target: { value: 'mini' } })
+    fireEvent.click(await within(providerDialog).findByRole('option', { name: /gpt-5\.6-mini/ }))
+    fireEvent.click(within(providerDialog).getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ models: ['gpt-5.6-terra', 'gpt-5.6-mini'] })
+    )
   })
 
   it('saves an allowed reasoning effort when the model does not support the preset default', async () => {
@@ -146,12 +215,44 @@ describe('AiProvidersSection', () => {
     fireEvent.change(within(dialog).getByPlaceholderText('sk-…'), {
       target: { value: 'sk-test' }
     })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Advanced settings' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fetch models' }))
+    fireEvent.click(await within(dialog).findByRole('option', { name: /gpt-5\.6-terra/ }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ reasoningEffort: 'high' })
+      expect.objectContaining({ reasoningEffort: 'high', models: ['gpt-5.6-terra'] })
     )
+  })
+
+  it('does not show or offer an active provider state', async () => {
+    api.aiProviders.list = vi.fn().mockResolvedValue([
+      {
+        id: 'provider-openai',
+        presetId: 'openai',
+        name: 'OpenAI',
+        baseUrl: 'https://api.openai.com/v1',
+        apiProtocol: 'openai-responses',
+        reasoningControl: 'openai',
+        reasoningEffort: 'medium',
+        model: 'gpt-5.6-terra',
+        models: ['gpt-5.6-terra'],
+        baseModel: 'gpt-5.6-terra',
+        variant: '',
+        variantFormat: 'none',
+        hasKey: true,
+        temperature: null,
+        maxTokens: null,
+        createdAt: 0
+      }
+    ])
+
+    render(<AiProvidersSection />)
+
+    await screen.findByText('gpt-5.6-terra')
+    expect(screen.queryByText('Active')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Set Active' })).not.toBeInTheDocument()
   })
 
   it('opens a custom provider form with protocol and base URL fields', async () => {

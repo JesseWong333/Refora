@@ -244,6 +244,7 @@ export interface AiProvider {
   reasoningControl: AiReasoningControl
   reasoningEffort: AiReasoningEffort
   model: string
+  models: string[] | null
   baseModel: string
   variant: string
   variantFormat: ModelVariantFormat
@@ -261,6 +262,7 @@ export interface AiProviderInput {
   reasoningControl?: AiReasoningControl
   reasoningEffort?: AiReasoningEffort
   model: string
+  models?: string[] | null
   baseModel?: string
   variant?: string
   variantFormat?: ModelVariantFormat
@@ -277,6 +279,7 @@ export interface AiProviderPatch {
   reasoningControl?: AiReasoningControl
   reasoningEffort?: AiReasoningEffort
   model?: string
+  models?: string[] | null
   baseModel?: string
   variant?: string
   variantFormat?: ModelVariantFormat
@@ -383,6 +386,7 @@ export interface ChatSendRequest {
   replaceRunId?: string
   features?: {
     deepThinking?: boolean
+    reasoningEffort?: AiReasoningEffort
   }
   attachments?: ChatAttachment[]
 }

@@ -178,6 +178,7 @@ describe('AiProvidersService', () => {
         name: 'OpenAI',
         baseUrl: 'https://api.openai.com/v1',
         model: 'gpt-4o',
+        models: [' gpt-4o ', 'gpt-4o', 'gpt-5'],
         baseModel: 'gpt-4o',
         variant: '',
         variantFormat: 'dash',
@@ -190,6 +191,7 @@ describe('AiProvidersService', () => {
       const callArg = (repos.aiProviders.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
       expect(callArg.name).toBe('OpenAI')
       expect(callArg.model).toBe('gpt-4o')
+      expect(callArg.models).toEqual(['gpt-4o', 'gpt-5'])
       expect(callArg.baseModel).toBe('gpt-4o')
       expect(callArg.variant).toBe('')
       expect(callArg.variantFormat).toBe('dash')
@@ -288,6 +290,12 @@ describe('AiProvidersService', () => {
       service.update('p1', { maxTokens: 2048 })
       const callArg = (repos.aiProviders.update as ReturnType<typeof vi.fn>).mock.calls[0][1]
       expect(callArg.maxTokens).toBe(2048)
+    })
+
+    it('stores an empty model selection as all models', () => {
+      service.update('p1', { models: [' ', ''] })
+      const callArg = (repos.aiProviders.update as ReturnType<typeof vi.fn>).mock.calls[0][1]
+      expect(callArg.models).toBeNull()
     })
 
     it('rejects an empty provider name', () => {

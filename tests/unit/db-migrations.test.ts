@@ -101,8 +101,8 @@ describe('db migrations + schema', () => {
     expect(userVersion(db)).toBe(0)
     const result = runMigrations(adapt(db))
     expect(result.from).toBe(0)
-    expect(result.to).toBe(16)
-    expect(userVersion(db)).toBe(16)
+    expect(result.to).toBe(17)
+    expect(userVersion(db)).toBe(17)
 
     for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps']) {
       const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)
@@ -119,6 +119,7 @@ describe('db migrations + schema', () => {
     const providerCols = db.prepare(`PRAGMA table_info(ai_providers)`).all() as Array<{ name: string }>
     expect(providerCols.map((c) => c.name)).toContain('temperature')
     expect(providerCols.map((c) => c.name)).toContain('maxTokens')
+    expect(providerCols.map((c) => c.name)).toContain('modelsJson')
   })
 
   it('verifies the trigram tokenizer at runtime', () => {
@@ -141,22 +142,22 @@ describe('db migrations + schema', () => {
   it('is idempotent: running migrations twice does not error or change version', () => {
     runMigrations(adapt(db))
     const second = runMigrations(adapt(db))
-    expect(second.from).toBe(16)
-    expect(second.to).toBe(16)
-    expect(userVersion(db)).toBe(16)
+    expect(second.from).toBe(17)
+    expect(second.to).toBe(17)
+    expect(userVersion(db)).toBe(17)
   })
 
   it('reconciles a database created by the workspace branch before migrations were renumbered', () => {
     migrateThrough(db, 11)
     const migrations = loadMigrationFiles()
-    for (const version of [14, 15, 16]) {
+    for (const version of [14, 15, 16, 17]) {
       db.exec(migrations.find((migration) => migration.version === version)!.sql)
     }
     db.exec('PRAGMA user_version = 14')
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(16)
+    expect(result.to).toBe(17)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'presetId'").get())
@@ -164,6 +165,8 @@ describe('db migrations + schema', () => {
     expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_items') WHERE name = 'x'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_notes') WHERE name = 'noteType'").get())
+      .toBeDefined()
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'modelsJson'").get())
       .toBeDefined()
   })
 
@@ -175,7 +178,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(16)
+    expect(result.to).toBe(17)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'reasoningEffort'").get())
@@ -253,7 +256,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 1`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(16)
+    expect(result.to).toBe(17)
     const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
     expect(cols.map((c) => c.name)).not.toContain('moveToLibrary')
   })
@@ -317,7 +320,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 3`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(16)
+    expect(result.to).toBe(17)
 
     const cols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>
     const names = cols.map((c) => c.name)
@@ -469,7 +472,7 @@ describe('db migrations + schema', () => {
     ).run('outside', '/Users/x/Downloads/other.pdf', '/Users/x/Downloads', 'other.pdf', 1000, 1000)
 
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(16)
+    expect(result.to).toBe(17)
 
     const inLib = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('in-lib') as { filePath: string }
     const nested = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('nested') as { filePath: string }

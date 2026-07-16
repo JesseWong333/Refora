@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Brain,
   CaretDown,
-  CheckCircle,
+  Check,
   ImageSquare,
   PencilSimple,
   PlugsConnected,
@@ -44,6 +44,7 @@ import {
 import { api } from '../ipc'
 import { errorMessage } from '../../shared/ipc-types'
 import { Badge, Button, Input } from './ui'
+import { notifyAiProvidersChanged } from '../utils/aiProviderEvents'
 
 interface ProviderForm {
   id: string | null
@@ -55,6 +56,7 @@ interface ProviderForm {
   reasoningEffort: AiReasoningEffort
   apiKey: string
   model: string
+  models: string[] | null
   temperature: string
   maxTokens: string
 }
@@ -111,6 +113,7 @@ function formFromPreset(preset: ProviderPreset): ProviderForm {
     reasoningEffort: preset.defaultReasoningEffort,
     apiKey: '',
     model: preset.defaultModel,
+    models: null,
     temperature: '',
     maxTokens: ''
   }
@@ -127,6 +130,7 @@ function formFromProvider(provider: AiProvider): ProviderForm {
     reasoningEffort: provider.reasoningEffort,
     apiKey: '',
     model: provider.baseModel || provider.model,
+    models: provider.models,
     temperature: provider.temperature?.toString() ?? '',
     maxTokens: provider.maxTokens?.toString() ?? ''
   }
@@ -165,7 +169,6 @@ function CapabilityBadges({ model }: { model: ProviderModelInfo }) {
 export function AiProvidersSection() {
   const { t } = useTranslation()
   const [providers, setProviders] = useState<AiProvider[]>([])
-  const [activeProviderId, setActiveProviderId] = useState('')
   const [form, setForm] = useState<ProviderForm | null>(null)
   const [models, setModels] = useState<ProviderModelInfo[]>([])
   const [modelFilter, setModelFilter] = useState('')
@@ -177,12 +180,7 @@ export function AiProvidersSection() {
 
   const load = useCallback(async () => {
     try {
-      const [list, active] = await Promise.all([
-        api.aiProviders.list(),
-        api.settings.get<string>('activeProviderId', '')
-      ])
-      setProviders(list)
-      setActiveProviderId(active)
+      setProviders(await api.aiProviders.list())
     } catch (cause) {
       setError(errorMessage(cause, t('settings.aiProviders.loadFail')))
     }
@@ -215,9 +213,26 @@ export function AiProvidersSection() {
   }, [form, selectedModelInfo])
 
   const filteredModels = useMemo(() => {
+    const selectedModels = (form?.models ?? [])
+      .filter((model) => !models.some((candidate) => candidate.id === model))
+      .map((model) => ({
+        id: model,
+        providerName: form?.name,
+        supportsVariants: false,
+        ...inferModelCapabilities(form?.presetId ?? 'custom', model)
+      }))
+    const availableModels = [...selectedModels, ...models]
     const query = modelFilter.trim().toLowerCase()
-    return query ? models.filter((model) => model.id.toLowerCase().includes(query)) : models
-  }, [modelFilter, models])
+    return query
+      ? availableModels.filter((model) => model.id.toLowerCase().includes(query))
+      : availableModels
+  }, [form?.models, form?.name, form?.presetId, modelFilter, models])
+
+  const manualModelId = modelFilter.trim()
+  const canAddManualModel = !!form &&
+    !!manualModelId &&
+    !form.models?.includes(manualModelId) &&
+    (form.presetId === 'custom' || (!loadingModels && models.length === 0))
 
   const openPreset = (preset: ProviderPreset) => {
     setForm(formFromPreset(preset))
@@ -270,6 +285,30 @@ export function AiProvidersSection() {
     setError(null)
   }
 
+  const toggleModel = (model: string) => {
+    if (!form) return
+    const selected = form.models ?? []
+    const next = selected.includes(model)
+      ? selected.filter((candidate) => candidate !== model)
+      : [...selected, model]
+    setForm({
+      ...form,
+      model: next.includes(form.model) ? form.model : next[0] ?? form.model,
+      models: next.length > 0 ? next : null
+    })
+  }
+
+  const addManualModel = () => {
+    if (!form || !canAddManualModel) return
+    const selected = form.models ?? []
+    setForm({
+      ...form,
+      model: selected.length > 0 ? form.model : manualModelId,
+      models: [...selected, manualModelId]
+    })
+    setModelFilter('')
+  }
+
   const save = async () => {
     if (!form || !selectedPreset) return
     if (!form.name.trim() || !form.baseUrl.trim()) {
@@ -284,24 +323,15 @@ export function AiProvidersSection() {
     setSaving(true)
     setError(null)
     try {
-      let verifiedModels = models
-      if (verifiedModels.length === 0) {
-        const fetched = await fetchModels(form)
-        if (fetched) verifiedModels = fetched
-        if (!fetched && form.presetId !== 'custom' && !form.id) return
-      }
-
-      const modelIds = verifiedModels.map((model) => model.id)
-      const model =
-        form.model.trim() &&
-        (form.presetId === 'custom' || form.id || modelIds.includes(form.model.trim()))
-          ? form.model.trim()
-          : pickDefaultModel(selectedPreset, modelIds)
+      const modelIds = models.map((model) => model.id)
+      const model = form.models?.includes(form.model.trim())
+        ? form.model.trim()
+        : form.models?.[0] || form.model.trim() || pickDefaultModel(selectedPreset, modelIds)
       if (!model) {
         setError(t('settings.aiProviders.modelRequired'))
         return
       }
-      const savedModelInfo = verifiedModels.find((candidate) => candidate.id === model)
+      const savedModelInfo = models.find((candidate) => candidate.id === model)
       const inferredReasoningEfforts = reasoningEffortsForModel(form.presetId, model)
       const allowedReasoningEfforts = savedModelInfo
         ? savedModelInfo.reasoningEfforts
@@ -322,6 +352,7 @@ export function AiProvidersSection() {
         reasoningControl: form.reasoningControl,
         reasoningEffort,
         model,
+        models: form.models,
         baseModel: model,
         variant: '',
         variantFormat: 'none' as const,
@@ -330,16 +361,14 @@ export function AiProvidersSection() {
         ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {})
       }
 
-      let saved: AiProvider
       if (form.id) {
-        saved = await api.aiProviders.update(form.id, payload)
+        await api.aiProviders.update(form.id, payload)
       } else {
-        saved = await api.aiProviders.create(payload)
+        await api.aiProviders.create(payload)
       }
-      await api.settings.set('activeProviderId', saved.id)
-      setActiveProviderId(saved.id)
       closeForm()
       await load()
+      notifyAiProvidersChanged()
     } catch (cause) {
       const code = (cause as { code?: string }).code
       setError(
@@ -349,15 +378,6 @@ export function AiProvidersSection() {
       )
     } finally {
       setSaving(false)
-    }
-  }
-
-  const setActive = async (provider: AiProvider) => {
-    try {
-      await api.settings.set('activeProviderId', provider.id)
-      setActiveProviderId(provider.id)
-    } catch (cause) {
-      setError(errorMessage(cause, t('settings.aiProviders.activateFail')))
     }
   }
 
@@ -377,10 +397,20 @@ export function AiProvidersSection() {
   const removeProvider = async (provider: AiProvider) => {
     try {
       await api.aiProviders.delete(provider.id)
+      const [activeProviderId, chatSelectedProviderId] = await Promise.all([
+        api.settings.get<string>('activeProviderId', ''),
+        api.settings.get<string>('chatSelectedProviderId', '')
+      ])
       if (provider.id === activeProviderId) {
         await api.settings.set('activeProviderId', '')
       }
+      if (provider.id === chatSelectedProviderId) {
+        await api.settings.set('chatSelectedProviderId', '')
+        await api.settings.set('chatSelectedModel', '')
+        await api.settings.set('chatSelectedVariant', '')
+      }
       await load()
+      notifyAiProvidersChanged()
     } catch (cause) {
       setError(errorMessage(cause, t('settings.aiProviders.deleteFail')))
     }
@@ -452,14 +482,11 @@ export function AiProvidersSection() {
           </span>
           <div className="flex flex-col gap-2">
             {providers.map((provider) => {
-              const active = provider.id === activeProviderId
               const state = testStates[provider.id]
               return (
                 <div
                   key={provider.id}
-                  className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
-                    active ? 'border-accent bg-active' : 'border-border bg-panel-2'
-                  }`}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-panel-2 px-3 py-2.5"
                 >
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background">
                     <ProviderIcon presetId={provider.presetId} />
@@ -467,14 +494,11 @@ export function AiProvidersSection() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2 text-xs font-medium text-foreground">
                       {provider.name}
-                      {active && (
-                        <Badge variant="accent" size="sm">
-                          {t('settings.aiProviders.active')}
-                        </Badge>
-                      )}
                     </span>
                     <span className="mt-0.5 block truncate text-label text-muted">
-                      {provider.model} · {provider.apiProtocol === 'openai-responses' ? 'Responses' : 'Compatible'}
+                      {provider.models?.length
+                        ? provider.models.join(' · ')
+                        : t('settings.aiProviders.allModels')}
                     </span>
                     {state && state !== 'testing' && (
                       <span className={`text-label ${state.ok ? 'text-success' : 'text-error'}`}>
@@ -485,17 +509,6 @@ export function AiProvidersSection() {
                     )}
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
-                    {!active && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        iconOnly
-                        title={t('settings.aiProviders.setActive')}
-                        onClick={() => void setActive(provider)}
-                      >
-                        <PlugsConnected className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -504,7 +517,7 @@ export function AiProvidersSection() {
                       title={t('settings.aiProviders.test')}
                       onClick={() => void testProvider(provider)}
                     >
-                      <CheckCircle className="h-3.5 w-3.5" />
+                      <Check className="h-3.5 w-3.5" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -692,51 +705,99 @@ export function AiProvidersSection() {
                     </label>
                   )}
 
-                  <div className="flex items-end gap-2">
-                    <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-                      <span className="mb-1.5 block text-label font-medium text-muted">
-                        {t('settings.aiProviders.model')}
-                      </span>
-                      {models.length > 0 ? (
-                        <select
-                          className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-xs text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-                          value={form.model}
-                          onChange={(event) => setForm({ ...form, model: event.target.value })}
-                        >
-                          {!models.some((model) => model.id === form.model) && form.model && (
-                            <option value={form.model}>{form.model}</option>
-                          )}
-                          {filteredModels.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.id}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <Input
-                          value={form.model}
-                          onChange={(event) => setForm({ ...form, model: event.target.value })}
-                          placeholder={selectedPreset.defaultModel || 'model-id'}
-                        />
-                      )}
-                    </label>
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      loading={loadingModels}
-                      onClick={() => void fetchModels(form)}
-                    >
-                      {t('settings.aiProviders.fetchModels')}
-                    </Button>
-                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-label font-medium text-muted">
+                      {t('settings.aiProviders.model')}
+                    </span>
+                    <span className="text-label leading-relaxed text-text-tertiary">
+                      {t('settings.aiProviders.modelSelectionHint')}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={modelFilter}
+                        onChange={(event) => setModelFilter(event.target.value)}
+                        placeholder={t('settings.aiProviders.searchModels')}
+                        onPressEnter={addManualModel}
+                      />
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        loading={loadingModels}
+                        onClick={() => void fetchModels(form)}
+                      >
+                        {t('settings.aiProviders.fetchModels')}
+                      </Button>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto rounded-lg border border-border bg-background p-1">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={form.models == null}
+                        className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-hover ${
+                          form.models == null ? 'bg-active' : ''
+                        }`}
+                        onClick={() => setForm({ ...form, models: null })}
+                      >
+                        <span className="min-w-0 flex-1 text-xs text-foreground">
+                          {t('settings.aiProviders.allModels')}
+                        </span>
+                        {form.models == null && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                      </button>
 
-                  {models.length > 8 && (
-                    <Input
-                      value={modelFilter}
-                      onChange={(event) => setModelFilter(event.target.value)}
-                      placeholder={t('settings.aiProviders.searchModels')}
-                    />
-                  )}
+                      {filteredModels.map((model) => {
+                        const selected = form.models?.includes(model.id) === true
+                        return (
+                          <button
+                            key={model.id}
+                            type="button"
+                            role="option"
+                            aria-selected={selected}
+                            className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-hover ${
+                              selected ? 'bg-active' : ''
+                            }`}
+                            onClick={() => toggleModel(model.id)}
+                          >
+                            <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                              {model.id}
+                            </span>
+                            <CapabilityBadges model={model} />
+                            {selected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                          </button>
+                        )
+                      })}
+
+                      {canAddManualModel && (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={false}
+                          className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-hover"
+                          onClick={addManualModel}
+                        >
+                          <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                            {manualModelId}
+                          </span>
+                          <span className="text-caption text-muted">
+                            {t('settings.aiProviders.addModel')}
+                          </span>
+                        </button>
+                      )}
+
+                      {filteredModels.length === 0 && models.length === 0 && !canAddManualModel && (
+                        <div className="px-3 py-6 text-center text-xs text-muted">
+                          {loadingModels
+                            ? t('settings.aiProviders.loadingModels')
+                            : t('settings.aiProviders.modelsNotLoaded')}
+                        </div>
+                      )}
+
+                      {models.length > 0 && filteredModels.length === 0 && !canAddManualModel && (
+                        <div className="px-3 py-6 text-center text-xs text-muted">
+                          {t('settings.aiProviders.noModelMatch')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {selectedCapabilities && (
                     <div className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-2.5 py-2 text-label text-muted">
@@ -840,6 +901,7 @@ export function AiProvidersSection() {
               </Button>
             </div>
           </div>
+
         </div>
       )}
     </section>

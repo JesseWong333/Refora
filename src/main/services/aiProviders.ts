@@ -130,6 +130,14 @@ function resolveModelFields(input: {
   }
 }
 
+function normalizeModels(models: string[] | null | undefined): string[] | null {
+  if (!models) return null
+  const normalized = models
+    .map((model) => model.trim())
+    .filter((model, index, all) => model.length > 0 && all.indexOf(model) === index)
+  return normalized.length > 0 ? normalized : null
+}
+
 function mapRaw(row: {
   id: string
   presetId: string
@@ -139,6 +147,7 @@ function mapRaw(row: {
   reasoningControl: AiReasoningControl
   reasoningEffort: AiReasoningEffort
   model: string
+  models: string[] | null
   baseModel: string
   variant: string
   variantFormat: ModelVariantFormat
@@ -156,6 +165,7 @@ function mapRaw(row: {
     reasoningControl: row.reasoningControl,
     reasoningEffort: row.reasoningEffort,
     model: row.model,
+    models: row.models,
     baseModel: row.baseModel,
     variant: row.variant,
     variantFormat: row.variantFormat,
@@ -231,6 +241,7 @@ export function createAiProvidersService(repos: Repositories) {
         preset.defaultReasoningEffort
       ),
       model: fields.model,
+      models: normalizeModels(input.models),
       baseModel: fields.baseModel,
       variant: fields.variant,
       variantFormat: fields.variantFormat,
@@ -271,6 +282,7 @@ export function createAiProvidersService(repos: Repositories) {
       reasoningControl?: AiReasoningControl
       reasoningEffort?: AiReasoningEffort
       model?: string
+      models?: string[] | null
       baseModel?: string
       variant?: string
       variantFormat?: ModelVariantFormat
@@ -300,6 +312,9 @@ export function createAiProvidersService(repos: Repositories) {
       updateInput.baseModel = fields.baseModel
       updateInput.variant = fields.variant
       updateInput.variantFormat = fields.variantFormat
+    }
+    if (patch.models !== undefined) {
+      updateInput.models = normalizeModels(patch.models)
     }
     if (patch.apiKey !== undefined) {
       updateInput.apiKeyEnc = encryptKey(patch.apiKey)

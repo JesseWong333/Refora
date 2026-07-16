@@ -57,11 +57,16 @@ describe('loadRecentModels', () => {
 })
 
 describe('pushRecentModel', () => {
-  it('prepends the new model and dedupes by model id', async () => {
-    settingsGet.mockResolvedValue(JSON.stringify([{ model: 'b', providerId: 'p2' }, { model: 'a', providerId: 'p1' }]))
+  it('prepends the new model and dedupes by provider and model', async () => {
+    settingsGet.mockResolvedValue(JSON.stringify([
+      { model: 'a', providerId: 'p2' },
+      { model: 'b', providerId: 'p2' },
+      { model: 'a', providerId: 'p1' }
+    ]))
     await pushRecentModel('a', 'p1')
     expect(settingsSet).toHaveBeenCalledWith('chatRecentModels', JSON.stringify([
       { model: 'a', providerId: 'p1' },
+      { model: 'a', providerId: 'p2' },
       { model: 'b', providerId: 'p2' }
     ]))
   })

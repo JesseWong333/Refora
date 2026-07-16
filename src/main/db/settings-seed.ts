@@ -14,8 +14,10 @@ export type SettingKey =
   | 'listColumnState'
   | 'activeProviderId'
   | 'chatRecentModels'
+  | 'chatSelectedProviderId'
   | 'chatSelectedModel'
   | 'chatSelectedVariant'
+  | 'chatReasoningEffort'
   | 'chatDeepThinking'
   | 'workspaceChatHeight'
   | 'sidebarWidth'
@@ -34,8 +36,10 @@ export const SETTING_KEYS: readonly SettingKey[] = [
   'listColumnState',
   'activeProviderId',
   'chatRecentModels',
+  'chatSelectedProviderId',
   'chatSelectedModel',
   'chatSelectedVariant',
+  'chatReasoningEffort',
   'chatDeepThinking',
   'workspaceChatHeight',
   'sidebarWidth',
@@ -61,8 +65,10 @@ export function defaultSettings(language: 'zh' | 'en'): Array<[SettingKey, unkno
     ['listColumnState', null],
     ['activeProviderId', ''],
     ['chatRecentModels', '[]'],
+    ['chatSelectedProviderId', ''],
     ['chatSelectedModel', ''],
     ['chatSelectedVariant', ''],
+    ['chatReasoningEffort', ''],
     ['chatDeepThinking', false],
     ['workspaceChatHeight', 280],
     ['sidebarWidth', 224],
