@@ -53,38 +53,35 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         className="sidebar-floating-toolbar drag-region"
         style={{ left: `${toolbarLeft}px` }}
       >
-        <IconTooltip label={t('tooltip.expandSidebar')}>
+        <IconTooltip label={t('tooltip.expandSidebar')} appearance="sidebar">
           <UiButton
             variant="ghost"
             size="sm"
             iconOnly
             onClick={onToggleCollapse}
-            title={t('tooltip.expandSidebar')}
             aria-label={t('tooltip.expandSidebar')}
           >
             <ArrowLineRight className="h-4 w-4" />
           </UiButton>
         </IconTooltip>
         <div className="toolbar-sep" aria-hidden="true" />
-        <IconTooltip label={t('tooltip.addFile')}>
+        <IconTooltip label={t('tooltip.addFile')} appearance="sidebar" shortcut="⌘I">
           <UiButton
             variant="ghost"
             size="sm"
             iconOnly
             onClick={handleAddFiles}
-            title={t('tooltip.addFile')}
             aria-label={t('tooltip.addFile')}
           >
             <FilePlus className="h-4 w-4" />
           </UiButton>
         </IconTooltip>
-        <IconTooltip label={t('tooltip.importFromIdentifier')}>
+        <IconTooltip label={t('tooltip.importFromIdentifier')} appearance="sidebar" shortcut="⌘⇧I">
           <UiButton
             variant="ghost"
             size="sm"
             iconOnly
             onClick={handleImportFromIdentifier}
-            title={t('tooltip.importFromIdentifier')}
             aria-label={t('tooltip.importFromIdentifier')}
           >
             <FileArrowDown className="h-4 w-4" />
@@ -105,37 +102,34 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
       <div className={`drag-region flex h-10 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
         <div className="ml-auto mr-2 flex items-center gap-3 no-drag">
-          <IconTooltip label={t('tooltip.collapseSidebar')}>
+          <IconTooltip label={t('tooltip.collapseSidebar')} appearance="sidebar">
             <UiButton
               variant="ghost"
               size="sm"
               iconOnly
               onClick={onToggleCollapse}
-              title={t('tooltip.collapseSidebar')}
               aria-label={t('tooltip.collapseSidebar')}
             >
               <ArrowLineLeft className="h-4 w-4" />
             </UiButton>
           </IconTooltip>
-          <IconTooltip label={t('tooltip.addFile')}>
+          <IconTooltip label={t('tooltip.addFile')} appearance="sidebar" shortcut="⌘I">
             <UiButton
               variant="ghost"
               size="sm"
               iconOnly
               onClick={handleAddFiles}
-              title={t('tooltip.addFile')}
               aria-label={t('tooltip.addFile')}
             >
               <FilePlus className="h-4 w-4" />
             </UiButton>
           </IconTooltip>
-          <IconTooltip label={t('tooltip.importFromIdentifier')}>
+          <IconTooltip label={t('tooltip.importFromIdentifier')} appearance="sidebar" shortcut="⌘⇧I">
             <UiButton
               variant="ghost"
               size="sm"
               iconOnly
               onClick={handleImportFromIdentifier}
-              title={t('tooltip.importFromIdentifier')}
               aria-label={t('tooltip.importFromIdentifier')}
             >
               <FileArrowDown className="h-4 w-4" />

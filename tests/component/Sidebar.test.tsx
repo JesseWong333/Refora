@@ -93,6 +93,14 @@ describe('Sidebar', () => {
     expect(screen.getByText('sidebar.starred')).toBeInTheDocument()
   })
 
+  it('does not render native titles for the top toolbar actions', () => {
+    renderSidebar()
+
+    expect(screen.getByLabelText('tooltip.collapseSidebar')).not.toHaveAttribute('title')
+    expect(screen.getByLabelText('tooltip.addFile')).not.toHaveAttribute('title')
+    expect(screen.getByLabelText('tooltip.importFromIdentifier')).not.toHaveAttribute('title')
+  })
+
   it('calls setListMode with { mode: "all" } when All Files is clicked', async () => {
     const user = userEvent.setup()
     renderSidebar()
