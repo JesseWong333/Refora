@@ -162,17 +162,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set((s) => {
       const cs = s.listColumnState
       const curSort = cs.sort
-      if (curSort.field === field && curSort.dir === 'asc') {
-        const newState = { ...cs, sort: { field, dir: 'desc' as const } }
-        persistColumnState(newState)
-        return { listColumnState: newState }
-      }
-      if (curSort.field === field && curSort.dir === 'desc') {
-        const newState = { ...cs, sort: { field: 'addedAt' as SortField, dir: 'desc' as const } }
-        persistColumnState(newState)
-        return { listColumnState: newState }
-      }
-      const newState = { ...cs, sort: { field, dir: 'asc' as const } }
+      const dir = curSort.field === field && curSort.dir === 'asc' ? 'desc' : 'asc'
+      const newState = { ...cs, sort: { field, dir: dir as 'asc' | 'desc' } }
       persistColumnState(newState)
       return { listColumnState: newState }
     })

@@ -552,7 +552,7 @@ describe('DocumentStore', () => {
       useDocumentStore.getState().setSort('title')
       expect(useDocumentStore.getState().listColumnState.sort).toEqual({ field: 'title', dir: 'desc' })
       useDocumentStore.getState().setSort('title')
-      expect(useDocumentStore.getState().listColumnState.sort).toEqual({ field: 'addedAt', dir: 'desc' })
+      expect(useDocumentStore.getState().listColumnState.sort).toEqual({ field: 'title', dir: 'asc' })
 
       useDocumentStore.getState().setListColumnState({
         columns,
@@ -564,6 +564,25 @@ describe('DocumentStore', () => {
         sort: { field: 'year', dir: 'asc' }
       })
       vi.useRealTimers()
+    })
+
+    it('toggles addedAt sort from the default desc state without no-op', () => {
+      expect(useDocumentStore.getState().listColumnState.sort).toEqual({
+        field: 'addedAt',
+        dir: 'desc'
+      })
+
+      useDocumentStore.getState().setSort('addedAt')
+      expect(useDocumentStore.getState().listColumnState.sort).toEqual({
+        field: 'addedAt',
+        dir: 'asc'
+      })
+
+      useDocumentStore.getState().setSort('addedAt')
+      expect(useDocumentStore.getState().listColumnState.sort).toEqual({
+        field: 'addedAt',
+        dir: 'desc'
+      })
     })
   })
 
