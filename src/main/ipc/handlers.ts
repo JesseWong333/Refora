@@ -28,6 +28,8 @@ import type {
   WatchFolder,
   Workspace,
   WorkspaceCanvasViewport,
+  WorkspaceConnection,
+  WorkspaceConnectionAnchor,
   WorkspaceItem,
   WorkspaceItemKind,
   WorkspaceItemPlacement,
@@ -579,6 +581,25 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       workspaceId: string,
       viewport: WorkspaceCanvasViewport
     ): Result<WorkspaceCanvasViewport> => wrap(() => repos().workspaceCanvas.update(workspaceId, viewport)),
+
+    [IpcChannel.WorkspaceConnectionsList]: (workspaceId: string): Result<WorkspaceConnection[]> =>
+      wrap(() => repos().workspaceConnections.list(workspaceId)),
+    [IpcChannel.WorkspaceConnectionsCreate]: (
+      workspaceId: string,
+      sourceItemId: string,
+      targetItemId: string,
+      sourceAnchor: WorkspaceConnectionAnchor,
+      targetAnchor: WorkspaceConnectionAnchor
+    ): Result<WorkspaceConnection> =>
+      wrap(() => repos().workspaceConnections.create(
+        workspaceId,
+        sourceItemId,
+        targetItemId,
+        sourceAnchor,
+        targetAnchor
+      )),
+    [IpcChannel.WorkspaceConnectionsDelete]: (id: string): Result<void> =>
+      wrap(() => repos().workspaceConnections.remove(id)),
 
     [IpcChannel.WorkspaceNotesList]: (workspaceId: string): Result<WorkspaceNote[]> =>
       wrap(() => repos().workspaceNotes.list(workspaceId)),

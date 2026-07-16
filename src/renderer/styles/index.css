@@ -274,6 +274,11 @@
     background: color-mix(in srgb, #ffffff 42%, var(--workspace-card-surface-base));
   }
 
+  .workspace-card-scroll {
+    scrollbar-color: color-mix(in srgb, var(--workspace-card-accent) 45%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
   .chat-markdown,
   .chat-markdown p {
     line-height: 1.5 !important;
@@ -968,14 +973,90 @@
   }
 
   .resizable-card {
+    --workspace-connection-accent: var(--workspace-card-document);
     flex: 0 0 auto;
     border-radius: var(--workspace-card-radius);
     filter: var(--workspace-card-filter-shadow);
     transition: filter 0.18s ease;
   }
 
+  .workspace-connection-accent--document {
+    --workspace-connection-accent: var(--workspace-card-document);
+  }
+
+  .workspace-connection-accent--report {
+    --workspace-connection-accent: var(--workspace-card-report);
+  }
+
+  .workspace-connection-accent--note {
+    --workspace-connection-accent: var(--workspace-card-note);
+  }
+
+  .workspace-connection-accent--sticky {
+    --workspace-connection-accent: var(--workspace-card-sticky);
+  }
+
   .resizable-card:has(.workspace-content-card:hover) {
     filter: var(--workspace-card-filter-shadow-hover);
+  }
+
+  .workspace-connection-handle {
+    position: absolute;
+    z-index: 200002;
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    cursor: crosshair;
+  }
+
+  .workspace-connection-handle::after {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--workspace-connection-accent);
+    border-radius: 9999px;
+    background: var(--color-panel);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--workspace-connection-accent) 35%, transparent);
+    content: '';
+    opacity: 0;
+    transform: scale(0.72);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+
+  .workspace-connection-handle:hover::after,
+  .workspace-connection-handle:focus-visible::after {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .workspace-connection-handle:active::after {
+    background: var(--workspace-connection-accent);
+  }
+
+  .workspace-connection-handle--top {
+    left: 50%;
+    top: 0;
+    transform: translate(-50%, -50%);
+  }
+
+  .workspace-connection-handle--right {
+    right: 0;
+    top: 50%;
+    transform: translate(50%, -50%);
+  }
+
+  .workspace-connection-handle--bottom {
+    bottom: 0;
+    left: 50%;
+    transform: translate(-50%, 50%);
+  }
+
+  .workspace-connection-handle--left {
+    left: 0;
+    top: 50%;
+    transform: translate(-50%, -50%);
   }
 
   .resizable-card > .card {

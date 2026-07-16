@@ -61,6 +61,10 @@ export const IpcChannel = {
   WorkspaceCanvasGet: 'workspaceCanvas:get',
   WorkspaceCanvasUpdate: 'workspaceCanvas:update',
 
+  WorkspaceConnectionsList: 'workspaceConnections:list',
+  WorkspaceConnectionsCreate: 'workspaceConnections:create',
+  WorkspaceConnectionsDelete: 'workspaceConnections:delete',
+
   WorkspaceNotesList: 'workspaceNotes:list',
   WorkspaceNotesCreate: 'workspaceNotes:create',
   WorkspaceNotesUpdate: 'workspaceNotes:update',

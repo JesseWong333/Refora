@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
@@ -25,6 +26,11 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
+    server: {
+      fs: {
+        allow: [resolve('.'), realpathSync(resolve('node_modules'))]
+      }
+    },
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer'),

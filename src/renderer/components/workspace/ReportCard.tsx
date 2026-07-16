@@ -165,8 +165,12 @@ export default function ReportCard({
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0">
-          <div className="line-clamp-[12]">
+        <div
+          data-card-scroll
+          className="workspace-card-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0"
+          onWheel={(event) => event.stopPropagation()}
+        >
+          <div>
             <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{report.contentMd}</ReactMarkdown>
           </div>
         </div>

@@ -36,6 +36,8 @@ import type {
   WatchFolder,
   Workspace,
   WorkspaceCanvasViewport,
+  WorkspaceConnection,
+  WorkspaceConnectionAnchor,
   WorkspaceItem,
   WorkspaceItemKind,
   WorkspaceItemPlacement,
@@ -215,6 +217,26 @@ const api: ReforaApi = {
       invoke<WorkspaceCanvasViewport>(IpcChannel.WorkspaceCanvasGet, workspaceId),
     update: (workspaceId: string, viewport: WorkspaceCanvasViewport) =>
       invoke<WorkspaceCanvasViewport>(IpcChannel.WorkspaceCanvasUpdate, workspaceId, viewport)
+  },
+
+  workspaceConnections: {
+    list: (workspaceId: string) =>
+      invoke<WorkspaceConnection[]>(IpcChannel.WorkspaceConnectionsList, workspaceId),
+    create: (
+      workspaceId: string,
+      sourceItemId: string,
+      targetItemId: string,
+      sourceAnchor: WorkspaceConnectionAnchor,
+      targetAnchor: WorkspaceConnectionAnchor
+    ) => invoke<WorkspaceConnection>(
+      IpcChannel.WorkspaceConnectionsCreate,
+      workspaceId,
+      sourceItemId,
+      targetItemId,
+      sourceAnchor,
+      targetAnchor
+    ),
+    delete: (id: string) => invoke<void>(IpcChannel.WorkspaceConnectionsDelete, id)
   },
 
   aiProviders: {

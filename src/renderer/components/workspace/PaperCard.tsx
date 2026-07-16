@@ -33,7 +33,6 @@ export default function PaperCard({
   const authors = doc?.authors
   const content = summary?.content ?? null
   const keyPoints = content?.keyPoints ?? []
-  const previewKeyPoints = keyPoints.slice(0, 3)
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -121,7 +120,11 @@ export default function PaperCard({
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-hidden text-xs">
+        <div
+          data-card-scroll
+          className="workspace-card-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain text-xs"
+          onWheel={(event) => event.stopPropagation()}
+        >
           {summarizing ? (
             <div className="flex items-center gap-1.5 text-muted">
               <CircleNotch className="h-3.5 w-3.5 animate-spin" />
@@ -146,18 +149,20 @@ export default function PaperCard({
               </button>
             </div>
           ) : content ? (
-            <div className="h-full space-y-1.5 overflow-hidden">
-              <p className="line-clamp-6 text-foreground">{content.core}</p>
-              {previewKeyPoints.length > 0 && (
+            <div className="space-y-2 text-foreground">
+              <p>{content.core}</p>
+              {keyPoints.length > 0 && (
                 <ul className="space-y-0.5">
-                  {previewKeyPoints.map((kp, i) => (
+                  {keyPoints.map((kp, i) => (
                     <li key={i} className="flex gap-1">
                       <span className="shrink-0 text-accent">•</span>
-                      <span className="line-clamp-2 text-muted">{kp}</span>
+                      <span className="text-muted">{kp}</span>
                     </li>
                   ))}
                 </ul>
               )}
+              {content.methods && <p className="text-muted">{content.methods}</p>}
+              {content.contribution && <p className="text-muted">{content.contribution}</p>}
             </div>
           ) : (
             <p className="italic text-muted">{t('workspace.summarizeHint')}</p>

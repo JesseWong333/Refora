@@ -9,6 +9,15 @@ const mockAddDocs = vi.fn()
 const mockFetchItems = vi.fn()
 const mockRemoveItem = vi.fn()
 const mockDeleteReport = vi.fn()
+const mockResizeItem = vi.fn()
+const mockMoveItem = vi.fn()
+const mockCreateNote = vi.fn()
+const mockDeleteNote = vi.fn()
+const mockUpdateNote = vi.fn()
+const mockUpdateReport = vi.fn()
+const mockConnectionsList = vi.fn()
+const mockConnectionsCreate = vi.fn()
+const mockConnectionsDelete = vi.fn()
 const { mockShowToast, mockTranslate } = vi.hoisted(() => ({
   mockShowToast: vi.fn(),
   mockTranslate: (key: string, fallback?: string) => fallback ?? key
@@ -29,7 +38,13 @@ vi.mock('@renderer/store/workspaceStore', () => ({
       addDocs: mockAddDocs,
       fetchItems: mockFetchItems,
       removeItem: mockRemoveItem,
-      deleteReport: mockDeleteReport
+      deleteReport: mockDeleteReport,
+      resizeItem: mockResizeItem,
+      moveItem: mockMoveItem,
+      createNote: mockCreateNote,
+      deleteNote: mockDeleteNote,
+      updateNote: mockUpdateNote,
+      updateReport: mockUpdateReport
     })
 }))
 
@@ -52,6 +67,15 @@ beforeEach(() => {
   mockFetchItems.mockReset().mockResolvedValue(undefined)
   mockRemoveItem.mockReset()
   mockDeleteReport.mockReset()
+  mockResizeItem.mockReset().mockResolvedValue(true)
+  mockMoveItem.mockReset().mockResolvedValue(true)
+  mockCreateNote.mockReset().mockResolvedValue(null)
+  mockDeleteNote.mockReset()
+  mockUpdateNote.mockReset().mockResolvedValue(true)
+  mockUpdateReport.mockReset().mockResolvedValue(true)
+  mockConnectionsList.mockReset().mockResolvedValue([])
+  mockConnectionsCreate.mockReset()
+  mockConnectionsDelete.mockReset().mockResolvedValue(undefined)
   mockShowToast.mockReset()
   mockItems = []
   mockReports = []
@@ -63,11 +87,33 @@ beforeEach(() => {
   documents.get = vi.fn().mockResolvedValue(null)
   const ai = api.ai as Record<string, unknown>
   ai.summaryGet = vi.fn().mockResolvedValue(null)
+  const workspaceConnections = api.workspaceConnections as Record<string, unknown>
+  workspaceConnections.list = mockConnectionsList
+  workspaceConnections.create = mockConnectionsCreate
+  workspaceConnections.delete = mockConnectionsDelete
 })
 
 afterEach(() => {
   cleanup()
 })
+
+function makeItem(id: string, docId: string, x: number): WorkspaceItem {
+  return {
+    id,
+    workspaceId: 'ws-1',
+    kind: 'document',
+    docId,
+    reportId: null,
+    noteId: null,
+    sortOrder: x,
+    width: 300,
+    height: 200,
+    x,
+    y: 0,
+    zIndex: x,
+    addedAt: x
+  }
+}
 
 describe('Board drag-and-drop', () => {
   it('shows empty drag hint when board has no items', () => {
@@ -153,6 +199,60 @@ describe('Board error handling', () => {
     render(<Board />)
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('DB error')
+    })
+  })
+})
+
+describe('Board canvas controls and connections', () => {
+  it('keeps an explicit Reset button after changing the zoom level', () => {
+    render(<Board />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.canvasZoomIn' }))
+
+    expect(screen.getByRole('button', { name: 'workspace.canvasReset' })).toHaveTextContent('Reset')
+  })
+
+  it('creates a persisted arrow connection by dragging a card-edge handle to another card', async () => {
+    mockItems = [makeItem('item-1', 'doc-1', 0), makeItem('item-2', 'doc-2', 400)]
+    mockConnectionsCreate.mockResolvedValue({
+      id: 'connection-1',
+      workspaceId: 'ws-1',
+      sourceItemId: 'item-1',
+      targetItemId: 'item-2',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      createdAt: 1
+    })
+    const { container } = render(<Board />)
+    const sourceHandle = container.querySelector(
+      '[data-workspace-card-id="item-1"] [data-connection-handle="right"]'
+    ) as HTMLButtonElement
+    expect(sourceHandle.closest('[data-workspace-card]')).toHaveClass(
+      'workspace-connection-accent--document'
+    )
+    const targetCard = container.querySelector('[data-workspace-card-id="item-2"]') as HTMLElement
+    const originalElementsFromPoint = document.elementsFromPoint
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: () => [targetCard]
+    })
+
+    fireEvent.mouseDown(sourceHandle, { button: 0, clientX: 300, clientY: 100 })
+    fireEvent.mouseMove(document, { clientX: 410, clientY: 100 })
+    fireEvent.mouseUp(document, { clientX: 410, clientY: 100 })
+
+    await waitFor(() => {
+      expect(mockConnectionsCreate).toHaveBeenCalledWith(
+        'ws-1',
+        'item-1',
+        'item-2',
+        'right',
+        'left'
+      )
+    })
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: originalElementsFromPoint
     })
   })
 })
