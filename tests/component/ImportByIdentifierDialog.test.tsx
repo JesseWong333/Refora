@@ -1,35 +1,24 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  fetchDocuments: vi.fn(),
-  fromIdentifier: vi.fn(),
-  showToast: vi.fn()
+  importByIdentifier: vi.fn()
 }))
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { message?: string }) =>
-      options?.message ? `${key}: ${options.message}` : key
+    t: (key: string) => key
   })
 }))
 
 vi.mock('@lobehub/ui', async () => import('../mocks/lobehub-ui'))
 
-vi.mock('../../src/renderer/ipc', () => ({
-  api: {
-    import: {
-      fromIdentifier: mocks.fromIdentifier
-    }
-  }
-}))
-
 vi.mock('../../src/renderer/store/documentStore', () => ({
   useDocumentStore: Object.assign(
-    (selector: (state: { fetchDocuments: typeof mocks.fetchDocuments }) => unknown) =>
-      selector({ fetchDocuments: mocks.fetchDocuments }),
-    { getState: () => ({ showToast: mocks.showToast }) }
+    (selector: (state: { importByIdentifier: typeof mocks.importByIdentifier }) => unknown) =>
+      selector({ importByIdentifier: mocks.importByIdentifier }),
+    { getState: () => ({ importByIdentifier: mocks.importByIdentifier }) }
   )
 }))
 
@@ -37,17 +26,14 @@ import ImportByIdentifierDialog from '../../src/renderer/components/ImportByIden
 
 describe('ImportByIdentifierDialog', () => {
   beforeEach(() => {
-    mocks.fetchDocuments.mockReset().mockResolvedValue(undefined)
-    mocks.fromIdentifier.mockReset()
-    mocks.showToast.mockReset()
+    mocks.importByIdentifier.mockReset()
   })
 
   afterEach(cleanup)
 
-  it('imports a trimmed identifier and refreshes the document list', async () => {
+  it('delegates a trimmed identifier to the store and closes immediately', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
-    mocks.fromIdentifier.mockResolvedValue({ added: ['doc-1'] })
     render(<ImportByIdentifierDialog open onClose={onClose} />)
 
     const importButton = screen.getByRole('button', { name: 'identifierImport.import' })
@@ -55,35 +41,29 @@ describe('ImportByIdentifierDialog', () => {
     await user.type(screen.getByPlaceholderText('identifierImport.placeholder'), '  10.1000/test  ')
     await user.click(importButton)
 
-    await waitFor(() => expect(mocks.fromIdentifier).toHaveBeenCalledWith('10.1000/test'))
-    expect(mocks.showToast).toHaveBeenCalledWith('identifierImport.success')
-    expect(mocks.fetchDocuments).toHaveBeenCalledOnce()
+    expect(mocks.importByIdentifier).toHaveBeenCalledWith('10.1000/test')
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('shows the service message when no document was added', async () => {
-    const user = userEvent.setup()
-    mocks.fromIdentifier.mockResolvedValue({ added: [], message: 'Already imported' })
-    render(<ImportByIdentifierDialog open onClose={vi.fn()} />)
-
-    const input = screen.getByPlaceholderText('identifierImport.placeholder')
-    await user.type(input, 'arXiv:1234.5678{Enter}')
-
-    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith('Already imported'))
-  })
-
-  it('keeps the dialog open and reports import failures', async () => {
+  it('submits via Enter key', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
-    mocks.fromIdentifier.mockRejectedValue(new Error('lookup failed'))
     render(<ImportByIdentifierDialog open onClose={onClose} />)
 
-    await user.type(screen.getByPlaceholderText('identifierImport.placeholder'), 'PMID:1')
+    await user.type(screen.getByPlaceholderText('identifierImport.placeholder'), '2401.12345{Enter}')
+
+    expect(mocks.importByIdentifier).toHaveBeenCalledWith('2401.12345')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('does nothing when input is empty', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<ImportByIdentifierDialog open onClose={onClose} />)
+
     await user.click(screen.getByRole('button', { name: 'identifierImport.import' }))
 
-    await waitFor(() => {
-      expect(mocks.showToast).toHaveBeenCalledWith('identifierImport.failed: lookup failed')
-    })
+    expect(mocks.importByIdentifier).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
   })
 

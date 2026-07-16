@@ -146,7 +146,14 @@ const pinnedRequest: PublicUrlTransport = (url, address, family, signal, headers
       method: 'GET',
       headers,
       signal,
-      lookup: (_hostname, _options, callback) => callback(null, address, family)
+      lookup: (_hostname, options, callback) => {
+        const result = { address, family }
+        if (options?.all) {
+          callback(null, [result])
+        } else {
+          callback(null, address, family)
+        }
+      }
     }, (response) => {
       const responseHeaders = new Headers()
       for (const [name, value] of Object.entries(response.headers)) {
@@ -445,7 +452,7 @@ function isPdfFile(filePath: string): boolean {
     const buf = Buffer.alloc(5)
     const n = readSync(fd, buf, 0, 5, 0)
     closeSync(fd)
-    return n >= 5 && buf.toString('ascii', 0, 5) === PDF_MAGIC
+    return n >= 4 && buf.toString('ascii', 0, 4) === PDF_MAGIC
   } catch {
     return false
   }

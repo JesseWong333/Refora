@@ -46,6 +46,7 @@ interface DocumentState {
   confirmDelete: { ids: string[]; message: string } | null
   isImporting: boolean
   importProgress: { current: number; total: number } | null
+  identifierImporting: number
   isLoading: boolean
   initialized: boolean
   categories: Category[]
@@ -81,6 +82,7 @@ interface DocumentState {
   endImport: () => void
   importFromZotero: () => Promise<void>
   importFromMendeley: () => Promise<void>
+  importByIdentifier: (identifier: string) => void
   init: (listColumnState: ListColumnState | null) => void
   destroy: () => void
   fetchCategories: () => Promise<void>
@@ -119,6 +121,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   confirmDelete: null,
   isImporting: false,
   importProgress: null,
+  identifierImporting: 0,
   isLoading: false,
   initialized: false,
   categories: [],
@@ -418,6 +421,29 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     } catch (e) {
       get().showToast(errorMessage(e, i18n.t('topbar.importFailed') as string))
     }
+  },
+
+  importByIdentifier: (identifier: string) => {
+    set((s) => ({ identifierImporting: s.identifierImporting + 1 }))
+    void (async () => {
+      try {
+        const result = await api.import.fromIdentifier(identifier)
+        if (result.added.length > 0) {
+          get().showToast(i18n.t('identifierImport.success') as string)
+        } else {
+          get().showToast(
+            result.message ?? i18n.t('identifierImport.failed', { message: '' }) as string
+          )
+        }
+      } catch (e) {
+        get().showToast(
+          i18n.t('identifierImport.failed', { message: errorMessage(e, '') }) as string
+        )
+      } finally {
+        set((s) => ({ identifierImporting: Math.max(0, s.identifierImporting - 1) }))
+        void get().fetchDocuments()
+      }
+    })()
   },
 
   init: (listColumnState: ListColumnState | null) => {
