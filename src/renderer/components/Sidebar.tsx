@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { FilePlus, PaperclipHorizontal, ArrowLineLeft, ArrowLineRight } from '@phosphor-icons/react'
+import { FilePlus, FileArrowDown, ArrowLineLeft, ArrowLineRight } from '@phosphor-icons/react'
 import { useDocumentStore } from '../store/documentStore'
 import { errorMessage } from '../../shared/ipc-types'
 import SettingsModal from './SettingsModal'
 import ImportByIdentifierDialog from './ImportByIdentifierDialog'
-import { Button as UiButton } from './ui'
+import { Button as UiButton, IconTooltip } from './ui'
 import { api } from '../ipc'
 import { IpcChannel } from '../../shared/ipc-channels'
 import SidebarSmartItems from './SidebarSmartItems'
@@ -53,37 +53,43 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         className="sidebar-floating-toolbar drag-region"
         style={{ left: `${toolbarLeft}px` }}
       >
-        <UiButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={onToggleCollapse}
-          title={t('settings.sidebarCollapsed')}
-          aria-label={t('settings.sidebarCollapsed')}
-        >
-          <ArrowLineRight className="h-4 w-4" />
-        </UiButton>
+        <IconTooltip label={t('tooltip.expandSidebar')}>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={onToggleCollapse}
+            title={t('tooltip.expandSidebar')}
+            aria-label={t('tooltip.expandSidebar')}
+          >
+            <ArrowLineRight className="h-4 w-4" />
+          </UiButton>
+        </IconTooltip>
         <div className="toolbar-sep" aria-hidden="true" />
-        <UiButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={handleAddFiles}
-          title={`${t('topbar.addFile')} (⌘I)`}
-          aria-label={t('topbar.addFile')}
-        >
-          <FilePlus className="h-4 w-4" />
-        </UiButton>
-        <UiButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={handleImportFromIdentifier}
-          title={t('topbar.importFromIdentifier')}
-          aria-label={t('topbar.importFromIdentifier')}
-        >
-          <PaperclipHorizontal className="h-4 w-4" />
-        </UiButton>
+        <IconTooltip label={t('tooltip.addFile')}>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={handleAddFiles}
+            title={t('tooltip.addFile')}
+            aria-label={t('tooltip.addFile')}
+          >
+            <FilePlus className="h-4 w-4" />
+          </UiButton>
+        </IconTooltip>
+        <IconTooltip label={t('tooltip.importFromIdentifier')}>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={handleImportFromIdentifier}
+            title={t('tooltip.importFromIdentifier')}
+            aria-label={t('tooltip.importFromIdentifier')}
+          >
+            <FileArrowDown className="h-4 w-4" />
+          </UiButton>
+        </IconTooltip>
       </div>
     )
     return (
@@ -99,36 +105,42 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
       <div className={`drag-region flex h-10 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
         <div className="ml-auto mr-2 flex items-center gap-3 no-drag">
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={onToggleCollapse}
-            title={t('settings.sidebarCollapsed')}
-            aria-label={t('settings.sidebarCollapsed')}
-          >
-            <ArrowLineLeft className="h-4 w-4" />
-          </UiButton>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleAddFiles}
-            title={`${t('topbar.addFile')} (⌘I)`}
-            aria-label={t('topbar.addFile')}
-          >
-            <FilePlus className="h-4 w-4" />
-          </UiButton>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleImportFromIdentifier}
-            title={t('topbar.importFromIdentifier')}
-            aria-label={t('topbar.importFromIdentifier')}
-          >
-            <PaperclipHorizontal className="h-4 w-4" />
-          </UiButton>
+          <IconTooltip label={t('tooltip.collapseSidebar')}>
+            <UiButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={onToggleCollapse}
+              title={t('tooltip.collapseSidebar')}
+              aria-label={t('tooltip.collapseSidebar')}
+            >
+              <ArrowLineLeft className="h-4 w-4" />
+            </UiButton>
+          </IconTooltip>
+          <IconTooltip label={t('tooltip.addFile')}>
+            <UiButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={handleAddFiles}
+              title={t('tooltip.addFile')}
+              aria-label={t('tooltip.addFile')}
+            >
+              <FilePlus className="h-4 w-4" />
+            </UiButton>
+          </IconTooltip>
+          <IconTooltip label={t('tooltip.importFromIdentifier')}>
+            <UiButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={handleImportFromIdentifier}
+              title={t('tooltip.importFromIdentifier')}
+              aria-label={t('tooltip.importFromIdentifier')}
+            >
+              <FileArrowDown className="h-4 w-4" />
+            </UiButton>
+          </IconTooltip>
         </div>
       </div>
 

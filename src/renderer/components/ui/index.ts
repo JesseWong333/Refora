@@ -6,3 +6,4 @@ export { Badge, type BadgeProps, type BadgeVariant, type BadgeSize } from './Bad
 export { Toast } from './Toast'
 export { PanelHeader, type PanelHeaderProps } from './PanelHeader'
 export { EmptyState, type EmptyStateProps } from './EmptyState'
+export { IconTooltip, type IconTooltipProps } from './Tooltip'

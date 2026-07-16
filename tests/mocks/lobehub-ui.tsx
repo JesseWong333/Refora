@@ -70,4 +70,8 @@ export function Select({
   )
 }
 
+export function Tooltip({ children }: { children?: ReactNode }) {
+  return <>{children}</>
+}
+
 export const showContextMenu = vi.fn()

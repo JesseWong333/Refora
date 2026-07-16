@@ -77,15 +77,15 @@ describe('Sidebar actions', () => {
 
   it('renders add file / identifier import / collapse buttons in header', () => {
     renderSidebar()
-    expect(screen.getByLabelText('topbar.addFile')).toBeInTheDocument()
-    expect(screen.getByLabelText('topbar.importFromIdentifier')).toBeInTheDocument()
-    expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
+    expect(screen.getByLabelText('tooltip.addFile')).toBeInTheDocument()
+    expect(screen.getByLabelText('tooltip.importFromIdentifier')).toBeInTheDocument()
+    expect(screen.getByLabelText('tooltip.collapseSidebar')).toBeInTheDocument()
   })
 
   it('opens settings from the footer', async () => {
     const user = userEvent.setup()
     renderSidebar()
-    await user.click(screen.getByTitle('topbar.settings'))
+    await user.click(screen.getByTitle('tooltip.openSettings'))
     expect(screen.getByRole('dialog', { name: 'settings' })).toBeInTheDocument()
     expect(screen.queryByText('topbar.exportJson')).not.toBeInTheDocument()
     expect(screen.queryByText('topbar.exportBibtex')).not.toBeInTheDocument()
@@ -107,19 +107,19 @@ describe('Sidebar actions', () => {
     const user = userEvent.setup()
     const toggleSpy = vi.fn()
     renderSidebar(false, toggleSpy)
-    await user.click(screen.getByLabelText('settings.sidebarCollapsed'))
+    await user.click(screen.getByLabelText('tooltip.collapseSidebar'))
     expect(toggleSpy).toHaveBeenCalledOnce()
   })
 
   it('renders expand button when collapsed', () => {
     renderSidebar(true)
-    expect(screen.getByLabelText('settings.sidebarCollapsed')).toBeInTheDocument()
+    expect(screen.getByLabelText('tooltip.expandSidebar')).toBeInTheDocument()
   })
 
   it('opens identifier import from the header', async () => {
     const user = userEvent.setup()
     renderSidebar()
-    await user.click(screen.getByLabelText('topbar.importFromIdentifier'))
+    await user.click(screen.getByLabelText('tooltip.importFromIdentifier'))
     expect(screen.getByRole('dialog', { name: 'identifier import' })).toBeInTheDocument()
   })
 
@@ -128,7 +128,7 @@ describe('Sidebar actions', () => {
     const addFilesSpy = vi.fn().mockResolvedValue([])
     api.import.addFiles = addFilesSpy
     renderSidebar()
-    await user.click(screen.getByLabelText('topbar.addFile'))
+    await user.click(screen.getByLabelText('tooltip.addFile'))
     expect(addFilesSpy).toHaveBeenCalledWith([])
   })
 })

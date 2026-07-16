@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@lobehub/ui'
-import { PaperclipHorizontal } from '@phosphor-icons/react'
+import { FileArrowDown } from '@phosphor-icons/react'
 import { Button as UiButton, Input } from './ui'
 import { useDocumentStore } from '../store/documentStore'
 import { errorMessage } from '../../shared/ipc-types'
@@ -64,7 +64,7 @@ export default function ImportByIdentifierDialog({ open, onClose }: ImportByIden
           <UiButton
             variant="primary"
             size="md"
-            icon={loading ? undefined : <PaperclipHorizontal className="h-3.5 w-3.5" />}
+            icon={loading ? undefined : <FileArrowDown className="h-3.5 w-3.5" />}
             loading={loading}
             disabled={!identifier.trim()}
             onClick={handleImport}

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Gear, Moon, Sun, Monitor, Check } from '@phosphor-icons/react'
 import { useTheme, type ThemeMode } from '../hooks/useTheme'
 import { useClickOutside } from '../hooks/useClickOutside'
-import { Button as UiButton } from './ui'
+import { Button as UiButton, IconTooltip } from './ui'
 
 interface SidebarFooterProps {
   onOpenSettings: () => void
@@ -29,23 +29,24 @@ export default function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
   useClickOutside(themePopoverRef, () => setThemePopoverOpen(false), themePopoverOpen)
 
   const currentThemeOption = THEME_OPTIONS.find((o) => o.mode === themeMode) ?? THEME_OPTIONS[0]
-  const themeTitle = t(THEME_LABEL_KEYS[themeMode])
 
   return (
     <div className="mt-auto px-2 py-2">
       <div className="mr-2 flex items-center justify-end gap-2">
         <div className="relative" ref={themePopoverRef}>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={() => setThemePopoverOpen((v) => !v)}
-            title={themeTitle}
-            aria-haspopup="menu"
-            aria-expanded={themePopoverOpen}
-          >
-            {currentThemeOption.icon}
-          </UiButton>
+          <IconTooltip label={t('tooltip.toggleTheme')} disabled={themePopoverOpen}>
+            <UiButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={() => setThemePopoverOpen((v) => !v)}
+              title={t('tooltip.toggleTheme')}
+              aria-haspopup="menu"
+              aria-expanded={themePopoverOpen}
+            >
+              {currentThemeOption.icon}
+            </UiButton>
+          </IconTooltip>
           {themePopoverOpen && (
             <div
               className="absolute bottom-full right-0 z-50 mb-1 rounded-lg border border-border bg-panel p-1 shadow-lg"
@@ -75,15 +76,17 @@ export default function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
             </div>
           )}
         </div>
-        <UiButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={onOpenSettings}
-          title={t('topbar.settings')}
-        >
-          <Gear className="h-4 w-4" />
-        </UiButton>
+        <IconTooltip label={t('tooltip.openSettings')}>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={onOpenSettings}
+            title={t('tooltip.openSettings')}
+          >
+            <Gear className="h-4 w-4" />
+          </UiButton>
+        </IconTooltip>
       </div>
     </div>
   )
