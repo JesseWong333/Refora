@@ -271,6 +271,7 @@ export function useChatStream({
   }, [])
 
   useEffect(() => {
+    disposedRef.current = false
     return () => {
       disposedRef.current = true
       if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current)

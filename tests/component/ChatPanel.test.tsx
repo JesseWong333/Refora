@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, renderHook, act, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import type {
   AgentTraceStep,
   AiProvider,
@@ -557,6 +558,33 @@ function renderChatStream(
 }
 
 describe('useChatStream lifecycle', () => {
+  it('keeps a new chat alive after the Strict Mode effect replay', async () => {
+    setupApi([])
+    const setActiveThreadId = vi.fn()
+    const { result } = renderHook(
+      () => useChatStream({
+        activeWorkspaceId: 'ws-1',
+        activeProviderId: 'p1',
+        activeThreadId: null,
+        requestModel: '',
+        deepThinking: false,
+        setActiveThreadId,
+        setChatStreaming: vi.fn(),
+        fetchThreads: vi.fn().mockResolvedValue(undefined)
+      }),
+      { wrapper: StrictMode }
+    )
+
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+    await act(async () => {
+      await result.current.sendText('Start a new chat', [], null)
+    })
+
+    expect(mockChatCancel).not.toHaveBeenCalled()
+    expect(setActiveThreadId).toHaveBeenCalledWith('thread-1')
+    expect(result.current.streaming).toBe(true)
+  })
+
   it('sends the selected reasoning effort with the chat request', async () => {
     const { result } = renderChatStream('thread-1', 'high')
     await waitFor(() => expect(result.current.loadingHistory).toBe(false))
