@@ -620,7 +620,7 @@ describe('createMetadataService', () => {
     expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(1)
     const [, fields, , status, source] = repos.documents.applyMetadataFields.mock.calls[0]
     expect(fields.title).toBe('Wang 2022 deepvis')
-    expect(fields.abstract).toBeUndefined()
+    expect(fields.abstract).toBe('We present an approach to deep learning for vision tasks.')
     expect(status).toBe('done')
     expect(source).toBe('pdf')
   })

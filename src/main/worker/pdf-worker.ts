@@ -72,8 +72,8 @@ export function makeLine(parts: TextItem[]): LineInfo {
   return { text, y, size }
 }
 
-const TITLE_NOISE = /^(published as a|formatting instructions|instructions for authors|this (is an? )?(open access|article)|\d{4}\s*(©|\(c\))|copyright\b|vol\.?\b|article\b|contents\b|journal homepage\b)/i
-const TITLE_NOISE_ANYWHERE = /\b(formatting instructions|instructions for authors|published as a conference paper)\b/i
+const TITLE_NOISE = /^(published as a|formatting instructions|instructions for authors|this (is an? )?(open access|article)|\d{4}\s*(©|\(c\))|copyright\b|vol\.?\b|article\b|contents\b|journal homepage\b|preliminary version|do not cite|work in progress|draft version|preprint version|under review)\b/i
+const TITLE_NOISE_ANYWHERE = /\b(formatting instructions|instructions for authors|published as a conference paper|preliminary version|do not cite|work in progress|draft version|preprint version)\b/i
 const ARXIV_HEADER = /^arxiv:\s*\d/i
 const CITED_BY_HEADER = /^cited by\b/i
 const JOURNAL_HEADER_NOISE = /^(contents lists available|journal homepage|www\.|http|sciencedirect|elsevier|springer)\b/i

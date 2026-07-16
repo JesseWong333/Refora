@@ -48,7 +48,7 @@ function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
-const TEMPLATE_NOISE_TITLE = /\b(formatting instructions|instructions for authors|template|sample manuscript|sample paper|untitled|main\.tex)\b/i
+const TEMPLATE_NOISE_TITLE = /\b(formatting instructions|instructions for authors|template|sample manuscript|sample paper|untitled|main\.tex|preliminary version|do not cite|work in progress|draft version|preprint version|accepted for publication|to appear in)\b/i
 
 export function isTemplateNoiseTitle(title: string): boolean {
   return TEMPLATE_NOISE_TITLE.test(title)
@@ -66,9 +66,10 @@ export function extractDoiFromText(text: string): string | null {
     }
     if (inReferences) continue
 
-    const match = line.match(DOI_REGEX)
+    const cleanLine = line.replace(/https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi\s*:?\s*/i, '')
+    const match = cleanLine.match(DOI_REGEX)
     if (match && !firstMatch) {
-      firstMatch = match[0]
+      firstMatch = match[0].replace(/[.,;)\]]+$/, '')
     }
   }
 
@@ -84,6 +85,126 @@ export function extractDoiFromInfo(info: Record<string, unknown>): string | null
 export function extractArxivFromText(text: string): string | null {
   const match = text.match(ARXIV_ID_REGEX)
   return match ? match[1] : null
+}
+
+export function deriveDoiFromArxivId(arxivId: string): string {
+  const bareId = arxivId.replace(/v\d+$/, '')
+  return `10.48550/arXiv.${bareId}`
+}
+
+const ABSTRACT_KEYWORD = /^(?:abstract)\b\.?:?\s*-?\s*/i
+const ABSTRACT_KEYWORD_SPACED = /^a\s*b\s*s\s*t\s*r\s*a\s*c\s*t\b\.?:?\s*-?\s*/i
+const ABSTRACT_KEYWORD_CN = /^摘\s*要[\s:：]*/
+const ABSTRACT_END_MARKERS = /^(?:keywords?|index terms|\d+\.?\s*(?:introduction|related work|background|method|methodology|preliminar|related\s+work)|ccs\s+concepts?|categories\s+and\s+subject|acm\s+(?:reference|computing\s+classification)|1\s+introduction|1\.\s+introduction|i\.?\s+introduction|introduction\s*$|acknowledg|references|bibliography)\b/i
+const ABSTRACT_NOISE_LINE = /^(?:fig(?:ure|\.)?\s*\d|table\s*\d|algorithm\s*\d|theorem\s*\d|lemma\s*\d|equation\s*\d|eq\.?\s*\d|section\s*\d|sec\.?\s*\d|corollary|proposition|definition|proof|©|copyright|published\s+as|received\s+\d|accepted\s+\d|revised\s+\d|available\s+online|article history|article info|a\s*r\s*t\s*i\s*c\s*l\s*e\s+i\s*n\s*f\s*o)\b/i
+
+export function extractAbstractFromText(text: string): string | null {
+  const rawLines = text.split('\n')
+  const lines = rawLines.map((l) => l.trim())
+  const textLen = lines.length
+
+  for (let idx = 0; idx < Math.min(textLen, 80); idx++) {
+    const line = lines[idx]
+    if (line.length === 0) continue
+
+    let rest: string | null = null
+    const m1 = line.match(ABSTRACT_KEYWORD)
+    const m2 = !m1 ? line.match(ABSTRACT_KEYWORD_SPACED) : null
+    const m3 = !m1 && !m2 ? line.match(ABSTRACT_KEYWORD_CN) : null
+
+    if (m1) rest = line.slice(m1[0].length)
+    else if (m2) rest = line.slice(m2[0].length)
+    else if (m3) rest = line.slice(m3[0].length)
+
+    if (rest === null) continue
+
+    const abstractLines: string[] = rest.length > 0 ? [rest] : []
+    for (let i = idx + 1; i < Math.min(textLen, idx + 50); i++) {
+      const l = lines[i]
+      if (ABSTRACT_END_MARKERS.test(l)) break
+      if (ABSTRACT_NOISE_LINE.test(l)) break
+      if (l.length === 0) {
+        if (abstractLines.length > 0) break
+        continue
+      }
+      abstractLines.push(l)
+    }
+    const result = abstractLines.join(' ').replace(/\s+/g, ' ').trim()
+    if (result.length > 15) return result.slice(0, 2000)
+  }
+
+  return extractAbstractByStructure(lines)
+}
+
+function extractAbstractByStructure(lines: string[]): string | null {
+  if (lines.length < 6) return null
+
+  const affiliationRegex = /\b(universit[yéeè]|institute|college|laborator[y]|research|corporation|inc\.?|gmbh|department|school of|faculty of|center|centre|facebook|google|microsoft|nvidia|apple|amazon|bytedance|openai|deepmind|anthropic)\b/i
+  const authorLikeLine = /^[A-Z][a-zA-Z'`''-]+(?:\s+[A-Z][a-zA-Z'`''-]+)*(?:,?\s+(?:and|&)\s+[A-Z][a-zA-Z'`''-]+)*$/
+  const nameWithAffiliation = /^[A-Z][a-zA-Z'`''-]+.*,\s+/
+
+  let firstParagraphStart = -1
+  let seenAuthorish = false
+
+  for (let i = 1; i < Math.min(lines.length, 80); i++) {
+    const line = lines[i]
+    if (line.length === 0) continue
+    if (ABSTRACT_END_MARKERS.test(line)) break
+    if (ABSTRACT_NOISE_LINE.test(line)) continue
+
+    if (affiliationRegex.test(line) || /^[\w.-]+@[\w.-]+\.\w+/.test(line) ||
+        /^(?:Member|Senior Member|Fellow|Student Member),?\s+IEEE/i.test(line)) {
+      seenAuthorish = true
+      continue
+    }
+    if (/^\d+$/.test(line) || /^[†‡§¶∗○●▲△▼▽☆★◇◆■□♣♦♥♠∘]\.?\s*$/.test(line)) continue
+    if (authorLikeLine.test(line) && line.length < 60) {
+      seenAuthorish = true
+      continue
+    }
+    if (nameWithAffiliation.test(line) && line.length < 80 && !line.endsWith('.')) {
+      seenAuthorish = true
+      continue
+    }
+    if (line.length < 3) continue
+
+    if (seenAuthorish && line.length > 40 && /^[A-Z]/.test(line) && !line.endsWith(':')) {
+      if (/\bFig\.?\s*\d/.test(line)) continue
+      if (/[+]/.test(line) && /\d/.test(line)) continue
+      const words = line.split(/\s+/)
+      const capWords = words.filter((w) => /^[A-Z]/.test(w))
+      if (words.length > 3 && capWords.length / words.length > 0.6) continue
+      firstParagraphStart = i
+      break
+    }
+  }
+
+  if (firstParagraphStart === -1) return null
+
+  const paragraph: string[] = []
+  for (let j = firstParagraphStart; j < Math.min(lines.length, firstParagraphStart + 30); j++) {
+    const pLine = lines[j]
+    if (ABSTRACT_END_MARKERS.test(pLine)) break
+    if (/^(?:[1-9]\.?\s|1\s+Introduction|I\.?\s+Introduction)\b/i.test(pLine)) break
+    if (pLine.length === 0) {
+      if (paragraph.length > 0) break
+      continue
+    }
+    if (ABSTRACT_NOISE_LINE.test(pLine) && paragraph.length === 0) continue
+    paragraph.push(pLine)
+  }
+
+  if (paragraph.length >= 2) {
+    const result = paragraph.join(' ').replace(/\s+/g, ' ').trim()
+    if (result.length > 60 && /^[A-Z]/.test(result)) {
+      if (/\bFig\.?\s*\d/.test(result)) return null
+      const sentences = result.split(/[.!?]\s+/)
+      if (sentences.length >= 2) return result.slice(0, 2000)
+      if (result.length > 150) return result.slice(0, 2000)
+    }
+  }
+
+  return null
 }
 
 const AFFILIATION_SYMBOL_PATTERN = /^[†‡§¶∗○●▲△▼▽☆★◇◆■□♣♦♥♠∘]/u
@@ -228,23 +349,47 @@ const CONFERENCE_VENUE_MAP: Record<string, string> = {
 }
 
 const CONFERENCE_BANNER = /published as (?:a |an )?conference paper at\s+([A-Za-z][A-Za-z.&\s]*?)\s+(\d{4})/i
+const UNDER_REVIEW_BANNER = /under review as (?:a |an )?conference paper at\s+([A-Za-z][A-Za-z.&\s]*?)\s+(\d{4})/i
+const UNDER_REVIEW_BANNER_NO_YEAR = /under review (?:as|for)\b/i
 
 export function extractVenueFromText(text: string): { venue: string; year: string } | null {
-  const head = text.slice(0, 400)
+  const head = text.slice(0, 600)
+
   const m = head.match(CONFERENCE_BANNER)
-  if (!m) return null
-  const rawVenue = m[1].trim()
-  const year = m[2]
+  if (m) {
+    const rawVenue = m[1].trim()
+    const venue = normalizeVenueKey(rawVenue) ?? rawVenue
+    return { venue, year: m[2] }
+  }
+
+  const reviewMatch = head.match(UNDER_REVIEW_BANNER)
+  if (reviewMatch) {
+    const rawVenue = reviewMatch[1].trim()
+    const venue = normalizeVenueKey(rawVenue) ?? rawVenue
+    return { venue, year: reviewMatch[2] }
+  }
+
+  if (UNDER_REVIEW_BANNER_NO_YEAR.test(head)) return null
+
+  const ieeeMatch = head.match(/IEEE\s+(Transactions\s+on\s+[A-Z][A-Za-z\s]+?)[\s.,]\s*(?:\d|VOL|vol|$)/i)
+  if (ieeeMatch) {
+    const venue = 'IEEE ' + ieeeMatch[1].trim()
+    return { venue, year: '' }
+  }
+
+  return null
+}
+
+function normalizeVenueKey(rawVenue: string): string | null {
   const key = Object.keys(CONFERENCE_VENUE_MAP).find(
     (k) => rawVenue.toLowerCase() === k.toLowerCase()
   )
-  const venue = key ? CONFERENCE_VENUE_MAP[key] : rawVenue
-  return { venue, year }
+  return key ? CONFERENCE_VENUE_MAP[key] : null
 }
 
-const TITLE_NOISE_PATTERNS = /^(\s*(published as a|formatting instructions|instructions for authors)\b|\d{4}\s*(©|\(c\))\b|copyright\b|vol\.?\s*\d|article\b|contents lists available\b|journal homepage\b|science\s?direct\b|elsevier\b|springer\b|ieee\b|acm\b|arxiv:\s*\d)/i
+const TITLE_NOISE_PATTERNS = /^(\s*(published as a|formatting instructions|instructions for authors)\b|\d{4}\s*(©|\(c\))\b|copyright\b|vol\.?\s*\d|article\b|contents lists available\b|journal homepage\b|science\s?direct\b|elsevier\b|springer\b|ieee\b|acm\b|arxiv:\s*\d|preliminary version|do not cite|work in progress|draft version|preprint version|under review)\b/i
 const JOURNAL_RUNNING_HEADER = /\b\w+\s+\d+\s*\(\d{4}\)\s*\d+\s*$/i
-const TITLE_NOISE_ANYWHERE = /\b(formatting instructions|instructions for authors|published as a conference paper)\b/i
+const TITLE_NOISE_ANYWHERE = /\b(formatting instructions|instructions for authors|published as a conference paper|preliminary version|do not cite|work in progress|draft version|preprint version)\b/i
 
 function isTitleNoiseLine(line: string): boolean {
   const lower = line.toLowerCase()
@@ -329,7 +474,7 @@ export function isReliableTitle(title: string | null, text: string): boolean {
   if (NOISE_TITLE_PATTERNS.test(trimmed)) return false
   if (looksLikePosterOrNonPaper(text)) return false
   const wordCount = trimmed.split(/\s+/).filter(Boolean).length
-  if (wordCount < 3) return false
+  if (wordCount < 2) return false
   const alphaRatio = (trimmed.match(/[a-zA-Z]/g) ?? []).length / trimmed.length
   if (alphaRatio < 0.5) return false
   if (DOI_REGEX.test(trimmed)) return false
@@ -924,7 +1069,9 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     if (!doi) {
       doi = extractDoiFromText(text)
     }
-    logger.info(`metadata:processJob parsed id=${docId} doi=${doi} textLen=${text.length} candidate=${JSON.stringify(titleCandidate).slice(0, 60)}`)
+    const arxivIdFromText = extractArxivFromText(text)
+    const derivedDoi = !doi && arxivIdFromText ? deriveDoiFromArxivId(arxivIdFromText) : null
+    logger.info(`metadata:processJob parsed id=${docId} doi=${doi} arxiv=${arxivIdFromText} textLen=${text.length} candidate=${JSON.stringify(titleCandidate).slice(0, 60)}`)
 
     const infoTitle = nonEmptyString(info['Title']) ?? nonEmptyString(info['title'])
     const candidateTitle = isReliableTitle(titleCandidate, text) ? titleCandidate : null
@@ -959,12 +1106,11 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     }
 
     if (!fetchedData) {
-      const arxivId = extractArxivFromText(text)
-      if (arxivId) {
+      if (arxivIdFromText) {
         await rateGate('arxiv')
         let result: { data: Partial<Document>; confidence: number } | null = null
         try {
-          result = await fetchArxiv(arxivId)
+          result = await fetchArxiv(arxivIdFromText)
         } catch (e) {
           if (isNetworkError(e)) networkFailed = true
           else throw e
@@ -1068,6 +1214,17 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
         fetchedData.affiliations = textAffiliations
         affiliationsFromText = true
       }
+    }
+
+    if (!fetchedData.abstract) {
+      const textAbstract = extractAbstractFromText(text)
+      if (textAbstract) {
+        fetchedData.abstract = textAbstract
+      }
+    }
+
+    if (!fetchedData.doi && derivedDoi) {
+      fetchedData.doi = derivedDoi
     }
 
     if (destroyed) return

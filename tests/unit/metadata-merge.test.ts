@@ -410,7 +410,7 @@ describe('isReliableTitle', () => {
   })
 
   it('rejects titles with too few words', () => {
-    expect(isReliableTitle('Two Words', 'Two Words\n Abstract\n long body text here with abstract keyword.')).toBe(false)
+    expect(isReliableTitle('Oneword', 'Oneword\n Abstract\n long body text here with abstract keyword.')).toBe(false)
   })
 
   it('rejects titles with low alphabetic ratio', () => {
