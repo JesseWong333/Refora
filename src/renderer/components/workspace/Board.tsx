@@ -18,6 +18,8 @@ import type {
   Document,
   SummaryErrorEvent,
   WorkspaceCanvasViewport,
+  WorkspaceConnection,
+  WorkspaceConnectionAnchor,
   WorkspaceItem,
   WorkspaceItemPlacement,
   WorkspaceNote,
@@ -32,6 +34,13 @@ import ResizableCard, {
   type CardPosition,
   type CardSize
 } from './ResizableCard'
+import {
+  cardAnchorPoint,
+  closestCardAnchor,
+  connectionCurve,
+  targetAnchorForPreview,
+  type ConnectionPoint
+} from './connectionGeometry'
 
 const DOC_MIME = 'application/x-refora-docids'
 const GRID_SIZE = 32
@@ -41,6 +50,13 @@ const DEFAULT_VIEWPORT: WorkspaceCanvasViewport = {
   panX: 0,
   panY: 0,
   zoom: WORKSPACE_CANVAS_DEFAULT_ZOOM
+}
+
+interface ConnectionDraft {
+  sourceItemId: string
+  sourceAnchor: WorkspaceConnectionAnchor
+  source: ConnectionPoint
+  pointer: ConnectionPoint
 }
 
 function clampZoom(zoom: number): number {
@@ -78,12 +94,21 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   const [autoEditStickyNoteId, setAutoEditStickyNoteId] = useState<string | null>(null)
   const [viewport, setViewport] = useState<WorkspaceCanvasViewport>(DEFAULT_VIEWPORT)
   const [panning, setPanning] = useState(false)
+  const [connections, setConnections] = useState<WorkspaceConnection[]>([])
+  const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null)
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const activeWorkspaceIdRef = useRef(activeWorkspaceId)
   const viewportRef = useRef<WorkspaceCanvasViewport>(DEFAULT_VIEWPORT)
   const viewportTouchedRef = useRef(false)
   const viewportSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const panCleanupRef = useRef<(() => void) | null>(null)
+  const connectionCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    activeWorkspaceIdRef.current = activeWorkspaceId
+  }, [activeWorkspaceId])
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => a.zIndex - b.zIndex || a.addedAt - b.addedAt),
@@ -91,6 +116,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   )
   const reportMap = useMemo(() => new Map(reports.map((report) => [report.id, report])), [reports])
   const noteMap = useMemo(() => new Map(notes.map((note) => [note.id, note])), [notes])
+  const itemMap = useMemo(() => new Map(sortedItems.map((item) => [item.id, item])), [sortedItems])
   const workspaceDocIds = useMemo(
     () => sortedItems
       .filter((item) => item.kind === 'document' && item.docId)
@@ -145,7 +171,29 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
     setCardPositions({})
     setAutoEditNoteId(null)
     setAutoEditStickyNoteId(null)
+    setConnections([])
+    setConnectionDraft(null)
+    setSelectedConnectionId(null)
   }, [activeWorkspaceId])
+
+  useEffect(() => {
+    connectionCleanupRef.current?.()
+    if (!activeWorkspaceId) return
+    const workspaceId = activeWorkspaceId
+    let cancelled = false
+    void api.workspaceConnections.list(workspaceId).then((saved) => {
+      if (!cancelled && activeWorkspaceIdRef.current === workspaceId) {
+        setConnections(saved)
+      }
+    }).catch((e) => {
+      if (!cancelled) {
+        useDocumentStore.getState().showToast(errorMessage(e, t('workspace.connectionLoadFailed')))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeWorkspaceId, t])
 
   useEffect(() => {
     if (viewportSaveTimerRef.current) {
@@ -181,6 +229,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
     return () => {
       if (dropErrorTimerRef.current) clearTimeout(dropErrorTimerRef.current)
       panCleanupRef.current?.()
+      connectionCleanupRef.current?.()
     }
   }, [])
 
@@ -311,6 +360,21 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   const positionFor = useCallback((item: WorkspaceItem): CardPosition =>
     cardPositions[item.id] ?? { x: item.x, y: item.y, zIndex: item.zIndex }, [cardPositions])
 
+  const boundsFor = useCallback((item: WorkspaceItem) => {
+    const position = positionFor(item)
+    const size = sizeFor(item)
+    return { x: position.x, y: position.y, width: size.width, height: size.height }
+  }, [positionFor, sizeFor])
+
+  const connectionPaths = useMemo(() => connections.flatMap((connection) => {
+    const sourceItem = itemMap.get(connection.sourceItemId)
+    const targetItem = itemMap.get(connection.targetItemId)
+    if (!sourceItem || !targetItem) return []
+    const source = cardAnchorPoint(boundsFor(sourceItem), connection.sourceAnchor)
+    const target = cardAnchorPoint(boundsFor(targetItem), connection.targetAnchor)
+    return [{ connection, ...connectionCurve(source, target, connection.sourceAnchor, connection.targetAnchor) }]
+  }), [boundsFor, connections, itemMap])
+
   const worldPositionAt = useCallback((clientX: number, clientY: number): WorkspaceItemPlacement => {
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return { x: 0, y: 0 }
@@ -320,6 +384,84 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
       y: (clientY - rect.top - current.panY) / current.zoom
     }
   }, [])
+
+  const handleDeleteConnection = useCallback(async (connectionId: string) => {
+    try {
+      await api.workspaceConnections.delete(connectionId)
+      setConnections((previous) => previous.filter((connection) => connection.id !== connectionId))
+      setSelectedConnectionId((current) => current === connectionId ? null : current)
+    } catch (e) {
+      useDocumentStore.getState().showToast(errorMessage(e, t('workspace.connectionDeleteFailed')))
+    }
+  }, [t])
+
+  const handleConnectionStart = useCallback((
+    sourceItemId: string,
+    sourceAnchor: WorkspaceConnectionAnchor,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    if (!activeWorkspaceId || event.button !== 0) return
+    const sourceItem = itemMap.get(sourceItemId)
+    if (!sourceItem) return
+    event.preventDefault()
+    event.stopPropagation()
+    connectionCleanupRef.current?.()
+    const workspaceId = activeWorkspaceId
+    const source = cardAnchorPoint(boundsFor(sourceItem), sourceAnchor)
+    setSelectedConnectionId(null)
+    setConnectionDraft({ sourceItemId, sourceAnchor, source, pointer: source })
+
+    const cleanup = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setConnectionDraft(null)
+      if (connectionCleanupRef.current === cleanup) connectionCleanupRef.current = null
+    }
+
+    const onMove = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault()
+      const pointer = worldPositionAt(moveEvent.clientX, moveEvent.clientY)
+      setConnectionDraft((current) => current ? { ...current, pointer } : current)
+    }
+
+    const onUp = (upEvent: MouseEvent) => {
+      const pointer = worldPositionAt(upEvent.clientX, upEvent.clientY)
+      const elements = document.elementsFromPoint?.(upEvent.clientX, upEvent.clientY) ?? []
+      const targetElement = elements
+        .map((element) => element.closest<HTMLElement>('[data-workspace-card-id]'))
+        .find((element): element is HTMLElement => Boolean(element))
+      const targetItemId = targetElement?.dataset.workspaceCardId
+      const targetItem = targetItemId ? itemMap.get(targetItemId) : undefined
+      cleanup()
+      if (!targetItemId || !targetItem || targetItemId === sourceItemId) return
+      const targetAnchor = closestCardAnchor(pointer, boundsFor(targetItem))
+      void api.workspaceConnections.create(
+        workspaceId,
+        sourceItemId,
+        targetItemId,
+        sourceAnchor,
+        targetAnchor
+      ).then((saved) => {
+        if (activeWorkspaceIdRef.current !== workspaceId) return
+        setConnections((previous) => {
+          const withoutSaved = previous.filter((connection) => connection.id !== saved.id)
+          return [...withoutSaved, saved]
+        })
+      }).catch((e) => {
+        if (activeWorkspaceIdRef.current === workspaceId) {
+          useDocumentStore.getState().showToast(errorMessage(e, t('workspace.connectionSaveFailed')))
+        }
+      })
+    }
+
+    connectionCleanupRef.current = cleanup
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'crosshair'
+    document.body.style.userSelect = 'none'
+  }, [activeWorkspaceId, boundsFor, itemMap, t, worldPositionAt])
 
   const placementAtCanvasCenter = useCallback((): WorkspaceItemPlacement => {
     const rect = canvasRef.current?.getBoundingClientRect()
@@ -540,13 +682,15 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
     onSizeCommit: handleCardSizeCommit,
     onPositionChange: handleCardPositionChange,
     onPositionCommit: handleCardPositionCommit,
+    onConnectionStart: handleConnectionStart,
+    connectionLabel: t('workspace.connectionStart'),
     moveLabel: t('workspace.moveCard')
   })
 
   return (
     <div
       ref={canvasRef}
-      className={`board-surface relative h-full w-full min-h-0 min-w-0 select-none overflow-hidden ${panning ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`board-surface relative h-full w-full min-h-0 min-w-0 select-none overflow-hidden ${connectionDraft ? 'is-connecting' : ''} ${panning ? 'cursor-grabbing' : 'cursor-grab'}`}
       style={{
         backgroundImage: 'radial-gradient(circle, var(--color-border) 1px, transparent 1px)',
         backgroundPosition: `${viewport.panX}px ${viewport.panY}px`,
@@ -585,11 +729,87 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
         className="absolute left-0 top-0 h-px w-px origin-top-left"
         style={{ transform: `translate(${viewport.panX}px, ${viewport.panY}px) scale(${viewport.zoom})` }}
       >
+        <svg className="pointer-events-none absolute left-0 top-0 h-px w-px overflow-visible" aria-hidden="false">
+          <defs>
+            <marker id="workspace-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth">
+              <path d="M 0 0 L 9 4.5 L 0 9 z" fill="var(--color-muted)" />
+            </marker>
+            <marker id="workspace-arrow-selected" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth">
+              <path d="M 0 0 L 9 4.5 L 0 9 z" fill="var(--color-accent)" />
+            </marker>
+          </defs>
+          {connectionPaths.map(({ connection, path }) => {
+            const selected = selectedConnectionId === connection.id
+            return (
+              <g key={connection.id}>
+                <path
+                  d={path}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth="16"
+                  style={{ pointerEvents: 'stroke' }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t('workspace.connectionSelect')}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSelectedConnectionId(connection.id)
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    void handleDeleteConnection(connection.id)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Delete' || event.key === 'Backspace') {
+                      event.preventDefault()
+                      void handleDeleteConnection(connection.id)
+                    }
+                  }}
+                />
+                <path
+                  d={path}
+                  fill="none"
+                  stroke={selected ? 'var(--color-accent)' : 'var(--color-muted)'}
+                  strokeOpacity={selected ? 0.9 : 0.55}
+                  strokeWidth={selected ? 2.5 : 2}
+                  markerEnd={selected ? 'url(#workspace-arrow-selected)' : 'url(#workspace-arrow)'}
+                  style={{ pointerEvents: 'none' }}
+                />
+              </g>
+            )
+          })}
+          {connectionDraft && (() => {
+            const targetAnchor = targetAnchorForPreview(connectionDraft.source, connectionDraft.pointer)
+            const preview = connectionCurve(
+              connectionDraft.source,
+              connectionDraft.pointer,
+              connectionDraft.sourceAnchor,
+              targetAnchor
+            )
+            return (
+              <path
+                d={preview.path}
+                fill="none"
+                stroke="var(--color-muted)"
+                strokeOpacity="0.65"
+                strokeWidth="2"
+                strokeDasharray="7 6"
+                markerEnd="url(#workspace-arrow)"
+              />
+            )
+          })()}
+        </svg>
         {sortedItems.map((item) => {
           if (item.kind === 'document' && item.docId) {
             const docId = item.docId
             return (
-              <ResizableCard key={item.id} {...cardProps(item)}>
+              <ResizableCard
+                key={item.id}
+                {...cardProps(item)}
+                className="workspace-connection-accent--document"
+              >
                 <PaperCard
                   doc={docs.get(docId) ?? null}
                   summary={summaries.get(docId) ?? null}
@@ -606,7 +826,11 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
             const report = reportMap.get(item.reportId)
             if (!report) return null
             return (
-              <ResizableCard key={item.id} {...cardProps(item)}>
+              <ResizableCard
+                key={item.id}
+                {...cardProps(item)}
+                className="workspace-connection-accent--report"
+              >
                 <ReportCard
                   report={report}
                   sourceDocuments={docs}
@@ -622,7 +846,11 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
             if (!note) return null
             if (note.noteType === 'plain') {
               return (
-                <ResizableCard key={item.id} {...cardProps(item)}>
+                <ResizableCard
+                  key={item.id}
+                  {...cardProps(item)}
+                  className="workspace-connection-accent--sticky"
+                >
                   <StickyNoteCard
                     note={note}
                     autoFocus={autoEditStickyNoteId === note.id}
@@ -634,7 +862,11 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
               )
             }
             return (
-              <ResizableCard key={item.id} {...cardProps(item)}>
+              <ResizableCard
+                key={item.id}
+                {...cardProps(item)}
+                className="workspace-connection-accent--note"
+              >
                 <NoteCard
                   note={note}
                   autoEdit={autoEditNoteId === note.id}
@@ -647,6 +879,21 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
           }
           return null
         })}
+        {selectedConnectionId && connectionPaths.map(({ connection, midpoint }) => (
+          connection.id === selectedConnectionId && (
+            <button
+              key={connection.id}
+              type="button"
+              className="absolute z-[200003] flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-panel text-sm leading-none text-muted shadow-md hover:border-error hover:text-error"
+              style={{ left: midpoint.x, top: midpoint.y }}
+              aria-label={t('workspace.connectionDelete')}
+              title={t('workspace.connectionDelete')}
+              onClick={() => void handleDeleteConnection(connection.id)}
+            >
+              ×
+            </button>
+          )
+        ))}
       </div>
 
       <div className="absolute bottom-3 left-3 z-[200000] rounded-lg border border-border bg-panel/90 px-2.5 py-1.5 text-[11px] text-muted shadow-sm backdrop-blur">
@@ -663,16 +910,9 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
         >
           −
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="min-w-[52px]"
-          aria-label={t('workspace.canvasReset')}
-          title={t('workspace.canvasReset')}
-          onClick={resetViewport}
-        >
+        <span className="min-w-[44px] text-center text-xs tabular-nums text-muted">
           {Math.round(viewport.zoom * 100)}%
-        </Button>
+        </span>
         <Button
           variant="ghost"
           size="sm"
@@ -684,6 +924,16 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
           +
         </Button>
         <div className="mx-0.5 h-4 w-px bg-border" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="min-w-[52px]"
+          aria-label={t('workspace.canvasReset')}
+          title={t('workspace.canvasReset')}
+          onClick={() => applyZoomAt(WORKSPACE_CANVAS_DEFAULT_ZOOM)}
+        >
+          Reset
+        </Button>
         <Button variant="ghost" size="sm" onClick={fitAll}>
           {t('workspace.canvasFit')}
         </Button>

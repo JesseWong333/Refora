@@ -239,6 +239,49 @@ describe('workspace repositories', () => {
     }
   })
 
+  it('creates, updates, deletes, and cascades workspace card connections', () => {
+    repos.documents.insert(makeNewDocument('doc-1'))
+    repos.documents.insert(makeNewDocument('doc-2'))
+    const items = repos.workspaceItems.add(workspaceId, 'document', ['doc-1', 'doc-2'])
+
+    const created = repos.workspaceConnections.create(
+      workspaceId,
+      items[0].id,
+      items[1].id,
+      'right',
+      'left'
+    )
+    expect(repos.workspaceConnections.list(workspaceId)).toEqual([created])
+
+    const updated = repos.workspaceConnections.create(
+      workspaceId,
+      items[0].id,
+      items[1].id,
+      'bottom',
+      'top'
+    )
+    expect(updated).toMatchObject({ id: created.id, sourceAnchor: 'bottom', targetAnchor: 'top' })
+    expect(repos.workspaceConnections.list(workspaceId)).toHaveLength(1)
+
+    expectRepoError(
+      () => repos.workspaceConnections.create(workspaceId, items[0].id, items[0].id, 'right', 'left'),
+      'invalid_connection'
+    )
+    expectRepoError(
+      () => repos.workspaceConnections.create(workspaceId, items[0].id, items[1].id, 'invalid' as never, 'left'),
+      'invalid_anchor'
+    )
+
+    repos.workspaceItems.remove(items[1].id)
+    expect(repos.workspaceConnections.list(workspaceId)).toEqual([])
+
+    const replacement = repos.workspaceItems.add(workspaceId, 'document', ['doc-2'])[0]
+    const next = repos.workspaceConnections.create(workspaceId, items[0].id, replacement.id, 'right', 'left')
+    repos.workspaceConnections.remove(next.id)
+    expect(repos.workspaceConnections.list(workspaceId)).toEqual([])
+    expectRepoError(() => repos.workspaceConnections.remove(next.id), 'not_found')
+  })
+
   it('commits and rolls back outer and nested transactions', () => {
     repos.transaction(() => {
       repos.workspaces.create('Committed')

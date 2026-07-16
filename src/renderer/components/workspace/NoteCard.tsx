@@ -177,9 +177,13 @@ export default function NoteCard({
               </button>
             </div>
           </div>
-          <div className="workspace-note-preview min-h-0 flex-1 overflow-hidden p-3 text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0">
+          <div
+            data-card-scroll
+            className="workspace-card-scroll workspace-note-preview min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 text-xs text-muted [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0"
+            onWheel={(event) => event.stopPropagation()}
+          >
             {note.contentMd ? (
-              <div className="line-clamp-[12]">
+              <div>
                 <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>
                   {note.contentMd}
                 </ReactMarkdown>

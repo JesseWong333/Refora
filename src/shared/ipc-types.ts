@@ -220,6 +220,18 @@ export interface WorkspaceCanvasViewport {
   zoom: number
 }
 
+export type WorkspaceConnectionAnchor = 'top' | 'right' | 'bottom' | 'left'
+
+export interface WorkspaceConnection {
+  id: string
+  workspaceId: string
+  sourceItemId: string
+  targetItemId: string
+  sourceAnchor: WorkspaceConnectionAnchor
+  targetAnchor: WorkspaceConnectionAnchor
+  createdAt: number
+}
+
 export type ModelVariantFormat = 'dash' | 'colon' | 'none'
 
 export type AiApiProtocol = 'openai-responses' | 'openai-compatible'
@@ -565,6 +577,17 @@ export interface ReforaApi {
   workspaceCanvas: {
     get(workspaceId: string): Promise<WorkspaceCanvasViewport>
     update(workspaceId: string, viewport: WorkspaceCanvasViewport): Promise<WorkspaceCanvasViewport>
+  }
+  workspaceConnections: {
+    list(workspaceId: string): Promise<WorkspaceConnection[]>
+    create(
+      workspaceId: string,
+      sourceItemId: string,
+      targetItemId: string,
+      sourceAnchor: WorkspaceConnectionAnchor,
+      targetAnchor: WorkspaceConnectionAnchor
+    ): Promise<WorkspaceConnection>
+    delete(id: string): Promise<void>
   }
   aiProviders: {
     list(): Promise<AiProvider[]>

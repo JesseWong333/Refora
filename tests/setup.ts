@@ -177,6 +177,26 @@ const noop = async () => undefined
     update: async (_workspaceId: string, viewport: { panX: number; panY: number; zoom: number }) => viewport,
   },
 
+  workspaceConnections: {
+    list: async () => [],
+    create: async (
+      workspaceId: string,
+      sourceItemId: string,
+      targetItemId: string,
+      sourceAnchor: 'top' | 'right' | 'bottom' | 'left',
+      targetAnchor: 'top' | 'right' | 'bottom' | 'left'
+    ) => ({
+      id: 'connection',
+      workspaceId,
+      sourceItemId,
+      targetItemId,
+      sourceAnchor,
+      targetAnchor,
+      createdAt: 0
+    }),
+    delete: noop,
+  },
+
   aiProviders: {
     list: async () => [],
     create: async (input: { name: string; baseUrl: string; model: string }) => ({

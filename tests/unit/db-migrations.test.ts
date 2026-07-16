@@ -101,10 +101,10 @@ describe('db migrations + schema', () => {
     expect(userVersion(db)).toBe(0)
     const result = runMigrations(adapt(db))
     expect(result.from).toBe(0)
-    expect(result.to).toBe(17)
-    expect(userVersion(db)).toBe(17)
+    expect(result.to).toBe(18)
+    expect(userVersion(db)).toBe(18)
 
-    for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps']) {
+    for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps', 'workspace_connections']) {
       const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)
       expect(row?.name).toBe(table)
     }
@@ -142,9 +142,9 @@ describe('db migrations + schema', () => {
   it('is idempotent: running migrations twice does not error or change version', () => {
     runMigrations(adapt(db))
     const second = runMigrations(adapt(db))
-    expect(second.from).toBe(17)
-    expect(second.to).toBe(17)
-    expect(userVersion(db)).toBe(17)
+    expect(second.from).toBe(18)
+    expect(second.to).toBe(18)
+    expect(userVersion(db)).toBe(18)
   })
 
   it('reconciles a database created by the workspace branch before migrations were renumbered', () => {
@@ -157,7 +157,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(17)
+    expect(result.to).toBe(18)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'presetId'").get())
@@ -178,7 +178,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(17)
+    expect(result.to).toBe(18)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'reasoningEffort'").get())
@@ -256,7 +256,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 1`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(17)
+    expect(result.to).toBe(18)
     const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
     expect(cols.map((c) => c.name)).not.toContain('moveToLibrary')
   })
@@ -320,7 +320,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 3`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(17)
+    expect(result.to).toBe(18)
 
     const cols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>
     const names = cols.map((c) => c.name)
@@ -472,7 +472,7 @@ describe('db migrations + schema', () => {
     ).run('outside', '/Users/x/Downloads/other.pdf', '/Users/x/Downloads', 'other.pdf', 1000, 1000)
 
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(17)
+    expect(result.to).toBe(18)
 
     const inLib = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('in-lib') as { filePath: string }
     const nested = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('nested') as { filePath: string }

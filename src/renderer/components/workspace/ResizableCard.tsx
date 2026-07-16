@@ -7,6 +7,7 @@ import {
   WORKSPACE_CARD_MIN_HEIGHT,
   WORKSPACE_CARD_MIN_WIDTH
 } from '../../../shared/ipc-types'
+import type { WorkspaceConnectionAnchor } from '../../../shared/ipc-types'
 
 export interface CardSize {
   width: number
@@ -29,6 +30,12 @@ interface ResizableCardProps {
   onSizeCommit: (sizeKey: string, size: CardSize) => void
   onPositionChange: (sizeKey: string, position: CardPosition) => void
   onPositionCommit: (sizeKey: string, position: CardPosition) => void
+  onConnectionStart?: (
+    sizeKey: string,
+    anchor: WorkspaceConnectionAnchor,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => void
+  connectionLabel?: string
   moveLabel?: string
   children: ReactNode
   className?: string
@@ -47,6 +54,8 @@ export default function ResizableCard({
   onSizeCommit,
   onPositionChange,
   onPositionCommit,
+  onConnectionStart,
+  connectionLabel,
   moveLabel,
   children,
   className = ''
@@ -193,6 +202,7 @@ export default function ResizableCard({
   return (
     <div
       data-workspace-card
+      data-workspace-card-id={sizeKey}
       role="group"
       tabIndex={0}
       aria-label={moveLabel}
@@ -216,6 +226,21 @@ export default function ResizableCard({
       }}
     >
       <div className="h-full w-full">{children}</div>
+      {onConnectionStart && (['top', 'right', 'bottom', 'left'] as const).map((anchor) => (
+        <button
+          key={anchor}
+          type="button"
+          data-connection-handle={anchor}
+          className={`workspace-connection-handle workspace-connection-handle--${anchor}`}
+          aria-label={connectionLabel}
+          title={connectionLabel}
+          onMouseDown={(event) => onConnectionStart(sizeKey, anchor, event)}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+        />
+      ))}
       <div
         data-card-resize
         className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize opacity-0 transition-opacity group-hover/card:opacity-100"

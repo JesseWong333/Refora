@@ -109,11 +109,13 @@ export default function StickyNoteCard({
         </div>
         <textarea
           ref={textareaRef}
+          data-card-scroll
           value={draft}
           aria-label={t('workspace.stickyNoteContentLabel')}
           placeholder={t('workspace.stickyNotePlaceholder')}
           spellCheck
-          className="min-h-0 flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted/70"
+          className="workspace-card-scroll min-h-0 flex-1 resize-none overflow-y-auto overscroll-contain border-0 bg-transparent p-0 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted/70"
+          onWheel={(event) => event.stopPropagation()}
           onChange={(event) => {
             const value = event.target.value
             latestDraftRef.current = value

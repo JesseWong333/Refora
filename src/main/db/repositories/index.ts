@@ -7,6 +7,7 @@ import { createWorkspacesRepository } from './workspaces'
 import { createWorkspaceItemsRepository } from './workspaceItems'
 import { createWorkspaceNotesRepository } from './workspaceNotes'
 import { createWorkspaceCanvasRepository } from './workspaceCanvas'
+import { createWorkspaceConnectionsRepository } from './workspaceConnections'
 import { createAiSummariesRepository } from './aiSummaries'
 import { createAiReportsRepository } from './aiReports'
 import { createChatRepository } from './chat'
@@ -30,6 +31,7 @@ export function createRepositories(db: SqliteDb, deps: RepositoryDeps = {}) {
   const workspaceItems = createWorkspaceItemsRepository(db)
   const workspaceNotes = createWorkspaceNotesRepository(db)
   const workspaceCanvas = createWorkspaceCanvasRepository(db)
+  const workspaceConnections = createWorkspaceConnectionsRepository(db)
   const aiSummaries = createAiSummariesRepository(db)
   const aiReports = createAiReportsRepository(db)
   const chat = createChatRepository(db)
@@ -83,6 +85,7 @@ export function createRepositories(db: SqliteDb, deps: RepositoryDeps = {}) {
     workspaceItems,
     workspaceNotes,
     workspaceCanvas,
+    workspaceConnections,
     aiSummaries,
     aiReports,
     chat,

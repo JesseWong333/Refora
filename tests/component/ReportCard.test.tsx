@@ -204,6 +204,70 @@ describe('ReportCard', () => {
 })
 
 describe('Workspace card types', () => {
+  it('keeps all summary sections in the card preview so resizing can reveal more content', () => {
+    const paper = { id: 'doc-1', fileName: 'paper.pdf', title: 'Paper title' } as Document
+    render(
+      <PaperCard
+        doc={paper}
+        summary={{
+          docId: 'doc-1',
+          model: 'test',
+          content: {
+            core: 'Core summary',
+            keyPoints: ['Point one', 'Point two', 'Point three', 'Point four'],
+            methods: 'Methods section',
+            contribution: 'Contribution section'
+          },
+          createdAt: 1,
+          updatedAt: 1
+        }}
+        summarizing={false}
+        summaryError={null}
+        onSummarize={() => {}}
+        onOpenPdf={() => {}}
+        onRemove={() => {}}
+      />
+    )
+
+    expect(screen.getByText('Point four')).toBeInTheDocument()
+    expect(screen.getByText('Methods section')).toBeInTheDocument()
+    expect(screen.getByText('Contribution section')).toBeInTheDocument()
+  })
+
+  it('keeps card bodies independently scrollable without passing the wheel to the canvas', () => {
+    const onWheel = vi.fn()
+    const paper = { id: 'doc-1', fileName: 'paper.pdf', title: 'Paper title' } as Document
+    const { container } = render(
+      <div onWheel={onWheel}>
+        <PaperCard
+          doc={paper}
+          summary={{
+            docId: 'doc-1',
+            model: 'test',
+            content: {
+              core: 'Core summary',
+              keyPoints: ['Point one'],
+              methods: 'Methods section',
+              contribution: 'Contribution section'
+            },
+            createdAt: 1,
+            updatedAt: 1
+          }}
+          summarizing={false}
+          summaryError={null}
+          onSummarize={() => {}}
+          onOpenPdf={() => {}}
+          onRemove={() => {}}
+        />
+      </div>
+    )
+
+    const scrollBody = container.querySelector('[data-card-scroll]') as HTMLElement
+    expect(scrollBody).toHaveClass('overflow-y-auto', 'overscroll-contain')
+    fireEvent.wheel(scrollBody, { deltaY: 120 })
+    expect(onWheel).not.toHaveBeenCalled()
+  })
+
   it('gives papers, reports, and notes distinct visible type treatments', () => {
     const paper: Document = {
       id: 'doc-1',
@@ -249,6 +313,10 @@ describe('Workspace card types', () => {
     expect(reportContainer.querySelector('[data-card-kind="report"]')).toHaveClass('workspace-content-card--report')
     expect(noteContainer.querySelector('[data-card-kind="note"]')).toHaveClass('workspace-content-card--note')
     expect(stickyContainer.querySelector('[data-card-kind="sticky"]')).toHaveClass('workspace-content-card--sticky')
+    expect(paperContainer.querySelector('[data-card-scroll]')).toHaveClass('workspace-card-scroll')
+    expect(reportContainer.querySelector('[data-card-scroll]')).toHaveClass('workspace-card-scroll')
+    expect(noteContainer.querySelector('[data-card-scroll]')).toHaveClass('workspace-card-scroll')
+    expect(stickyContainer.querySelector('[data-card-scroll]')).toHaveClass('workspace-card-scroll')
     expect(screen.getByText('workspace.cardTypePaper')).toBeInTheDocument()
     expect(screen.getByText('workspace.cardTypeReport')).toBeInTheDocument()
     expect(screen.getByText('workspace.cardTypeNote')).toBeInTheDocument()

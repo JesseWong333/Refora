@@ -197,6 +197,24 @@ describe('workspace IPC handlers', () => {
     )
   })
 
+  it('round-trips workspace card connections through IPC', () => {
+    const workspace = repos.workspaces.create('Connections')
+    repos.documents.insert(makeNewDocument('doc-1'))
+    repos.documents.insert(makeNewDocument('doc-2'))
+    const items = repos.workspaceItems.add(workspace.id, 'document', ['doc-1', 'doc-2'])
+
+    const connection = expectOk(handlers[IpcChannel.WorkspaceConnectionsCreate](
+      workspace.id,
+      items[0].id,
+      items[1].id,
+      'right',
+      'left'
+    ))
+    expect(expectOk(handlers[IpcChannel.WorkspaceConnectionsList](workspace.id))).toEqual([connection])
+    expectOk(handlers[IpcChannel.WorkspaceConnectionsDelete](connection.id))
+    expect(expectOk(handlers[IpcChannel.WorkspaceConnectionsList](workspace.id))).toEqual([])
+  })
+
   it('registers every handler and forwards invocation arguments', () => {
     registerIpcHandlers({
       getWin: () => null,
