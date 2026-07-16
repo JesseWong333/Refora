@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal, Button } from '@lobehub/ui'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { BookOpen, ChartBar, Trash, PencilSimple, Download } from '@phosphor-icons/react'
+import { BookOpen, Trash, PencilSimple, Download } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
@@ -125,12 +125,9 @@ export default function ReportCard({
         onContextMenu={handleContextMenu}
       >
         <div className="flex shrink-0 items-start gap-2">
-          <span className="workspace-card-type-icon">
-            <ChartBar className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 flex-1">
+          <div className="workspace-card-heading min-w-0 flex-1">
             <span className="workspace-card-type-label">{t('workspace.cardTypeReport')}</span>
-            <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{report.title}</h3>
+            <h3 className="workspace-card-title line-clamp-2 text-sm font-semibold text-foreground">{report.title}</h3>
             <p className="mt-0.5 text-xs text-muted">{formatDate(report.createdAt)}</p>
             {report.sourceDocIds.length > 0 && (
               <p className="mt-0.5 text-xs text-muted">
