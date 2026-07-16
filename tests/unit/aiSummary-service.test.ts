@@ -7,9 +7,9 @@ const { mockInvoke } = vi.hoisted(() => ({
 }))
 
 vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn().mockImplementation(() => ({
-    invoke: mockInvoke
-  }))
+  ChatOpenAI: vi.fn(class {
+    invoke = mockInvoke
+  })
 }))
 
 vi.mock('electron', () => ({

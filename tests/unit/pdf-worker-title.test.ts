@@ -1,5 +1,12 @@
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { buildLines, extractTitleCandidate, type TextItem, type LineInfo } from '../../src/main/worker/pdf-worker'
+import {
+  buildLines,
+  extractTitleCandidate,
+  parsePdf,
+  type TextItem,
+  type LineInfo
+} from '../../src/main/worker/pdf-worker'
 
 function item(str: string, x: number, y: number, a = 10, b = 0): TextItem {
   return { str, transform: [a, b, 0, a, x, y], height: a }
@@ -120,5 +127,13 @@ describe('extractTitleCandidate', () => {
       line('body text here that is long enough to be normal', 680, 10)
     ]
     expect(extractTitleCandidate(lines)).toBeNull()
+  })
+})
+
+describe('parsePdf', () => {
+  it('extracts text from a real PDF fixture', async () => {
+    const result = await parsePdf(resolve('tests/fixtures/valid.pdf'), 1)
+
+    expect(result.text.trim().length).toBeGreaterThan(0)
   })
 })

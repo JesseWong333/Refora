@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { cleanup, renderHook } from '@testing-library/react'
 import { useAppShortcuts } from '../../src/renderer/hooks/useAppShortcuts'
 import { useDocumentStore } from '../../src/renderer/store/documentStore'
 import type { Document } from '../../src/shared/ipc-types'
@@ -27,6 +27,7 @@ function dispatch(key: string, opts: { meta?: boolean; ctrl?: boolean; target?: 
 
 
 beforeEach(() => {
+  vi.clearAllMocks()
   useDocumentStore.setState({
     documents: [makeDoc('a'), makeDoc('b'), makeDoc('c')],
     searchResults: [],
@@ -40,6 +41,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
   vi.restoreAllMocks()
 })
 

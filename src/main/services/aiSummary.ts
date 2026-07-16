@@ -192,7 +192,7 @@ export function createAiSummaryService(
       `You are a research assistant. Below are summaries of sections from an academic paper. Synthesize them into a single JSON object with exactly these fields: "core" (a 2-3 sentence summary), "keyPoints" (an array of concise strings), "methods" (optional string describing methods), "contribution" (optional string describing contributions). Respond with ONLY the JSON object, no markdown fences, no commentary.\n\nSection summaries:\n${combined}`
     )
     const finalText = contentToText((finalRes as { content: unknown }).content)
-    let parsed: AiSummaryContent | null = null
+    let parsed: AiSummaryContent | null
     try {
       parsed = toSummaryContent(JSON.parse(stripCodeFences(finalText)))
     } catch (e) {

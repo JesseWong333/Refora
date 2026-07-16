@@ -11,18 +11,32 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn()
+  ChatOpenAI: vi.fn(class {})
 }))
 
 vi.mock('@langchain/core/tools', () => ({
-  DynamicTool: vi.fn((opts: Record<string, unknown>) => opts),
-  DynamicStructuredTool: vi.fn((opts: Record<string, unknown>) => opts)
+  DynamicTool: vi.fn(class {
+    constructor(opts: object) {
+      Object.assign(this, opts)
+    }
+  }),
+  DynamicStructuredTool: vi.fn(class {
+    constructor(opts: object) {
+      Object.assign(this, opts)
+    }
+  })
 }))
 
 vi.mock('@langchain/core/messages', () => ({
-  SystemMessage: vi.fn((content: string) => ({ content })),
-  HumanMessage: vi.fn((content: string) => ({ content })),
-  AIMessage: vi.fn((content: string) => ({ content }))
+  SystemMessage: vi.fn(class {
+    constructor(public content: string) {}
+  }),
+  HumanMessage: vi.fn(class {
+    constructor(public content: string) {}
+  }),
+  AIMessage: vi.fn(class {
+    constructor(public content: string) {}
+  })
 }))
 
 vi.mock('../../src/main/ipc/events', () => ({

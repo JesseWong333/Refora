@@ -200,6 +200,19 @@ describe('createWatcher', () => {
     })
   })
 
+  describe('error events', () => {
+    it('logs Error and non-Error watcher failures', async () => {
+      const { logger } = await import('../../src/main/services/logger')
+      w.start(makeFolder())
+
+      fakeWatcher.emit('error', new Error('watch failed'))
+      fakeWatcher.emit('error', 'watch stopped')
+
+      expect(logger.error).toHaveBeenNthCalledWith(1, 'watch:error /watch/dir: watch failed')
+      expect(logger.error).toHaveBeenNthCalledWith(2, 'watch:error /watch/dir: watch stopped')
+    })
+  })
+
   describe('lifecycle', () => {
     it('stop closes the watcher and removes from internal map', () => {
       w.start(makeFolder({ id: 'w1' }))

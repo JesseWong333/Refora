@@ -20,16 +20,19 @@ interface NativeDatabase {
 type NativeDatabaseConstructor = new (location: string) => NativeDatabase
 
 const nodeRequire = createRequire(import.meta.url)
-let Database: NativeDatabaseConstructor | null = null
-try {
-  const candidate = nodeRequire('better-sqlite3') as NativeDatabaseConstructor
-  const probe = new candidate(':memory:')
-  probe.close()
-  Database = candidate
-} catch {
-  Database = null
+
+function loadNativeDatabase(): NativeDatabaseConstructor | null {
+  try {
+    const candidate = nodeRequire('better-sqlite3') as NativeDatabaseConstructor
+    const probe = new candidate(':memory:')
+    probe.close()
+    return candidate
+  } catch {
+    return null
+  }
 }
 
+const Database = loadNativeDatabase()
 const NativeDatabase = Database as NativeDatabaseConstructor
 const nativeDescribe = Database ? describe : describe.skip
 

@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../../tailwind.config.mjs";
 
 @layer base {
   :root,
@@ -159,7 +158,8 @@
   }
 
   /** @deprecated Use <Button variant="ghost" size="md"> from components/ui instead. */
-  .toolbar-btn {
+  .toolbar-btn,
+  .toolbar-btn-danger {
     @apply inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground hover:bg-hover active:bg-active disabled:opacity-40 disabled:cursor-default;
     -webkit-app-region: no-drag;
     transition: background-color 0.15s ease;
@@ -167,7 +167,7 @@
 
   /** @deprecated Use <Button variant="ghost" size="md" className="text-error"> instead. */
   .toolbar-btn-danger {
-    @apply toolbar-btn text-error hover:bg-hover;
+    @apply text-error hover:bg-hover;
   }
 
   /** @deprecated Use <Input variant="outlined"> from components/ui instead. */
@@ -940,7 +940,7 @@
   }
 
   .sidebar-item-active {
-    @apply sidebar-item bg-active text-foreground font-medium;
+    @apply bg-active text-foreground font-medium;
   }
 
   .drag-region {

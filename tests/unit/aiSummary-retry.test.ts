@@ -22,9 +22,9 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn().mockImplementation(() => ({
-    invoke: mocks.invoke
-  }))
+  ChatOpenAI: vi.fn(class {
+    invoke = mocks.invoke
+  })
 }))
 
 vi.mock('../../src/main/ipc/events', () => ({

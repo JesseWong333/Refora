@@ -536,7 +536,7 @@ export async function importFromIdentifier(
   }
 
   const tmpDir = join(libraryFolder, '.tmp', newId())
-  let tmpPath: string | null = null
+  let tmpPath: string
   try {
     try {
       tmpPath = await downloadPdf(pdfUrl, tmpDir, tempFileName)

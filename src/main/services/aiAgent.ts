@@ -162,11 +162,11 @@ function buildWorkspaceContext(repos: Repositories, workspaceId: string): string
 function parseSourceDocIds(raw: string): string[] {
   const trimmed = raw.trim()
   if (!trimmed) return []
-  let parsed: unknown = null
+  let parsed: unknown
   try {
     parsed = JSON.parse(trimmed)
   } catch {
-    parsed = null
+    parsed = undefined
   }
   if (Array.isArray(parsed)) {
     return parsed.filter((v): v is string => typeof v === 'string')

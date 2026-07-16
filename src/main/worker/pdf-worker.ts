@@ -1,7 +1,35 @@
 import { createReadStream, statSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
+import { DOMMatrix as CanvasDOMMatrix, Path2D as CanvasPath2D } from '@napi-rs/canvas'
 const parentPort = process.parentPort
+
+const pdfGlobals = globalThis as typeof globalThis & {
+  DOMMatrix?: typeof CanvasDOMMatrix
+  Path2D?: typeof CanvasPath2D
+}
+pdfGlobals.DOMMatrix ??= CanvasDOMMatrix
+pdfGlobals.Path2D ??= CanvasPath2D
+
+type PdfBinaryDataKind = 'cMapUrl' | 'standardFontDataUrl' | 'wasmUrl'
+
+class FileBinaryDataFactory {
+  private readonly roots: Record<PdfBinaryDataKind, string | null>
+
+  constructor(options: Partial<Record<PdfBinaryDataKind, string | null>>) {
+    this.roots = {
+      cMapUrl: options.cMapUrl ?? null,
+      standardFontDataUrl: options.standardFontDataUrl ?? null,
+      wasmUrl: options.wasmUrl ?? null
+    }
+  }
+
+  async fetch(input: { kind: PdfBinaryDataKind; filename: string }): Promise<Uint8Array> {
+    const root = this.roots[input.kind]
+    if (!root) throw new Error(`Missing PDF binary data root for ${input.kind}`)
+    return new Uint8Array(readFileSync(join(root, input.filename)))
+  }
+}
 
 interface WorkerRequest {
   correlationId: string
@@ -135,7 +163,7 @@ function filterJournalHeaderCluster(allLines: LineInfo[], group: LineInfo[]): Li
   return filtered.length > 0 ? filtered : group
 }
 
-async function parsePdf(filePath: string, maxPages: number): Promise<{ info: Record<string, unknown>; text: string; titleCandidate: string | null }> {
+export async function parsePdf(filePath: string, maxPages: number): Promise<{ info: Record<string, unknown>; text: string; titleCandidate: string | null }> {
   const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
   pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs')
 
@@ -147,9 +175,13 @@ async function parsePdf(filePath: string, maxPages: number): Promise<{ info: Rec
 
   const loadingTask = pdfjsLib.getDocument({
     data,
+    BinaryDataFactory: FileBinaryDataFactory,
     useWorkerFetch: false,
-    isEvalSupported: false,
     useSystemFonts: false,
+    disableFontFace: true,
+    isOffscreenCanvasSupported: false,
+    isImageDecoderSupported: false,
+    useWasm: false,
     disableAutoFetch: true,
     standardFontDataUrl,
     cMapUrl,

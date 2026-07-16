@@ -14,7 +14,7 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn(() => ({}))
+  ChatOpenAI: vi.fn(class {})
 }))
 
 vi.mock('@langchain/langgraph/prebuilt', () => ({
@@ -22,8 +22,16 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
 }))
 
 vi.mock('@langchain/core/tools', () => ({
-  DynamicTool: vi.fn((opts: unknown) => opts),
-  DynamicStructuredTool: vi.fn((opts: unknown) => opts)
+  DynamicTool: vi.fn(class {
+    constructor(opts: object) {
+      Object.assign(this, opts)
+    }
+  }),
+  DynamicStructuredTool: vi.fn(class {
+    constructor(opts: object) {
+      Object.assign(this, opts)
+    }
+  })
 }))
 
 vi.mock('@langchain/core/messages', () => ({

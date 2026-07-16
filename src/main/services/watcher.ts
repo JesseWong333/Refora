@@ -9,6 +9,10 @@ export interface WatcherDeps {
   getLibraryFolder: () => string
 }
 
+function watcherErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 function createDebouncedImporter(deps: WatcherDeps) {
   let pending: string[] = []
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -74,8 +78,8 @@ export function createWatcher(deps: WatcherDeps) {
       debouncedImport.push(filePath)
     })
 
-    inst.on('error', (err: Error) => {
-      logger.error(`watch:error ${wf.path}: ${err.message}`)
+    inst.on('error', (error: unknown) => {
+      logger.error(`watch:error ${wf.path}: ${watcherErrorMessage(error)}`)
     })
 
     watchers.set(wf.id, inst)
@@ -136,8 +140,8 @@ export function createWatcher(deps: WatcherDeps) {
       debouncedImport.push(filePath)
     })
 
-    inst.on('error', (err: Error) => {
-      logger.error(`watch:library:error ${err.message}`)
+    inst.on('error', (error: unknown) => {
+      logger.error(`watch:library:error ${watcherErrorMessage(error)}`)
     })
 
     libraryWatcher = inst

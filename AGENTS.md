@@ -56,7 +56,7 @@ A task's own Verification assertions must also pass. Do not mark a task done unt
 - If a test fails and you can't fix it, or a task is blocked, STOP and report — don't guess.
 
 ## Toolchain notes
-- Use the Node.js 20 line locally and in automation.
+- Use the Node.js 24 line locally and in automation.
 - Native module `better-sqlite3` is rebuilt for Electron's ABI via `@electron/rebuild` (`postinstall` + `npm run rebuild`). Rebuilding compiles from source and requires Xcode Command Line Tools (accept the license: `sudo xcodebuild -license accept`).
 - `tsc -b` (typecheck) uses project references and **excludes test files**; tests are run by vitest only.
 
