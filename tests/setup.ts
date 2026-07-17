@@ -105,6 +105,12 @@ const noop = async () => undefined
     toBibtex: async () => '',
   },
 
+  clipboard: {
+    writeText: noop,
+    copyMarkdown: noop,
+    copyWorkspaceAsset: noop,
+  },
+
   workspaces: {
     list: async () => [],
     create: async (name: string) => ({ id: 'ws', name, createdAt: 0, updatedAt: 0 }),

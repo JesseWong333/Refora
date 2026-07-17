@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { Sparkle, FileText, Trash, CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react'
+import { Sparkle, FileText, Copy, Trash, CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import { Button, Badge, cardClassName } from '../ui'
 import type { AiSummary, Document } from '../../../shared/ipc-types'
@@ -15,6 +15,7 @@ interface PaperCardProps {
   onSummarize: () => void
   onOpenPdf: () => void
   onRemove: () => void
+  onCopy?: () => void
 }
 
 export default function PaperCard({
@@ -24,7 +25,8 @@ export default function PaperCard({
   summaryError,
   onSummarize,
   onOpenPdf,
-  onRemove
+  onRemove,
+  onCopy
 }: PaperCardProps) {
   const { t } = useTranslation()
   const [modalOpen, setModalOpen] = useState(false)
@@ -38,6 +40,13 @@ export default function PaperCard({
     e.preventDefault()
     e.stopPropagation()
     const menuItems: ContextMenuItem[] = [
+      {
+        key: 'copy',
+        label: t('workspace.cardCopy'),
+        icon: <Copy className="h-3.5 w-3.5" />,
+        onClick: () => onCopy?.(),
+        disabled: !doc
+      },
       {
         key: 'summarize',
         label: t('workspace.aiSummary'),

@@ -6,6 +6,7 @@ import { FilePlus, NotePencil, Sticker } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useDocumentStore } from '../../store/documentStore'
 import { api } from '../../ipc'
+import { markdownCardContent, paperCardMarkdown } from '../../utils/workspaceCardMarkdown'
 import { Button, EmptyState } from '../ui'
 import {
   WORKSPACE_CANVAS_DEFAULT_ZOOM,
@@ -661,6 +662,26 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
     })
   }, [t])
 
+  const runClipboardAction = useCallback((action: () => Promise<void>) => {
+    void action().then(() => {
+      useDocumentStore.getState().showToast(t('workspace.cardCopySuccess'))
+    }).catch((error) => {
+      useDocumentStore.getState().showToast(errorMessage(error, t('workspace.cardCopyFailed')))
+    })
+  }, [t])
+
+  const handleCopyAsset = useCallback((assetId: string) => {
+    runClipboardAction(() => api.clipboard.copyWorkspaceAsset(assetId))
+  }, [runClipboardAction])
+
+  const handleCopyMarkdown = useCallback((title: string, content: string) => {
+    runClipboardAction(() => api.clipboard.copyMarkdown(title, content))
+  }, [runClipboardAction])
+
+  const handleCopyText = useCallback((text: string) => {
+    runClipboardAction(() => api.clipboard.writeText(text))
+  }, [runClipboardAction])
+
   const handleCreateNote = useCallback(async (
     noteType: WorkspaceNoteType,
     placement?: WorkspaceItemPlacement
@@ -846,6 +867,8 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
         {sortedItems.map((item) => {
           if (item.kind === 'document' && item.docId) {
             const docId = item.docId
+            const doc = docs.get(docId) ?? null
+            const summary = summaries.get(docId) ?? null
             return (
               <ResizableCard
                 key={item.id}
@@ -853,13 +876,16 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                 className="workspace-connection-accent--document"
               >
                 <PaperCard
-                  doc={docs.get(docId) ?? null}
-                  summary={summaries.get(docId) ?? null}
+                  doc={doc}
+                  summary={summary}
                   summarizing={summarizing.has(docId)}
                   summaryError={summaryErrors.get(docId) ?? null}
                   onSummarize={() => handleSummarize(docId)}
                   onOpenPdf={() => void api.documents.openPdf(docId)}
                   onRemove={() => void removeItem(item.id)}
+                  onCopy={doc
+                    ? () => handleCopyMarkdown(doc.title || doc.fileName, paperCardMarkdown(doc, summary))
+                    : undefined}
                 />
               </ResizableCard>
             )
@@ -879,6 +905,10 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                   onOpenSource={(docId) => void api.documents.openPdf(docId)}
                   onDelete={() => void deleteReport(report.id)}
                   onUpdate={updateReport}
+                  onCopy={() => handleCopyMarkdown(
+                    report.title,
+                    markdownCardContent(report.title, report.contentMd)
+                  )}
                 />
               </ResizableCard>
             )
@@ -899,6 +929,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                     onAutoFocusHandled={() => setAutoEditStickyNoteId(null)}
                     onDelete={() => void deleteNote(note.id)}
                     onUpdate={updateNote}
+                    onCopy={handleCopyText}
                   />
                 </ResizableCard>
               )
@@ -915,6 +946,10 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                   onAutoEditHandled={() => setAutoEditNoteId(null)}
                   onDelete={() => void deleteNote(note.id)}
                   onUpdate={updateNote}
+                  onCopy={() => handleCopyMarkdown(
+                    note.title,
+                    markdownCardContent(note.title, note.contentMd)
+                  )}
                 />
               </ResizableCard>
             )
@@ -933,6 +968,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                   onOpen={() => handleOpenAsset(asset.id)}
                   onReveal={() => handleRevealAsset(asset.id)}
                   onDelete={() => void deleteAsset(asset.id)}
+                  onCopy={() => handleCopyAsset(asset.id)}
                 />
               </ResizableCard>
             )

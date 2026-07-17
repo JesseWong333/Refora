@@ -184,6 +184,14 @@ const api: ReforaApi = {
     toBibtexString: (ids: string[]) => invoke<string>(IpcChannel.ExportBibtexString, ids)
   },
 
+  clipboard: {
+    writeText: (text: string) => invoke<void>(IpcChannel.ClipboardWriteText, text),
+    copyMarkdown: (title: string, content: string) =>
+      invoke<void>(IpcChannel.ClipboardCopyMarkdown, title, content),
+    copyWorkspaceAsset: (id: string) =>
+      invoke<void>(IpcChannel.ClipboardCopyWorkspaceAsset, id)
+  },
+
   workspaces: {
     list: () => invoke<Workspace[]>(IpcChannel.WorkspacesList),
     create: (name: string) => invoke<Workspace>(IpcChannel.WorkspacesCreate, name),

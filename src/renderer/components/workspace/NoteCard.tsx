@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal, Button, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { Download, PencilSimple, Trash } from '@phosphor-icons/react'
+import { Copy, Download, PencilSimple, Trash } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
@@ -16,6 +16,7 @@ interface NoteCardProps {
   onAutoEditHandled?: () => void
   onDelete: () => void
   onUpdate: (id: string, patch: { title?: string; contentMd?: string }) => Promise<boolean>
+  onCopy?: () => void
 }
 
 export default function NoteCard({
@@ -23,7 +24,8 @@ export default function NoteCard({
   autoEdit = false,
   onAutoEditHandled,
   onDelete,
-  onUpdate
+  onUpdate,
+  onCopy
 }: NoteCardProps) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
@@ -62,6 +64,12 @@ export default function NoteCard({
     e.preventDefault()
     e.stopPropagation()
     const items: ContextMenuItem[] = [
+      {
+        key: 'copy',
+        label: t('workspace.cardCopy'),
+        icon: <Copy className="h-3.5 w-3.5" />,
+        onClick: () => onCopy?.()
+      },
       {
         key: 'edit',
         label: t('workspace.noteEdit'),

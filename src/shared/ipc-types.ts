@@ -584,6 +584,11 @@ export interface ReforaApi {
     toBibtex(ids: string[]): Promise<string>
     toBibtexString(ids: string[]): Promise<string>
   }
+  clipboard: {
+    writeText(text: string): Promise<void>
+    copyMarkdown(title: string, content: string): Promise<void>
+    copyWorkspaceAsset(id: string): Promise<void>
+  }
   workspaces: {
     list(): Promise<Workspace[]>
     create(name: string): Promise<Workspace>

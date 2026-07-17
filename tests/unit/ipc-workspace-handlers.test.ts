@@ -25,6 +25,8 @@ const electronMocks = vi.hoisted(() => ({
   trashItem: vi.fn(),
   showItemInFolder: vi.fn(),
   openPath: vi.fn(),
+  writeBuffer: vi.fn(),
+  writeText: vi.fn(),
   setProxy: vi.fn()
 }))
 
@@ -35,6 +37,10 @@ vi.mock('electron', () => ({
     showMessageBox: electronMocks.showMessageBox
   },
   ipcMain: { handle: electronMocks.handle },
+  clipboard: {
+    writeBuffer: electronMocks.writeBuffer,
+    writeText: electronMocks.writeText
+  },
   shell: {
     trashItem: electronMocks.trashItem,
     showItemInFolder: electronMocks.showItemInFolder,
@@ -260,6 +266,11 @@ describe('workspace IPC handlers', () => {
       content: '# Workspace file\n\nHello',
       truncated: false
     })
+    expectOk(handlers[IpcChannel.ClipboardCopyWorkspaceAsset](asset.id))
+    expect(electronMocks.writeBuffer).toHaveBeenCalledWith(
+      'NSFilenamesPboardType',
+      expect.any(Buffer)
+    )
     expectOk(await handlers[IpcChannel.WorkspaceAssetsOpen](asset.id))
     expect(electronMocks.openPath).toHaveBeenCalledWith(join(directory, asset.filePath))
     expectOk(handlers[IpcChannel.WorkspaceAssetsReveal](asset.id))
@@ -269,6 +280,12 @@ describe('workspace IPC handlers', () => {
     expect(electronMocks.trashItem).toHaveBeenCalledWith(join(directory, 'refora-assets', asset.id))
     expect(repos.workspaceAssets.get(asset.id)).toBeNull()
     expect(repos.workspaceItems.list(workspace.id)).toEqual([])
+  })
+
+  it('writes plain text through the clipboard IPC envelope', () => {
+    expectOk(handlers[IpcChannel.ClipboardWriteText]('Sticky draft'))
+    expect(electronMocks.writeText).toHaveBeenCalledWith('Sticky draft')
+    expectError(handlers[IpcChannel.ClipboardCopyWorkspaceAsset]('missing'), 'not_found')
   })
 
   it('registers every handler and forwards invocation arguments', () => {

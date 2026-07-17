@@ -137,7 +137,7 @@ describe('ReportCard', () => {
     expect(screen.getByText('2023-11-14')).toBeTruthy()
   })
 
-  it('shows context menu on right-click with edit, export, and delete options', () => {
+  it('shows context menu on right-click with copy, edit, export, and delete options', () => {
     const { container } = render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={async () => true} />)
     const card = container.querySelector('.card') as HTMLElement
     expect(card).toBeTruthy()
@@ -149,14 +149,27 @@ describe('ReportCard', () => {
       danger?: boolean
       onClick: () => void
     }>
-    expect(items).toHaveLength(3)
-    expect(items[0].key).toBe('edit')
-    expect(items[0].label).toBe('workspace.reportEdit')
-    expect(items[1].key).toBe('export')
-    expect(items[1].label).toBe('workspace.reportExportMd')
-    expect(items[2].key).toBe('delete')
-    expect(items[2].danger).toBe(true)
-    expect(items[2].label).toBe('workspace.reportDelete')
+    expect(items).toHaveLength(4)
+    expect(items[0].key).toBe('copy')
+    expect(items[0].label).toBe('workspace.cardCopy')
+    expect(items[1].key).toBe('edit')
+    expect(items[1].label).toBe('workspace.reportEdit')
+    expect(items[2].key).toBe('export')
+    expect(items[2].label).toBe('workspace.reportExportMd')
+    expect(items[3].key).toBe('delete')
+    expect(items[3].danger).toBe(true)
+    expect(items[3].label).toBe('workspace.reportDelete')
+  })
+
+  it('copies a report from its context menu', () => {
+    const onCopy = vi.fn()
+    const { container } = render(
+      <ReportCard report={makeReport()} onDelete={() => {}} onUpdate={async () => true} onCopy={onCopy} />
+    )
+    fireEvent.contextMenu(container.querySelector('.card') as HTMLElement)
+    const items = mockShowContextMenu.mock.calls[0][0] as Array<{ key: string; onClick: () => void }>
+    act(() => items.find((item) => item.key === 'copy')?.onClick())
+    expect(onCopy).toHaveBeenCalledOnce()
   })
 
   it('opens modal when context menu delete action is clicked', () => {
@@ -165,7 +178,7 @@ describe('ReportCard', () => {
     fireEvent.contextMenu(card)
     const items = mockShowContextMenu.mock.calls[0][0] as Array<{ onClick: () => void }>
     act(() => {
-      items[2].onClick()
+      items[3].onClick()
     })
     expect(screen.getByTestId('modal')).toBeTruthy()
   })
@@ -177,7 +190,7 @@ describe('ReportCard', () => {
     fireEvent.contextMenu(card)
     const items = mockShowContextMenu.mock.calls[0][0] as Array<{ onClick: () => void }>
     act(() => {
-      items[2].onClick()
+      items[3].onClick()
     })
     const dangerBtn = screen.getByTestId('modal-btn-danger')
     expect(dangerBtn.textContent).toContain('common.confirm')
@@ -204,6 +217,28 @@ describe('ReportCard', () => {
 })
 
 describe('Workspace card types', () => {
+  it('copies a paper as Markdown from its context menu', () => {
+    const onCopy = vi.fn()
+    const paper = { id: 'doc-1', fileName: 'paper.pdf', title: 'Paper title' } as Document
+    const { container } = render(
+      <PaperCard
+        doc={paper}
+        summary={null}
+        summarizing={false}
+        summaryError={null}
+        onSummarize={() => {}}
+        onOpenPdf={() => {}}
+        onRemove={() => {}}
+        onCopy={onCopy}
+      />
+    )
+
+    fireEvent.contextMenu(container.querySelector('.card') as HTMLElement)
+    const items = mockShowContextMenu.mock.calls[0][0] as Array<{ key: string; onClick: () => void }>
+    act(() => items.find((item) => item.key === 'copy')?.onClick())
+    expect(onCopy).toHaveBeenCalledOnce()
+  })
+
   it('keeps all summary sections in the card preview so resizing can reveal more content', () => {
     const paper = { id: 'doc-1', fileName: 'paper.pdf', title: 'Paper title' } as Document
     render(
@@ -376,6 +411,18 @@ describe('NoteCard', () => {
     updatedAt: 1
   }
 
+  it('copies a Markdown note from its context menu', () => {
+    const onCopy = vi.fn()
+    const { container } = render(
+      <NoteCard note={note} onDelete={() => {}} onUpdate={async () => true} onCopy={onCopy} />
+    )
+
+    fireEvent.contextMenu(container.querySelector('.card') as HTMLElement)
+    const items = mockShowContextMenu.mock.calls[0][0] as Array<{ key: string; onClick: () => void }>
+    act(() => items.find((item) => item.key === 'copy')?.onClick())
+    expect(onCopy).toHaveBeenCalledOnce()
+  })
+
   it('keeps the edited draft open when saving fails', async () => {
     const onUpdate = vi.fn().mockResolvedValue(false)
     render(
@@ -415,6 +462,19 @@ describe('StickyNoteCard', () => {
     createdAt: 1,
     updatedAt: 1
   }
+
+  it('copies the current plain-text draft from its context menu', () => {
+    const onCopy = vi.fn()
+    const { container } = render(
+      <StickyNoteCard note={note} onDelete={() => {}} onUpdate={async () => true} onCopy={onCopy} />
+    )
+    const content = screen.getByRole('textbox', { name: 'workspace.stickyNoteContentLabel' })
+    fireEvent.change(content, { target: { value: 'Current unsaved text' } })
+    fireEvent.contextMenu(container.querySelector('.card') as HTMLElement)
+    const items = mockShowContextMenu.mock.calls[0][0] as Array<{ key: string; onClick?: () => void }>
+    act(() => items.find((item) => item.key === 'copy')?.onClick?.())
+    expect(onCopy).toHaveBeenCalledWith('Current unsaved text')
+  })
 
   it('edits plain text directly on the card without opening a modal', async () => {
     const onUpdate = vi.fn().mockResolvedValue(true)

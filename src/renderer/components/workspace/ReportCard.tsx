@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal, Button } from '@lobehub/ui'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
-import { BookOpen, Trash, PencilSimple, Download } from '@phosphor-icons/react'
+import { BookOpen, Copy, Trash, PencilSimple, Download } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
@@ -15,6 +15,7 @@ interface ReportCardProps {
   report: AiReport
   onDelete: () => void
   onUpdate: (id: string, patch: { title?: string; contentMd?: string }) => Promise<boolean>
+  onCopy?: () => void
   sourceDocuments?: Map<string, Document>
   onOpenSource?: (docId: string) => void
 }
@@ -23,6 +24,7 @@ export default function ReportCard({
   report,
   onDelete,
   onUpdate,
+  onCopy,
   sourceDocuments = new Map(),
   onOpenSource
 }: ReportCardProps) {
@@ -56,6 +58,12 @@ export default function ReportCard({
     e.preventDefault()
     e.stopPropagation()
     const menuItems: ContextMenuItem[] = [
+      {
+        key: 'copy',
+        label: t('workspace.cardCopy'),
+        icon: <Copy className="h-3.5 w-3.5" />,
+        onClick: () => onCopy?.()
+      },
       {
         key: 'edit',
         label: t('workspace.reportEdit'),

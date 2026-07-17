@@ -5,6 +5,7 @@ import type { ContextMenuItem } from '@lobehub/ui'
 import {
   ArrowSquareOut,
   CircleNotch,
+  Copy,
   File,
   FolderOpen,
   Image as ImageIcon,
@@ -24,6 +25,7 @@ interface AssetCardProps {
   onOpen: () => void
   onReveal: () => void
   onDelete: () => void
+  onCopy?: () => void
 }
 
 function formatFileSize(bytes: number): string {
@@ -49,10 +51,11 @@ function PreviewIcon({ kind }: { kind: WorkspaceAsset['previewKind'] }) {
   return <File className="h-8 w-8" />
 }
 
-export default function AssetCard({ asset, onOpen, onReveal, onDelete }: AssetCardProps) {
+export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }: AssetCardProps) {
   const { t } = useTranslation()
   const [textPreview, setTextPreview] = useState<WorkspaceAssetTextPreview | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [mediaHovered, setMediaHovered] = useState(false)
   const previewUrl = useMemo(() => api.workspaceAssets.previewUrl(asset.id), [asset.id])
 
   useEffect(() => {
@@ -79,6 +82,13 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete }: AssetCa
     event.stopPropagation()
     const menuItems: ContextMenuItem[] = [
       {
+        key: 'copy',
+        label: t('workspace.cardCopy'),
+        icon: <Copy className="h-3.5 w-3.5" />,
+        onClick: () => onCopy?.(),
+        disabled: Boolean(asset.fileMissing)
+      },
+      {
         key: 'open',
         label: t('workspace.assetOpen'),
         icon: <ArrowSquareOut className="h-3.5 w-3.5" />,
@@ -104,6 +114,86 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete }: AssetCa
 
   const textContent = textPreview ? formatTextPreview(asset, textPreview) : ''
   const isMarkdown = asset.mimeType === 'text/markdown'
+  const isVisualPreview = !asset.fileMissing && (asset.previewKind === 'image' || asset.previewKind === 'video')
+
+  const renderHeader = (mediaOverlay = false) => (
+    <div className="flex shrink-0 items-start gap-2">
+      <div className="workspace-card-heading min-w-0 flex-1">
+        <span className="workspace-card-type-label">{t('workspace.cardTypeAsset')}</span>
+        <h3 className="workspace-card-title truncate text-sm font-semibold text-foreground" title={asset.fileName}>
+          {asset.fileName}
+        </h3>
+        <p className={mediaOverlay ? 'workspace-asset-media-metadata mt-0.5 truncate text-xs' : 'mt-0.5 truncate text-xs text-muted'}>
+          {formatFileSize(asset.fileSize)} · {asset.mimeType}
+        </p>
+      </div>
+      <div className={`flex shrink-0 items-center gap-1 ${mediaOverlay ? 'pointer-events-auto' : 'gap-0.5 opacity-0 transition-opacity group-hover/card:opacity-100'}`}>
+        <button
+          type="button"
+          className={mediaOverlay ? 'workspace-asset-media-action rounded p-1.5' : 'rounded p-1 text-muted transition-colors duration-150 hover:text-accent'}
+          onClick={(event) => { event.stopPropagation(); onOpen() }}
+          title={t('workspace.assetOpen')}
+          aria-label={t('workspace.assetOpen')}
+        >
+          <ArrowSquareOut className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className={mediaOverlay ? 'workspace-asset-media-action rounded p-1.5' : 'rounded p-1 text-muted transition-colors duration-150 hover:text-accent'}
+          onClick={(event) => { event.stopPropagation(); onReveal() }}
+          title={t('workspace.assetReveal')}
+          aria-label={t('workspace.assetReveal')}
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className={mediaOverlay ? 'workspace-asset-media-action workspace-asset-media-action--delete rounded p-1.5' : 'rounded p-1 text-muted transition-colors duration-150 hover:text-error'}
+          onClick={(event) => { event.stopPropagation(); onDelete() }}
+          title={t('workspace.assetDelete')}
+          aria-label={t('workspace.assetDelete')}
+        >
+          <Trash className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+
+  if (isVisualPreview) {
+    return (
+      <div
+        data-card-kind="asset"
+        data-asset-preview-kind={asset.previewKind}
+        className={cardClassName('default', false, 'workspace-content-card workspace-content-card--asset workspace-content-card--media group/card relative h-full w-full cursor-pointer overflow-hidden p-0')}
+        onDoubleClick={onOpen}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={() => setMediaHovered(true)}
+        onMouseLeave={() => setMediaHovered(false)}
+      >
+        {asset.previewKind === 'image' ? (
+          <img
+            className="workspace-asset-media h-full w-full object-cover"
+            src={previewUrl}
+            alt={asset.fileName}
+            draggable={false}
+          />
+        ) : (
+          <video
+            className="workspace-asset-media h-full w-full bg-black object-cover"
+            src={previewUrl}
+            controls={mediaHovered}
+            preload="metadata"
+          />
+        )}
+        <div
+          data-asset-media-overlay
+          className="workspace-asset-media-overlay pointer-events-none absolute inset-x-0 top-0 z-10 p-3"
+        >
+          {renderHeader(true)}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -112,46 +202,7 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete }: AssetCa
       onDoubleClick={onOpen}
       onContextMenu={handleContextMenu}
     >
-      <div className="flex shrink-0 items-start gap-2">
-        <div className="workspace-card-heading min-w-0 flex-1">
-          <span className="workspace-card-type-label">{t('workspace.cardTypeAsset')}</span>
-          <h3 className="workspace-card-title truncate text-sm font-semibold text-foreground" title={asset.fileName}>
-            {asset.fileName}
-          </h3>
-          <p className="mt-0.5 truncate text-xs text-muted">
-            {formatFileSize(asset.fileSize)} · {asset.mimeType}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/card:opacity-100">
-          <button
-            type="button"
-            className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
-            onClick={(event) => { event.stopPropagation(); onOpen() }}
-            title={t('workspace.assetOpen')}
-            aria-label={t('workspace.assetOpen')}
-          >
-            <ArrowSquareOut className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
-            onClick={(event) => { event.stopPropagation(); onReveal() }}
-            title={t('workspace.assetReveal')}
-            aria-label={t('workspace.assetReveal')}
-          >
-            <FolderOpen className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            className="rounded p-1 text-muted transition-colors duration-150 hover:text-error"
-            onClick={(event) => { event.stopPropagation(); onDelete() }}
-            title={t('workspace.assetDelete')}
-            aria-label={t('workspace.assetDelete')}
-          >
-            <Trash className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
+      {renderHeader()}
 
       <div
         data-card-scroll

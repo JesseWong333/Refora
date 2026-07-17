@@ -241,6 +241,79 @@
     --workspace-card-accent: var(--workspace-card-asset);
   }
 
+  .workspace-content-card--media {
+    isolation: isolate;
+    background: var(--color-panel);
+  }
+
+  .workspace-asset-media {
+    display: block;
+  }
+
+  .workspace-asset-media-overlay {
+    isolation: isolate;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+
+  .workspace-asset-media-overlay::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-panel) 52%, transparent);
+    backdrop-filter: blur(8px) saturate(180%);
+    -webkit-backdrop-filter: blur(8px) saturate(180%);
+    mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.82) 35%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.82) 35%, transparent 100%);
+    pointer-events: none;
+    content: '';
+  }
+
+  .workspace-content-card--media:hover .workspace-asset-media-overlay,
+  .workspace-content-card--media:focus-within .workspace-asset-media-overlay {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .workspace-content-card--media .workspace-card-heading::before {
+    background: color-mix(in srgb, var(--color-foreground) 58%, transparent);
+  }
+
+  .workspace-content-card--media .workspace-card-type-label {
+    color: color-mix(in srgb, var(--color-foreground) 64%, transparent);
+  }
+
+  .workspace-content-card--media .workspace-card-title {
+    color: var(--color-foreground);
+  }
+
+  .workspace-asset-media-metadata {
+    color: color-mix(in srgb, var(--color-foreground) 64%, transparent);
+  }
+
+  .workspace-asset-media-action {
+    border: 0;
+    background: transparent;
+    color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
+    transition: color 0.15s ease;
+  }
+
+  .workspace-asset-media-action:hover {
+    color: var(--color-foreground);
+  }
+
+  .workspace-asset-media-action--delete:hover {
+    color: var(--color-error);
+  }
+
+  @media (hover: none) {
+    .workspace-asset-media-overlay {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   .workspace-sticky-fold {
     @apply pointer-events-none absolute right-0 top-0 h-5 w-5;
     background: linear-gradient(

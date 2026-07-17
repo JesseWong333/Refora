@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { showContextMenu } from '@lobehub/ui'
 import Board from '@renderer/components/workspace/Board'
-import type { WorkspaceAsset, WorkspaceItem } from '@shared/ipc-types'
+import type { AiReport, Document, WorkspaceAsset, WorkspaceItem, WorkspaceNote } from '@shared/ipc-types'
 
 const DOC_MIME = 'application/x-refora-docids'
 
@@ -20,6 +21,9 @@ const mockUpdateReport = vi.fn()
 const mockConnectionsList = vi.fn()
 const mockConnectionsCreate = vi.fn()
 const mockConnectionsDelete = vi.fn()
+const mockCopyWorkspaceAsset = vi.fn()
+const mockCopyMarkdown = vi.fn()
+const mockWriteClipboardText = vi.fn()
 const { mockShowToast, mockTranslate } = vi.hoisted(() => ({
   mockShowToast: vi.fn(),
   mockTranslate: (key: string, fallback?: string) => fallback ?? key
@@ -69,6 +73,7 @@ vi.mock('@renderer/store/documentStore', () => ({
 vi.mock('@lobehub/ui', async () => import('../mocks/lobehub-ui'))
 
 beforeEach(() => {
+  vi.mocked(showContextMenu).mockReset()
   mockAddDocs.mockReset().mockResolvedValue(undefined)
   mockAddAssets.mockReset().mockResolvedValue(undefined)
   mockDeleteAsset.mockReset().mockResolvedValue(undefined)
@@ -84,6 +89,9 @@ beforeEach(() => {
   mockConnectionsList.mockReset().mockResolvedValue([])
   mockConnectionsCreate.mockReset()
   mockConnectionsDelete.mockReset().mockResolvedValue(undefined)
+  mockCopyWorkspaceAsset.mockReset().mockResolvedValue(undefined)
+  mockCopyMarkdown.mockReset().mockResolvedValue(undefined)
+  mockWriteClipboardText.mockReset().mockResolvedValue(undefined)
   mockShowToast.mockReset()
   mockItems = []
   mockReports = []
@@ -106,6 +114,11 @@ beforeEach(() => {
   workspaceAssets.previewUrl = vi.fn((id: string) => `refora-asset://asset/${id}`)
   workspaceAssets.open = vi.fn().mockResolvedValue(undefined)
   workspaceAssets.reveal = vi.fn().mockResolvedValue(undefined)
+  api.clipboard = {
+    copyWorkspaceAsset: mockCopyWorkspaceAsset,
+    copyMarkdown: mockCopyMarkdown,
+    writeText: mockWriteClipboardText
+  }
 })
 
 afterEach(() => {
@@ -209,7 +222,183 @@ describe('Board drag-and-drop', () => {
   })
 })
 
+describe('Board card clipboard actions', () => {
+  it('copies reports and Markdown notes as Markdown files', () => {
+    const report: AiReport = {
+      id: 'report-1',
+      workspaceId: 'ws-1',
+      title: 'Research report',
+      contentMd: 'Report body',
+      sourceDocIds: [],
+      model: null,
+      createdAt: 1
+    }
+    const note: WorkspaceNote = {
+      id: 'note-1',
+      workspaceId: 'ws-1',
+      noteType: 'markdown',
+      title: 'Markdown note',
+      contentMd: '- Item',
+      createdAt: 1,
+      updatedAt: 1
+    }
+    mockReports = [report]
+    mockNotes = [note]
+    mockItems = [
+      {
+        ...makeItem('item-report', '', 0),
+        kind: 'report',
+        docId: null,
+        reportId: report.id
+      },
+      {
+        ...makeItem('item-note', '', 1),
+        kind: 'note',
+        docId: null,
+        noteId: note.id
+      }
+    ]
+
+    const { container } = render(<Board />)
+    for (const kind of ['report', 'note']) {
+      fireEvent.contextMenu(container.querySelector(`[data-card-kind="${kind}"]`) as HTMLElement)
+      const items = vi.mocked(showContextMenu).mock.calls.at(-1)?.[0] as Array<{
+        key: string
+        onClick?: () => void
+      }>
+      items.find((item) => item.key === 'copy')?.onClick?.()
+    }
+
+    expect(mockCopyMarkdown).toHaveBeenNthCalledWith(1, 'Research report', '# Research report\n\nReport body\n')
+    expect(mockCopyMarkdown).toHaveBeenNthCalledWith(2, 'Markdown note', '# Markdown note\n\n- Item\n')
+  })
+
+  it('copies the current sticky-note draft as plain text', () => {
+    const note: WorkspaceNote = {
+      id: 'sticky-1',
+      workspaceId: 'ws-1',
+      noteType: 'plain',
+      title: 'Sticky note',
+      contentMd: 'Saved text',
+      createdAt: 1,
+      updatedAt: 1
+    }
+    mockNotes = [note]
+    mockItems = [{
+      ...makeItem('item-sticky', '', 0),
+      kind: 'note',
+      docId: null,
+      noteId: note.id
+    }]
+
+    const { container } = render(<Board />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'workspace.stickyNoteContentLabel' }), {
+      target: { value: 'Unsaved current text' }
+    })
+    fireEvent.contextMenu(container.querySelector('[data-card-kind="sticky"]') as HTMLElement)
+    const items = vi.mocked(showContextMenu).mock.calls[0][0] as Array<{
+      key: string
+      onClick?: () => void
+    }>
+    items.find((item) => item.key === 'copy')?.onClick?.()
+
+    expect(mockWriteClipboardText).toHaveBeenCalledWith('Unsaved current text')
+  })
+
+  it('copies a paper card as a generated Markdown file', async () => {
+    const doc = {
+      id: 'doc-1',
+      title: 'Paper title',
+      fileName: 'paper.pdf',
+      authors: 'Ada Lovelace',
+      year: '2026',
+      abstract: 'Abstract body'
+    } as Document
+    mockItems = [makeItem('item-paper', doc.id, 0)]
+    const api = window.api as unknown as Record<string, unknown>
+    const documents = api.documents as Record<string, unknown>
+    documents.get = vi.fn().mockResolvedValue(doc)
+
+    const { container } = render(<Board />)
+    await waitFor(() => expect(container.querySelector('[data-card-kind="document"]')).toBeInTheDocument())
+    fireEvent.contextMenu(container.querySelector('[data-card-kind="document"]') as HTMLElement)
+    const items = vi.mocked(showContextMenu).mock.calls[0][0] as Array<{
+      key: string
+      onClick?: () => void
+    }>
+    items.find((item) => item.key === 'copy')?.onClick?.()
+
+    expect(mockCopyMarkdown).toHaveBeenCalledOnce()
+    expect(mockCopyMarkdown.mock.calls[0][0]).toBe('Paper title')
+    expect(mockCopyMarkdown.mock.calls[0][1]).toContain('# Paper title')
+    expect(mockCopyMarkdown.mock.calls[0][1]).toContain('**Authors:** Ada Lovelace')
+    expect(mockCopyMarkdown.mock.calls[0][1]).toContain('## Abstract')
+  })
+})
+
 describe('Board workspace assets', () => {
+  it.each([
+    ['image', 'image/png', 'figure.png', 'img'],
+    ['video', 'video/mp4', 'demo.mp4', 'video']
+  ] as const)('renders a %s as an edge-to-edge media card with hover details', (previewKind, mimeType, fileName, elementName) => {
+    const asset: WorkspaceAsset = {
+      id: `asset-${previewKind}`,
+      workspaceId: 'ws-1',
+      fileName,
+      filePath: `refora-assets/asset-${previewKind}/${fileName}`,
+      sourcePath: `/tmp/${fileName}`,
+      mimeType,
+      previewKind,
+      fileSize: 2048,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 0,
+      updatedAt: 0
+    }
+    mockAssets = [asset]
+    mockItems = [{
+      ...makeItem(`item-${previewKind}`, '', 0),
+      kind: 'asset',
+      docId: null,
+      assetId: asset.id
+    }]
+
+    const { container } = render(<Board />)
+
+    const card = container.querySelector('[data-card-kind="asset"]') as HTMLElement
+    expect(card).toHaveClass('workspace-content-card--media', 'p-0')
+    expect(card).toHaveAttribute('data-asset-preview-kind', previewKind)
+    expect(card.querySelector('[data-card-scroll]')).toBeNull()
+    expect(card.querySelector('[data-asset-media-overlay]')).toHaveClass(
+      'workspace-asset-media-overlay',
+      'inset-x-0',
+      'top-0'
+    )
+    const media = card.querySelector(elementName) as HTMLImageElement | HTMLVideoElement
+    expect(media).toHaveClass('workspace-asset-media', 'object-cover')
+    expect(media).toHaveAttribute('src', `refora-asset://asset/${asset.id}`)
+    expect(screen.getByText(fileName)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.assetOpen' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.assetReveal' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.assetDelete' })).toBeInTheDocument()
+
+    fireEvent.contextMenu(card)
+    const contextItems = vi.mocked(showContextMenu).mock.calls[0][0] as Array<{
+      key: string
+      onClick?: () => void
+    }>
+    contextItems.find((item) => item.key === 'copy')?.onClick?.()
+    expect(mockCopyWorkspaceAsset).toHaveBeenCalledWith(asset.id)
+
+    if (media instanceof HTMLVideoElement) {
+      expect(media).not.toHaveAttribute('controls')
+      fireEvent.mouseEnter(card)
+      expect(media).toHaveAttribute('controls')
+      fireEvent.mouseLeave(card)
+      expect(media).not.toHaveAttribute('controls')
+    }
+  })
+
   it('renders a managed text file preview on an asset card', async () => {
     const asset: WorkspaceAsset = {
       id: 'asset-1',

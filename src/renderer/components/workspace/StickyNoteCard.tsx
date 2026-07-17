@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash } from '@phosphor-icons/react'
+import { showContextMenu } from '@lobehub/ui'
+import type { ContextMenuItem } from '@lobehub/ui'
+import { Copy, Trash } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import { cardClassName } from '../ui'
 import type { WorkspaceNote, WorkspaceNotePatch } from '../../../shared/ipc-types'
@@ -11,6 +13,7 @@ interface StickyNoteCardProps {
   onAutoFocusHandled?: () => void
   onDelete: () => void
   onUpdate: (id: string, patch: WorkspaceNotePatch) => Promise<boolean>
+  onCopy?: (text: string) => void
 }
 
 const SAVE_DELAY = 450
@@ -20,7 +23,8 @@ export default function StickyNoteCard({
   autoFocus = false,
   onAutoFocusHandled,
   onDelete,
-  onUpdate
+  onUpdate,
+  onCopy
 }: StickyNoteCardProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(note.contentMd)
@@ -80,6 +84,28 @@ export default function StickyNoteCard({
     }, SAVE_DELAY)
   }, [persist])
 
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const items: ContextMenuItem[] = [
+      {
+        key: 'copy',
+        label: t('workspace.cardCopy'),
+        icon: <Copy className="h-3.5 w-3.5" />,
+        onClick: () => onCopy?.(latestDraftRef.current)
+      },
+      { type: 'divider', key: 'divider' },
+      {
+        key: 'delete',
+        label: t('workspace.noteDelete'),
+        icon: <Trash className="h-3.5 w-3.5" />,
+        onClick: onDelete,
+        danger: true
+      }
+    ]
+    showContextMenu(items)
+  }
+
   return (
     <MotionConfig reducedMotion="user">
       <motion.div
@@ -88,7 +114,7 @@ export default function StickyNoteCard({
         transition={{ duration: 0.18 }}
         data-card-kind="sticky"
         className={cardClassName('default', false, 'workspace-content-card workspace-content-card--sticky group/card relative flex h-full w-full flex-col gap-2 overflow-hidden p-3')}
-        onContextMenu={(event) => event.stopPropagation()}
+        onContextMenu={handleContextMenu}
       >
         <span className="workspace-sticky-fold" />
         <div className="flex shrink-0 items-center gap-2 pr-3">

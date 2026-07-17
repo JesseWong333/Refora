@@ -67,8 +67,14 @@ import {
   importWorkspaceAssets,
   listWorkspaceAssets,
   openWorkspaceAsset,
+  requireWorkspaceAssetFile,
   revealWorkspaceAsset
 } from '../services/workspaceAssets'
+import {
+  writeFileToClipboard,
+  writeMarkdownFileToClipboard,
+  writeTextToClipboard
+} from '../services/clipboard'
 
 type IpcChannelValue = (typeof IpcChannel)[keyof typeof IpcChannel]
 type HandlerChannel = Exclude<
@@ -554,6 +560,15 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (docs.length === 0) return ''
         return toBibtex(docs)
       }),
+
+    [IpcChannel.ClipboardWriteText]: (text: string): Result<void> =>
+      wrap(() => writeTextToClipboard(text)),
+    [IpcChannel.ClipboardCopyMarkdown]: (title: string, content: string): Result<void> =>
+      wrap(() => {
+        writeMarkdownFileToClipboard(title, content)
+      }),
+    [IpcChannel.ClipboardCopyWorkspaceAsset]: (id: string): Result<void> =>
+      wrap(() => writeFileToClipboard(requireWorkspaceAssetFile(repos(), id).filePath)),
 
     [IpcChannel.WorkspacesList]: (): Result<Workspace[]> =>
       wrap(() => repos().workspaces.list()),

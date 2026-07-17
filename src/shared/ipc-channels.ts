@@ -46,6 +46,10 @@ export const IpcChannel = {
   ExportToBibtex: 'export:toBibtex',
   ExportBibtexString: 'export:bibtexString',
 
+  ClipboardWriteText: 'clipboard:writeText',
+  ClipboardCopyMarkdown: 'clipboard:copyMarkdown',
+  ClipboardCopyWorkspaceAsset: 'clipboard:copyWorkspaceAsset',
+
   WorkspacesList: 'workspaces:list',
   WorkspacesCreate: 'workspaces:create',
   WorkspacesRename: 'workspaces:rename',
