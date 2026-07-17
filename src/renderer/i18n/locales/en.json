@@ -53,6 +53,8 @@
     "failed": "Import failed: {{message}}"
   },
   "list": {
+    "compact": "Compact paper list",
+    "expand": "Expand paper list",
     "title": "Title",
     "authors": "Authors",
     "year": "Year",

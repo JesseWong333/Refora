@@ -23,12 +23,15 @@ const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
 const DETAIL_MIN = 320
 const DETAIL_MAX = 640
-const WORKSPACE_MIN = 360
-const WORKSPACE_MAX = 900
+const WORKSPACE_MIN = 640
+const WORKSPACE_MAX = 1200
 const DOC_LIST_MIN = 280
+const DOC_LIST_COMPACT_MIN = 240
+const DOC_LIST_COMPACT_MAX = 480
+const DOC_LIST_COMPACT_DEFAULT = 320
 const SIDEBAR_DEFAULT = 224
 const DETAIL_DEFAULT = 384
-const WORKSPACE_DEFAULT = 480
+const WORKSPACE_DEFAULT = 800
 
 interface AppProps {
   listColumnState: ListColumnState | null
@@ -51,6 +54,8 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT)
   const [workspaceWidth, setWorkspaceWidth] = useState(WORKSPACE_DEFAULT)
+  const [documentListCompactWidth, setDocumentListCompactWidth] = useState(DOC_LIST_COMPACT_DEFAULT)
+  const [documentListCompact, setDocumentListCompact] = useState(false)
   const { mode: themeMode, resolvedTheme } = useTheme()
   useAppShortcuts()
 
@@ -67,6 +72,10 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const selectedIds = useDocumentStore((s) => s.selectedIds)
   const workspacePanelOpen = useWorkspaceStore((s) => s.panelOpen)
   const workspaceFullscreen = useWorkspaceStore((s) => s.fullscreen)
+
+  useEffect(() => {
+    setDocumentListCompact(workspacePanelOpen)
+  }, [workspacePanelOpen])
 
   useEffect(() => {
     if (focusedDocId || selectedIds.length >= 2) {
@@ -101,10 +110,14 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
       api.settings.get<number>('sidebarWidth', SIDEBAR_DEFAULT),
       api.settings.get<number>('detailWidth', DETAIL_DEFAULT),
       api.settings.get<number>('workspaceWidth', WORKSPACE_DEFAULT),
-    ]).then(([s, d, w]) => {
+      api.settings.get<number>('documentListCompactWidth', DOC_LIST_COMPACT_DEFAULT),
+    ]).then(([s, d, w, compactWidth]) => {
       setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, s)))
       setDetailWidth(Math.max(DETAIL_MIN, Math.min(DETAIL_MAX, d)))
       setWorkspaceWidth(Math.max(WORKSPACE_MIN, Math.min(WORKSPACE_MAX, w)))
+      setDocumentListCompactWidth(
+        Math.max(DOC_LIST_COMPACT_MIN, Math.min(DOC_LIST_COMPACT_MAX, compactWidth))
+      )
     })
   }, [])
 
@@ -129,6 +142,13 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
     return () => clearTimeout(timer)
   }, [workspaceWidth])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void api.settings.set('documentListCompactWidth', documentListCompactWidth)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [documentListCompactWidth])
+
   const handleToggleSidebar = () => {
     setSidebarCollapsed((v) => {
       const next = !v
@@ -147,6 +167,12 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
 
   const handleWorkspaceResize = useCallback((delta: number) => {
     setWorkspaceWidth((w) => Math.max(WORKSPACE_MIN, Math.min(WORKSPACE_MAX, w - delta)))
+  }, [])
+
+  const handleDocumentListCompactResize = useCallback((delta: number) => {
+    setDocumentListCompactWidth((width) =>
+      Math.max(DOC_LIST_COMPACT_MIN, Math.min(DOC_LIST_COMPACT_MAX, width + delta))
+    )
   }, [])
 
   const sidebarStyle = sidebarCollapsed
@@ -183,13 +209,35 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
               <ResizeDivider onResize={handleSidebarResize} variant="gap" />
             )}
             <div
-              className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-              style={{ minWidth: DOC_LIST_MIN }}
+              className={clsx(
+                'relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden transition-[width] duration-200',
+                workspacePanelOpen && documentListCompact ? 'shrink-0' : 'flex-1'
+              )}
+              style={
+                workspacePanelOpen && documentListCompact
+                  ? { width: `${documentListCompactWidth}px`, minWidth: DOC_LIST_COMPACT_MIN }
+                  : { minWidth: DOC_LIST_MIN }
+              }
             >
-              <DocumentList sidebarCollapsed={sidebarCollapsed} />
+              <DocumentList
+                sidebarCollapsed={sidebarCollapsed}
+                compact={workspacePanelOpen && documentListCompact}
+                onToggleCompact={
+                  workspacePanelOpen
+                    ? () => setDocumentListCompact((compact) => !compact)
+                    : undefined
+                }
+              />
             </div>
-            {rightPanelOpen && (
-              <ResizeDivider onResize={handleDetailResize} variant="line" />
+            {(rightPanelOpen || (workspacePanelOpen && documentListCompact)) && (
+              <ResizeDivider
+                onResize={
+                  workspacePanelOpen && documentListCompact
+                    ? handleDocumentListCompactResize
+                    : handleDetailResize
+                }
+                variant="line"
+              />
             )}
             <div
               className={clsx(
@@ -202,13 +250,16 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
                 <DetailPanel onClose={() => setRightPanelOpen(false)} />
               </div>
             </div>
-            {workspacePanelOpen && (
+            {workspacePanelOpen && !documentListCompact && (
               <ResizeDivider onResize={handleWorkspaceResize} variant="soft" />
             )}
             {workspacePanelOpen && (
               <div
-                style={{ width: `${workspaceWidth}px` }}
-                className="relative z-20 min-h-0 min-w-0 overflow-hidden border-l border-border/50"
+                style={documentListCompact ? undefined : { width: `${workspaceWidth}px` }}
+                className={clsx(
+                  'relative z-20 min-h-0 min-w-0 overflow-hidden border-l border-border/50',
+                  documentListCompact ? 'flex-1' : 'shrink-0'
+                )}
               >
                 <WorkspacePanel />
               </div>

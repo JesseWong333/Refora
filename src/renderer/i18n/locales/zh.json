@@ -53,6 +53,8 @@
     "failed": "导入失败：{{message}}"
   },
   "list": {
+    "compact": "缩略论文列表",
+    "expand": "展开论文列表",
     "title": "论文名称",
     "authors": "作者",
     "year": "发表年份",

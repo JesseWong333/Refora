@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRef, useState, useCallback, type ReactNode } from 'react'
-import { CaretUp, CaretDown, Star, Warning, Lightning, Check, FileText, FolderOpen, Copy, ArrowClockwise, Trash, MagnifyingGlass, TreeStructure, Plus, FilePlus } from '@phosphor-icons/react'
+import { CaretUp, CaretDown, CaretLeft, CaretRight, Star, Warning, Lightning, Check, FileText, FolderOpen, Copy, ArrowClockwise, Trash, MagnifyingGlass, TreeStructure, Plus, FilePlus } from '@phosphor-icons/react'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
@@ -12,6 +12,7 @@ import type { Document, ColumnId, SortField, ListColumn, Category } from '../../
 import { errorMessage } from '../../shared/ipc-types'
 
 const ROW_HEIGHT = 36
+const COMPACT_ROW_HEIGHT = 52
 const MIN_COL_WIDTH = 40
 const DOC_MIME = 'application/x-refora-docids'
 
@@ -129,20 +130,32 @@ function ColumnHeader({
   )
 }
 
-function SkeletonRows() {
+function SkeletonRows({ compact }: { compact: boolean }) {
   return (
     <div>
       {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="flex items-center px-3" style={{ height: ROW_HEIGHT }}>
-          <div className="w-10" />
-          <div className="w-8" />
-          <div className="w-8" />
-          <div className="skeleton-shimmer mx-1 h-3 flex-1 rounded" />
-          <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 192 }} />
-          <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 64 }} />
-          <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 128 }} />
-          <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 96 }} />
-          <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 192 }} />
+        <div
+          key={i}
+          className="flex items-center px-3"
+          style={{ height: compact ? COMPACT_ROW_HEIGHT : ROW_HEIGHT }}
+        >
+          <div className={compact ? 'w-7' : 'w-10'} />
+          {!compact && <div className="w-8" />}
+          {!compact && <div className="w-8" />}
+          <div className={compact ? 'min-w-0 flex-1 space-y-2' : 'contents'}>
+            <div className="skeleton-shimmer mx-1 h-3 flex-1 rounded" />
+            {compact ? (
+              <div className="skeleton-shimmer mx-1 h-3 w-2/3 rounded" />
+            ) : (
+              <>
+                <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 192 }} />
+                <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 64 }} />
+                <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 128 }} />
+                <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 96 }} />
+                <div className="skeleton-shimmer mx-1 h-3 rounded" style={{ width: 192 }} />
+              </>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -162,9 +175,15 @@ const LABEL_MAP: Record<string, string> = {
 
 interface DocumentListProps {
   sidebarCollapsed?: boolean
+  compact?: boolean
+  onToggleCompact?: () => void
 }
 
-export default function DocumentList({ sidebarCollapsed = false }: DocumentListProps = {}) {
+export default function DocumentList({
+  sidebarCollapsed = false,
+  compact = false,
+  onToggleCompact
+}: DocumentListProps = {}) {
   const { t } = useTranslation()
   const documents = useDocumentStore((s) => s.documents)
   const isLoading = useDocumentStore((s) => s.isLoading)
@@ -204,11 +223,12 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
   }, [])
 
   const displayDocs = isSearching ? searchResults : documents
+  const rowHeight = compact ? COMPACT_ROW_HEIGHT : ROW_HEIGHT
 
   const virtualizer = useVirtualizer({
     count: displayDocs.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 5
   })
 
@@ -427,7 +447,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
   )
 
   const colHeaderBar =
-    cols.length > 0 ? (
+    !compact && cols.length > 0 ? (
       <div className="relative flex" style={{ background: 'linear-gradient(to right, var(--color-background), var(--color-panel) 60px)' }}>
         <div className="w-10 flex-shrink-0" />
         <div className="w-8 flex-shrink-0" />
@@ -458,7 +478,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="relative z-10 flex h-14 shrink-0 items-center gap-2 drag-region">
+      <div className={`relative z-10 flex h-12 shrink-0 items-center drag-region ${compact ? 'gap-1.5 px-2' : 'gap-2'}`}>
         {sidebarCollapsed && (
           <div
             className="drag-region flex self-stretch shrink-0"
@@ -469,32 +489,87 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
             <div className="h-full flex-1" />
           </div>
         )}
-        <div className="mx-auto flex w-1/2 items-center gap-[10px] no-drag">
-          <MagnifyingGlass className="h-3.5 w-3.5 shrink-0 text-muted no-drag" />
-          <UiInput
-            variant="outlined"
-            inputSize="md"
-            className="w-full no-drag"
-            placeholder={t('topbar.search')}
-            title={`${t('topbar.search')} (⌘F)`}
-            value={searchQuery}
-            onChange={(e) => performSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault()
-                clearSearch()
-              }
-            }}
-          />
-          {isSearching ? (
-            <span className="shrink-0 text-sm text-muted">
-              {isLoading ? '' : `${displayDocs.length} ${t('common.results')}`}
-            </span>
+        <div className={`flex min-w-0 items-center no-drag ${compact ? 'flex-1 gap-1.5' : 'mx-auto w-4/5 max-w-[480px] gap-[10px]'}`}>
+          {compact ? (
+            <>
+              {!sidebarCollapsed && (
+                <div className="relative min-w-0 flex-1">
+                  <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                  <UiInput
+                    variant="outlined"
+                    inputSize="sm"
+                    className="doc-search-input min-w-0 pl-8 pr-2"
+                    placeholder={t('topbar.search')}
+                    title={`${t('topbar.search')} (⌘F)`}
+                    value={searchQuery}
+                    onChange={(e) => performSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault()
+                        clearSearch()
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              {onToggleCompact && (
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  className="shrink-0"
+                  onClick={onToggleCompact}
+                  title={t('list.expand')}
+                  aria-label={t('list.expand')}
+                >
+                  <CaretRight className="h-4 w-4" />
+                </UiButton>
+              )}
+            </>
           ) : (
-            <span className="shrink-0 text-sm text-muted font-medium whitespace-nowrap">{headerLabel}</span>
+            <>
+              <div className="relative min-w-0 flex-1">
+                <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                <UiInput
+                  variant="outlined"
+                  inputSize="sm"
+                  className="doc-search-input min-w-0 pl-8 pr-2"
+                  placeholder={t('topbar.search')}
+                  title={`${t('topbar.search')} (⌘F)`}
+                  value={searchQuery}
+                  onChange={(e) => performSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      clearSearch()
+                    }
+                  }}
+                />
+              </div>
+              {isSearching ? (
+                <span className="shrink-0 text-xs text-muted">
+                  {isLoading ? '' : `${displayDocs.length} ${t('common.results')}`}
+                </span>
+              ) : (
+                <span className="shrink-0 whitespace-nowrap text-xs font-medium text-muted">{headerLabel}</span>
+              )}
+              {onToggleCompact && (
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  className="shrink-0"
+                  onClick={onToggleCompact}
+                  title={t('list.compact')}
+                  aria-label={t('list.compact')}
+                >
+                  <CaretLeft className="h-4 w-4" />
+                </UiButton>
+              )}
+            </>
           )}
         </div>
-        {sidebarCollapsed && (
+        {sidebarCollapsed && !compact && (
           <div
             className="shrink-0 self-stretch"
             aria-hidden="true"
@@ -508,7 +583,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
 
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
-          <SkeletonRows />
+          <SkeletonRows compact={compact} />
         ) : displayDocs.length === 0 ? (
           isSearching ? (
             <EmptyState
@@ -570,44 +645,50 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                   onContextMenu={(e) => handleRowContextMenu(doc, e)}
                 >
                   <div
-                    className={`flex items-center px-3 text-xs cursor-pointer transition-colors duration-150 ${
+                    className={`flex ${
+                      compact ? 'items-start px-2 py-2' : 'items-center px-3'
+                    } text-xs cursor-pointer transition-colors duration-150 ${
                       isSelected ? 'bg-active' : 'hover:bg-hover'
                     }`}
-                    style={{ height: ROW_HEIGHT }}
+                    style={{ height: rowHeight }}
                     onClick={(e) => handleRowClick(doc.id, e)}
                   >
-                    <div className="w-10 flex-shrink-0 flex items-center justify-center">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-border bg-background accent-accent cursor-pointer"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          e.stopPropagation()
-                          toggleSelect(doc.id)
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                    <div className="w-8 flex-shrink-0 flex items-center justify-center text-center">
-                      {isMissing ? (
-                        <span title={t('detail.relocate') ?? 'Relocate'}>
-                          <Warning className="h-4 w-4 text-warning" />
-                        </span>
-                      ) : (
-                        <button
-                          className="flex items-center justify-center text-accent transition-colors duration-150 hover:text-accent-hover cursor-pointer"
-                          title={t('detail.open')}
-                          aria-label={t('detail.open')}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openPdf(doc.id)
-                          }}
-                        >
-                          <FileText className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                    <div className="w-8 flex-shrink-0 text-center">
+                    {!compact && (
+                      <>
+                        <div className="flex w-10 flex-shrink-0 items-center justify-center">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-border bg-background accent-accent cursor-pointer"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              toggleSelect(doc.id)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        <div className="flex w-8 flex-shrink-0 items-center justify-center text-center">
+                          {isMissing ? (
+                            <span title={t('detail.relocate') ?? 'Relocate'}>
+                              <Warning className="h-4 w-4 text-warning" />
+                            </span>
+                          ) : (
+                            <button
+                              className="flex items-center justify-center text-accent transition-colors duration-150 hover:text-accent-hover cursor-pointer"
+                              title={t('detail.open')}
+                              aria-label={t('detail.open')}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openPdf(doc.id)
+                              }}
+                            >
+                              <FileText className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                    <div className={`flex-shrink-0 text-center ${compact ? 'w-7 pt-0.5' : 'w-8'}`}>
                       <button
                         className="cursor-pointer"
                         title={t('sidebar.starred')}
@@ -624,7 +705,21 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                         />
                       </button>
                     </div>
-                    {cols.map((col) => {
+                    {compact ? (
+                      <div className="min-w-0 flex-1 pl-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className={`min-w-0 flex-1 truncate text-xs font-medium leading-4 ${isMissing ? 'text-muted' : 'text-foreground'}`}>
+                            {isSearching ? highlightMatch(renderCell(doc, 'title'), searchQuery) : renderCell(doc, 'title')}
+                          </span>
+                          {hasError && !isMissing && (
+                            <Lightning className="h-3.5 w-3.5 shrink-0 text-error" aria-hidden="true" />
+                          )}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs leading-4 text-muted">
+                          {isSearching ? highlightMatch(renderCell(doc, 'authors'), searchQuery) : renderCell(doc, 'authors')}
+                        </div>
+                      </div>
+                    ) : cols.map((col) => {
                       const cellText = renderCell(doc, col.id)
                       const content = isSearching ? highlightMatch(cellText, searchQuery) : cellText
                       return (
@@ -643,7 +738,7 @@ export default function DocumentList({ sidebarCollapsed = false }: DocumentListP
                         </div>
                       )
                     })}
-                    {hasError && !isMissing && (
+                    {!compact && hasError && !isMissing && (
                       <div className="ml-1 flex-shrink-0" title={`${t('common.networkError')} (${doc.metadataAttempts})`}>
                         <Lightning className="h-3.5 w-3.5 text-error" aria-hidden="true" />
                       </div>

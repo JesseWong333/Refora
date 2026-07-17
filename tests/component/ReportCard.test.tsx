@@ -43,7 +43,9 @@ vi.mock('../../src/renderer/components/workspace/ChatPanel', () => ({
 }))
 
 vi.mock('../../src/renderer/components/ResizeDivider', () => ({
-  default: () => <div>Resize divider</div>
+  default: ({ orientation = 'vertical' }: { orientation?: 'vertical' | 'horizontal' }) => (
+    <div data-testid="resize-divider" data-orientation={orientation}>Resize divider</div>
+  )
 }))
 
 vi.mock('@lobehub/ui', () => ({
@@ -360,6 +362,18 @@ describe('Workspace card types', () => {
 })
 
 describe('WorkspacePanel workspace switcher', () => {
+  it('places the board and AI chat side by side with a vertical divider', () => {
+    render(<WorkspacePanel />)
+
+    const board = screen.getByText('Board')
+    const chat = screen.getByText('Chat panel')
+    const divider = screen.getByTestId('resize-divider')
+
+    expect(board.parentElement?.parentElement).toBe(chat.parentElement?.parentElement)
+    expect(chat.parentElement?.parentElement).toHaveClass('flex-row')
+    expect(divider).toHaveAttribute('data-orientation', 'vertical')
+  })
+
   it('shows all workspaces and marks the active workspace', () => {
     render(<WorkspacePanel />)
 

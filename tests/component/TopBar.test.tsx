@@ -73,6 +73,7 @@ describe('Sidebar actions', () => {
   afterEach(() => {
     cleanup()
     api.import.addFiles = originalAddFiles
+    delete document.documentElement.dataset.platform
   })
 
   it('renders add file / identifier import / collapse buttons in header', () => {
@@ -113,7 +114,23 @@ describe('Sidebar actions', () => {
 
   it('renders expand button when collapsed', () => {
     renderSidebar(true)
-    expect(screen.getByLabelText('tooltip.expandSidebar')).toBeInTheDocument()
+    const buttons = [
+      screen.getByLabelText('tooltip.expandSidebar'),
+      screen.getByLabelText('tooltip.addFile'),
+      screen.getByLabelText('tooltip.importFromIdentifier')
+    ]
+
+    for (const button of buttons) {
+      expect(button).toHaveClass('h-6', 'w-6')
+      expect(button.querySelector('svg')).toHaveClass('h-4', 'w-4')
+    }
+  })
+
+  it('centers the expanded macOS toolbar on the traffic lights', () => {
+    document.documentElement.dataset.platform = 'mac'
+    renderSidebar()
+
+    expect(screen.getByLabelText('tooltip.collapseSidebar').closest('.h-10')).not.toBeNull()
   })
 
   it('opens identifier import from the header', async () => {

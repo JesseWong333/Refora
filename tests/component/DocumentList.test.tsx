@@ -247,4 +247,35 @@ describe('DocumentList', () => {
     const sortIndicator = document.querySelector('svg.h-3.w-3')
     expect(sortIndicator).toBeInTheDocument()
   })
+
+  it('renders the compact two-line paper list and expands it from the toggle', async () => {
+    const onToggleCompact = vi.fn()
+    mockState.documents = [
+      makeDoc({ id: 'doc-1', title: 'Compact Paper', authors: 'Compact Author' })
+    ]
+
+    render(<DocumentList compact onToggleCompact={onToggleCompact} />)
+
+    expect(screen.getByText('Compact Paper')).toHaveClass('text-xs')
+    expect(screen.getByText('Compact Author')).toBeInTheDocument()
+    expect(screen.queryByText('list.title')).not.toBeInTheDocument()
+    expect(screen.getByText('Compact Paper').closest('[style*="height: 52px"]')).not.toBeNull()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'detail.open' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'sidebar.starred' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'list.expand' }))
+
+    expect(onToggleCompact).toHaveBeenCalledOnce()
+  })
+
+  it('uses the compact search control sizing in the expanded list', () => {
+    render(<DocumentList />)
+
+    const searchInput = screen.getByPlaceholderText('topbar.search')
+    expect(searchInput).toHaveClass('h-7')
+    expect(searchInput.closest('.h-12')).not.toBeNull()
+    expect(searchInput.closest('[class~="w-4/5"]')).toHaveClass('max-w-[480px]')
+    expect(screen.getByText('sidebar.allFiles · 0')).toHaveClass('text-xs')
+  })
 })

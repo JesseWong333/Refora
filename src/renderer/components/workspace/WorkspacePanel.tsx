@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsOutSimple, ArrowsInSimple, CaretDown, Check, FilePlus, NotePencil, SquaresFour, Sticker, X } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
@@ -8,8 +8,9 @@ import ResizeDivider from '../ResizeDivider'
 import Board, { type BoardHandle } from './Board'
 import ChatPanel from './ChatPanel'
 
-const CHAT_MIN = 220
-const CHAT_DEFAULT = 280
+const CHAT_MIN = 300
+const CHAT_MAX = 560
+const CHAT_DEFAULT = 380
 
 export default function WorkspacePanel() {
   const { t } = useTranslation()
@@ -21,34 +22,29 @@ export default function WorkspacePanel() {
   const toggleFullscreen = useWorkspaceStore((s) => s.toggleFullscreen)
   const closePanel = useWorkspaceStore((s) => s.closePanel)
 
-  const [chatHeight, setChatHeight] = useState(CHAT_DEFAULT)
+  const [chatWidth, setChatWidth] = useState(CHAT_DEFAULT)
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null)
   const boardRef = useRef<BoardHandle | null>(null)
 
   useClickOutside(workspaceMenuRef, () => setWorkspaceMenuOpen(false), workspaceMenuOpen)
 
-  const chatMax = useMemo(() => {
-    if (typeof window === 'undefined') return 520
-    return Math.max(CHAT_MIN, window.innerHeight - 48 - 24)
+  useEffect(() => {
+    void api.settings.get<number>('workspaceChatWidth', CHAT_DEFAULT).then((width) => {
+      setChatWidth(Math.max(CHAT_MIN, Math.min(CHAT_MAX, width)))
+    })
   }, [])
 
   useEffect(() => {
-    void api.settings.get<number>('workspaceChatHeight', CHAT_DEFAULT).then((h) => {
-      setChatHeight(Math.max(CHAT_MIN, Math.min(chatMax, h)))
-    })
-  }, [chatMax])
-
-  useEffect(() => {
     const timer = setTimeout(() => {
-      void api.settings.set('workspaceChatHeight', chatHeight)
+      void api.settings.set('workspaceChatWidth', chatWidth)
     }, 500)
     return () => clearTimeout(timer)
-  }, [chatHeight])
+  }, [chatWidth])
 
   const handleChatResize = useCallback((delta: number) => {
-    setChatHeight((h) => Math.max(CHAT_MIN, Math.min(chatMax, h - delta)))
-  }, [chatMax])
+    setChatWidth((width) => Math.max(CHAT_MIN, Math.min(CHAT_MAX, width - delta)))
+  }, [])
 
   const isMac = document.documentElement.dataset.platform === 'mac'
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -178,14 +174,14 @@ export default function WorkspacePanel() {
           )}
         </div>
       </div>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <Board ref={boardRef} />
         </div>
-        <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="line" />
+        <ResizeDivider onResize={handleChatResize} orientation="vertical" variant="line" />
         <div
-          style={{ height: `${chatHeight}px` }}
-          className="min-h-0 shrink-0 overflow-hidden bg-background"
+          style={{ width: `min(${chatWidth}px, 48%)` }}
+          className="min-h-0 min-w-0 shrink-0 overflow-hidden bg-background"
         >
           <ChatPanel />
         </div>
