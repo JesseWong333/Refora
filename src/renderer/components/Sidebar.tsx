@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { FilePlus, FileArrowDown, ArrowLineLeft, ArrowLineRight, CircleNotch } from '@phosphor-icons/react'
 import { useDocumentStore } from '../store/documentStore'
@@ -94,7 +93,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     )
     return (
       <>
-        {createPortal(toolbar, document.body)}
+        {toolbar}
         <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
         <ImportByIdentifierDialog open={showIdentifierImport} onClose={() => setShowIdentifierImport(false)} />
       </>
@@ -103,7 +102,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
   return (
     <aside className="sidebar-floating flex h-full w-full shrink-0 flex-col">
-      <div className={`drag-region flex h-10 shrink-0 items-center px-2 ${isMac ? 'pl-[68px]' : ''}`}>
+      <div className="drag-region flex h-10 shrink-0 items-center px-2">
         <div className="ml-auto mr-2 flex items-center gap-3 no-drag">
           <IconTooltip label={t('tooltip.collapseSidebar')} appearance="sidebar">
             <UiButton

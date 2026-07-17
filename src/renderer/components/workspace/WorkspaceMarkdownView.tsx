@@ -22,7 +22,6 @@ interface WorkspaceMarkdownViewProps {
   timestamp: number
   initialMode?: WorkspaceMarkdownViewMode
   fullscreen?: boolean
-  padTrafficLights?: boolean
   onBack: () => void
   onUpdate?: (id: string, patch: { title: string; contentMd: string }) => Promise<boolean>
 }
@@ -35,7 +34,6 @@ export default function WorkspaceMarkdownView({
   timestamp,
   initialMode = 'read',
   fullscreen = false,
-  padTrafficLights = false,
   onBack,
   onUpdate
 }: WorkspaceMarkdownViewProps) {
@@ -130,9 +128,7 @@ export default function WorkspaceMarkdownView({
     <div className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background ${
       fullscreen ? 'workspace-fullscreen' : ''
     }`}>
-      <div className={`drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 ${
-        padTrafficLights ? 'pl-[86px]' : ''
-      }`}>
+      <div className="drag-region relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3">
         <IconTooltip label={t('workspace.markdownBackToBoard')} appearance="sidebar">
           <button
             type="button"

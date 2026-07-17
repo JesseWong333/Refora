@@ -53,6 +53,10 @@ const noop = async () => undefined
     restoreFile: noop,
   },
 
+  search: {
+    global: async () => ({ documents: [], workspaceFiles: [], chats: [] }),
+  },
+
   import: {
     addFiles: async () => ({ added: [], skipped: [], errors: [] }),
     addFolder: async () => ({ added: [], skipped: [], errors: [] }),

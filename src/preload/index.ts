@@ -22,6 +22,7 @@ import type {
   Document,
   DocumentPatch,
   EventChannel,
+  GlobalSearchResult,
   IdentifierImportResult,
   ImportProgress,
   LibrarySwitchResult,
@@ -132,6 +133,10 @@ const api: ReforaApi = {
     relocateFile: (id: string, newPath: string) =>
       invoke<Document>(IpcChannel.DocumentsRelocateFile, id, newPath),
     restoreFile: (id: string) => invoke<Document>(IpcChannel.DocumentsRestoreFile, id)
+  },
+
+  search: {
+    global: (q: string) => invoke<GlobalSearchResult>(IpcChannel.GlobalSearch, q)
   },
 
   import: {

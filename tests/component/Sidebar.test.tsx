@@ -95,12 +95,32 @@ describe('Sidebar', () => {
     expect(screen.getByText('sidebar.starred')).toBeInTheDocument()
   })
 
+  it('shows the current document count on the active smart list item', () => {
+    mocks.state.documents = [{}, {}, {}] as Document[]
+    renderSidebar()
+
+    const allFilesItem = screen.getByText('sidebar.allFiles').closest('[class*="sidebar-item"]')
+    expect(allFilesItem).toHaveTextContent('3')
+    expect(screen.getByText('sidebar.recentlyRead').closest('[class*="sidebar-item"]')).not.toHaveTextContent('3')
+  })
+
   it('does not render native titles for the top toolbar actions', () => {
     renderSidebar()
 
     expect(screen.getByLabelText('tooltip.collapseSidebar')).not.toHaveAttribute('title')
     expect(screen.getByLabelText('tooltip.addFile')).not.toHaveAttribute('title')
     expect(screen.getByLabelText('tooltip.importFromIdentifier')).not.toHaveAttribute('title')
+  })
+
+  it('renders the collapsed toolbar in its current parent', () => {
+    const { container } = render(<Sidebar collapsed onToggleCollapse={vi.fn()} />)
+
+    const toolbar = container.querySelector('.sidebar-floating-toolbar')
+    expect(toolbar).toBeInTheDocument()
+    expect(toolbar).toHaveStyle({ left: '8px' })
+    expect(screen.getByLabelText('tooltip.expandSidebar')).toBeInTheDocument()
+    expect(screen.getByLabelText('tooltip.addFile')).toBeInTheDocument()
+    expect(screen.getByLabelText('tooltip.importFromIdentifier')).toBeInTheDocument()
   })
 
   it('calls setListMode with { mode: "all" } when All Files is clicked', async () => {

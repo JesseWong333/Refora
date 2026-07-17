@@ -16,6 +16,8 @@ export const IpcChannel = {
   DocumentsRelocateFile: 'documents:relocateFile',
   DocumentsRestoreFile: 'documents:restoreFile',
 
+  GlobalSearch: 'search:global',
+
   ImportAddFiles: 'import:addFiles',
   ImportAddFolder: 'import:addFolder',
   ImportFromJson: 'import:fromJson',

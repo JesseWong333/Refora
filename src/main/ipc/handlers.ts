@@ -18,6 +18,7 @@ import type {
   ChatThread,
   Document,
   DocumentPatch,
+  GlobalSearchResult,
   IdentifierImportResult,
   ListFilter,
   ListModelsRequest,
@@ -328,6 +329,20 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         restoreToOriginal(r, id)
         const doc = r.documents.get(id)
         return doc as Document
+      }),
+
+    [IpcChannel.GlobalSearch]: (q: string): Result<GlobalSearchResult> =>
+      wrap(() => {
+        if (typeof q !== 'string' || !q.trim()) {
+          return { documents: [], workspaceFiles: [], chats: [] }
+        }
+        const r = repos()
+        const query = q.trim().slice(0, 500)
+        return {
+          documents: r.documents.search(query, 10),
+          workspaceFiles: r.workspaceAssets.search(query, 10),
+          chats: r.chat.search(query, 10)
+        }
       }),
 
     [IpcChannel.ImportAddFiles]: (paths: string[]): Promise<Result<ImportResult>> => {

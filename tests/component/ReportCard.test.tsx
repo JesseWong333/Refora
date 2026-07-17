@@ -398,6 +398,14 @@ describe('WorkspacePanel workspace switcher', () => {
     expect(divider).toHaveAttribute('data-orientation', 'vertical')
   })
 
+  it('keeps the workspace toolbar draggable while preserving interactive controls', () => {
+    render(<WorkspacePanel />)
+
+    const toolbar = screen.getByText('Research').closest('.h-12')
+    expect(toolbar).toHaveClass('drag-region')
+    expect(screen.getByRole('button', { name: 'workspace.switchWorkspace' })).toHaveClass('no-drag')
+  })
+
   it('replaces the board and chat with a Markdown reader when an editable card opens', () => {
     mockWorkspacePanelState.reports = [makeReport({ id: 'report-1' })]
     render(<WorkspacePanel />)

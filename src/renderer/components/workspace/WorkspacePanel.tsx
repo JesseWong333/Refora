@@ -71,10 +71,8 @@ export default function WorkspacePanel() {
     setActiveMarkdownCard({ ...card, mode })
   }, [])
 
-  const isMac = document.documentElement.dataset.platform === 'mac'
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
   const name = active?.name ?? t('workspace.untitled')
-  const padTrafficLights = isMac && fullscreen
   const activeNote = activeMarkdownCard?.kind === 'note'
     ? notes.find((note) => note.id === activeMarkdownCard.id) ?? null
     : null
@@ -96,7 +94,6 @@ export default function WorkspacePanel() {
         timestamp={activeNote.updatedAt}
         initialMode={activeMarkdownCard?.mode}
         fullscreen={fullscreen}
-        padTrafficLights={padTrafficLights}
         onBack={() => setActiveMarkdownCard(null)}
         onUpdate={updateNote}
       />
@@ -114,7 +111,6 @@ export default function WorkspacePanel() {
         timestamp={activeReport.createdAt}
         initialMode={activeMarkdownCard?.mode}
         fullscreen={fullscreen}
-        padTrafficLights={padTrafficLights}
         onBack={() => setActiveMarkdownCard(null)}
         onUpdate={updateReport}
       />
@@ -131,7 +127,6 @@ export default function WorkspacePanel() {
         contentMd={aiSummaryMarkdown(activeSummary.summary)}
         timestamp={activeSummary.summary.updatedAt}
         fullscreen={fullscreen}
-        padTrafficLights={padTrafficLights}
         onBack={() => setActiveMarkdownCard(null)}
       />
     )
@@ -144,9 +139,7 @@ export default function WorkspacePanel() {
       }`}
     >
       <div
-        className={`drag-region relative z-30 flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 ${
-          padTrafficLights ? 'pl-[86px]' : ''
-        }`}
+        className="drag-region relative z-30 flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3"
       >
         <div ref={workspaceMenuRef} className="relative flex min-w-0 flex-1 items-center gap-1">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">

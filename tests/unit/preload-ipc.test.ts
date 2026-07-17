@@ -68,6 +68,7 @@ describe('preload IPC bridge', () => {
       { channel: IpcChannel.DocumentsRefreshMetadata, args: ['doc-1'], invoke: (value) => value.documents.refreshMetadata('doc-1') },
       { channel: IpcChannel.DocumentsRelocateFile, args: ['doc-1', '/tmp/paper.pdf'], invoke: (value) => value.documents.relocateFile('doc-1', '/tmp/paper.pdf') },
       { channel: IpcChannel.DocumentsRestoreFile, args: ['doc-1'], invoke: (value) => value.documents.restoreFile('doc-1') },
+      { channel: IpcChannel.GlobalSearch, args: ['query'], invoke: (value) => value.search.global('query') },
       { channel: IpcChannel.ImportAddFiles, args: [['/tmp/paper.pdf']], invoke: (value) => value.import.addFiles(['/tmp/paper.pdf']) },
       { channel: IpcChannel.ImportAddFolder, args: ['/tmp'], invoke: (value) => value.import.addFolder('/tmp') },
       { channel: IpcChannel.ImportFromJson, args: ['/tmp/export.json'], invoke: (value) => value.import.fromJson('/tmp/export.json') },

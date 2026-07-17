@@ -244,6 +244,51 @@ describe('workspace repositories', () => {
     expect(repos.workspaceItems.list(workspaceId)).toEqual([])
   })
 
+  it('searches workspace files across workspaces with literal wildcard handling', () => {
+    const otherWorkspace = repos.workspaces.create('Experiments')
+    repos.workspaceAssets.insert({
+      id: 'asset-search',
+      workspaceId,
+      fileName: 'survey_100%.csv',
+      filePath: 'refora-assets/asset-search/survey_100%.csv',
+      sourcePath: '/tmp/survey_100%.csv',
+      mimeType: 'text/csv',
+      previewKind: 'text',
+      fileSize: 10,
+      fileHash: 'search-hash',
+      fileMissing: 0,
+      createdAt: 100,
+      updatedAt: 200
+    })
+    repos.workspaceAssets.insert({
+      id: 'asset-other',
+      workspaceId: otherWorkspace.id,
+      fileName: 'image.png',
+      filePath: 'refora-assets/asset-other/image.png',
+      sourcePath: '/tmp/image.png',
+      mimeType: 'image/png',
+      previewKind: 'image',
+      fileSize: 20,
+      fileHash: 'other-hash',
+      fileMissing: 0,
+      createdAt: 300,
+      updatedAt: 300
+    })
+
+    expect(repos.workspaceAssets.search('100%')).toEqual([
+      expect.objectContaining({
+        id: 'asset-search',
+        workspaceId,
+        workspaceName: 'Research',
+        fileName: 'survey_100%.csv'
+      })
+    ])
+    expect(repos.workspaceAssets.search('image/png')).toEqual([
+      expect.objectContaining({ id: 'asset-other', workspaceName: 'Experiments' })
+    ])
+    expect(repos.workspaceAssets.search('   ')).toEqual([])
+  })
+
   it('creates, updates, orders, and deletes workspace notes', () => {
     vi.spyOn(Date, 'now')
       .mockReturnValueOnce(100)

@@ -188,6 +188,46 @@ describe('ChatRepository', () => {
     })
   })
 
+  describe('search', () => {
+    it('searches titles and message content across workspaces without duplicate threads', () => {
+      const titleThread = repos.chat.createThread('ws-1', 'p1')
+      repos.chat.updateTitle(titleThread.id, 'Transformer survey')
+      repos.chat.addMessage(titleThread.id, 'user', 'unrelated prompt')
+      const messageThread = repos.chat.createThread('ws-2', 'p1')
+      repos.chat.addMessage(messageThread.id, 'user', 'Explain sparse attention in transformers')
+      repos.chat.addMessage(messageThread.id, 'assistant', 'Transformer sparse attention reduces compute')
+
+      const results = repos.chat.search('transform')
+
+      expect(results).toHaveLength(2)
+      expect(results).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          threadId: titleThread.id,
+          workspaceName: 'WS1',
+          title: 'Transformer survey'
+        }),
+        expect.objectContaining({
+          threadId: messageThread.id,
+          workspaceName: 'WS2',
+          snippet: expect.stringContaining('Transformer'),
+          role: 'assistant'
+        })
+      ]))
+    })
+
+    it('treats LIKE wildcards as literal search text and ignores tool messages', () => {
+      const thread = repos.chat.createThread('ws-1', 'p1')
+      repos.chat.addMessage(thread.id, 'assistant', 'Accuracy reached 100%')
+      const toolOnly = repos.chat.createThread('ws-1', 'p1')
+      repos.chat.addMessage(toolOnly.id, 'tool', 'Accuracy reached 100%')
+
+      expect(repos.chat.search('100%')).toEqual([
+        expect.objectContaining({ threadId: thread.id, snippet: 'Accuracy reached 100%' })
+      ])
+      expect(repos.chat.search('   ')).toEqual([])
+    })
+  })
+
   describe('deleteThread', () => {
     it('removes the thread', () => {
       const thread = repos.chat.createThread('ws-1', 'p1')

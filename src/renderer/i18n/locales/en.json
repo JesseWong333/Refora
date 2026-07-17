@@ -35,6 +35,28 @@
     "search": "Search title, authors, venue…",
     "settings": "Settings"
   },
+  "globalSearch": {
+    "label": "Global search",
+    "placeholder": "Search papers, workspace files, and chats…",
+    "loading": "Searching",
+    "clear": "Clear search",
+    "results": "Search results",
+    "noResults": "No papers, workspace files, or chats match your search.",
+    "papers": "Papers",
+    "workspaceFiles": "Workspace files",
+    "chats": "AI chats",
+    "openPaper": "Open paper",
+    "openWorkspaceFile": "Open workspace file",
+    "openChat": "Open AI chat",
+    "paperFileMissing": "This paper file is missing. Relocate it from the paper details first.",
+    "unavailableWhileStreaming": "Wait for the current AI response to finish before switching context.",
+    "untitledChat": "Untitled conversation",
+    "hint": "↑↓ Navigate · Enter Open · Esc Close",
+    "role": {
+      "user": "You",
+      "assistant": "AI"
+    }
+  },
   "tooltip": {
     "collapseSidebar": "Collapse Sidebar",
     "expandSidebar": "Expand Sidebar",

@@ -9,7 +9,7 @@ vi.mock('react-i18next', () => ({
 function renderView(overrides: Partial<React.ComponentProps<typeof WorkspaceMarkdownView>> = {}) {
   const onBack = vi.fn()
   const onUpdate = vi.fn().mockResolvedValue(true)
-  render(
+  const view = render(
     <WorkspaceMarkdownView
       kind="note"
       id="note-1"
@@ -21,7 +21,7 @@ function renderView(overrides: Partial<React.ComponentProps<typeof WorkspaceMark
       {...overrides}
     />
   )
-  return { onBack, onUpdate }
+  return { onBack, onUpdate, ...view }
 }
 
 afterEach(() => {
@@ -30,6 +30,14 @@ afterEach(() => {
 })
 
 describe('WorkspaceMarkdownView', () => {
+  it('keeps the fullscreen toolbar draggable while preserving interactive controls', () => {
+    renderView({ fullscreen: true })
+
+    const backButton = screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })
+    expect(backButton.closest('.h-12')).toHaveClass('drag-region')
+    expect(backButton).toHaveClass('no-drag')
+  })
+
   it('opens in reading mode and exposes a reading/editing switch', () => {
     renderView()
 

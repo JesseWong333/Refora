@@ -124,6 +124,14 @@ describe('documents repository', () => {
     expect(ids(repos.documents.search('pl'))).toEqual(['plain'])
   })
 
+  it('applies the requested search limit in SQL', () => {
+    repos.documents.insert(makeDoc('shared-1', { title: 'Shared search result one' }))
+    repos.documents.insert(makeDoc('shared-2', { title: 'Shared search result two' }))
+    repos.documents.insert(makeDoc('shared-3', { title: 'Shared search result three' }))
+
+    expect(repos.documents.search('Shared search', 2)).toHaveLength(2)
+  })
+
   it('update rejects non-editable fields with forbidden_field', () => {
     repos.documents.insert(makeDoc('d1'))
     expectRepoError(() => repos.documents.update('d1', { id: 'x' } as never), 'forbidden_field')

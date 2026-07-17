@@ -109,6 +109,33 @@ export type DocumentPatch = Partial<Pick<Document, EditableField>>
 
 export type SearchResult = Document[]
 
+export interface WorkspaceFileSearchResult {
+  id: string
+  workspaceId: string
+  workspaceName: string
+  fileName: string
+  mimeType: string
+  previewKind: WorkspaceAssetPreviewKind
+  fileMissing: number
+  updatedAt: number
+}
+
+export interface ChatSearchResult {
+  threadId: string
+  workspaceId: string
+  workspaceName: string
+  title: string | null
+  snippet: string
+  role: 'user' | 'assistant' | null
+  matchedAt: number
+}
+
+export interface GlobalSearchResult {
+  documents: Document[]
+  workspaceFiles: WorkspaceFileSearchResult[]
+  chats: ChatSearchResult[]
+}
+
 export type ColumnId = 'title' | 'authors' | 'year' | 'venue' | 'addedAt' | 'filePath'
 
 export interface ListColumn {
@@ -545,6 +572,9 @@ export interface ReforaApi {
     refreshMetadata(id: string): Promise<Document>
     relocateFile(id: string, newPath: string): Promise<Document>
     restoreFile(id: string): Promise<Document>
+  }
+  search: {
+    global(q: string): Promise<GlobalSearchResult>
   }
   import: {
     addFiles(paths: string[]): Promise<PdfImportResult>

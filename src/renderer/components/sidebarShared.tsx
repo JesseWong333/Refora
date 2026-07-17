@@ -7,6 +7,7 @@ export function SidebarItem({
   active = false,
   disabled = false,
   title,
+  trailing,
   onClick,
   onContextMenu,
   onDragOver,
@@ -18,6 +19,7 @@ export function SidebarItem({
   active?: boolean
   disabled?: boolean
   title?: string
+  trailing?: ReactNode
   onClick?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   onDragOver?: (e: React.DragEvent) => void
@@ -42,7 +44,8 @@ export function SidebarItem({
       }}
     >
       {icon && <span className="flex-shrink-0">{icon}</span>}
-      <span className="truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {trailing}
     </div>
   )
 }

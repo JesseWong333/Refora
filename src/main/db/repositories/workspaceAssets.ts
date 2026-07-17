@@ -1,4 +1,4 @@
-import type { WorkspaceAsset } from '../../../shared/ipc-types'
+import type { WorkspaceAsset, WorkspaceFileSearchResult } from '../../../shared/ipc-types'
 import type { SqliteDb } from '../types'
 import { RepoError } from './errors'
 
@@ -36,6 +36,37 @@ export function createWorkspaceAssetsRepository(db: SqliteDb) {
       | Record<string, unknown>
       | undefined
     return row ? mapWorkspaceAsset(row) : null
+  }
+
+  function search(q: string, limit = 10): WorkspaceFileSearchResult[] {
+    const trimmed = q.trim()
+    if (!trimmed) return []
+    const escaped = trimmed.replace(/[%_\\]/g, '\\$&')
+    const like = `%${escaped}%`
+    const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)))
+    const rows = db
+      .prepare(
+        `SELECT a.id, a.workspaceId, w.name AS workspaceName, a.fileName, a.mimeType,
+                a.previewKind, a.fileMissing, a.updatedAt
+         FROM workspace_assets a
+         JOIN workspaces w ON w.id = a.workspaceId
+         WHERE a.fileName LIKE ? ESCAPE '\\'
+            OR a.sourcePath LIKE ? ESCAPE '\\'
+            OR a.mimeType LIKE ? ESCAPE '\\'
+         ORDER BY a.updatedAt DESC, a.id
+         LIMIT ?`
+      )
+      .all(like, like, like, safeLimit) as Record<string, unknown>[]
+    return rows.map((row) => ({
+      id: row.id as string,
+      workspaceId: row.workspaceId as string,
+      workspaceName: row.workspaceName as string,
+      fileName: row.fileName as string,
+      mimeType: row.mimeType as string,
+      previewKind: row.previewKind as WorkspaceAsset['previewKind'],
+      fileMissing: row.fileMissing as number,
+      updatedAt: row.updatedAt as number
+    }))
   }
 
   function insert(asset: NewWorkspaceAsset): WorkspaceAsset {
@@ -77,5 +108,5 @@ export function createWorkspaceAssetsRepository(db: SqliteDb) {
     db.prepare('UPDATE workspaces SET updatedAt = ? WHERE id = ?').run(Date.now(), asset.workspaceId)
   }
 
-  return { list, get, insert, setFileMissing, delete: remove }
+  return { list, search, get, insert, setFileMissing, delete: remove }
 }

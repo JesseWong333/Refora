@@ -160,6 +160,42 @@ describe('IPC handlers (data layer)', () => {
     expect(electronMocks.showItemInFolder).toHaveBeenCalledWith('/abs/d1.pdf')
   })
 
+  it('searches papers, workspace files, and chat history through one IPC result', () => {
+    repos.documents.insert(makeDoc('d1', { title: 'Searchable paper' }))
+    const documentSearch = vi.spyOn(repos.documents, 'search')
+    const workspace = repos.workspaces.create('Research')
+    repos.workspaceAssets.insert({
+      id: 'asset-1',
+      workspaceId: workspace.id,
+      fileName: 'searchable-data.csv',
+      filePath: 'refora-assets/asset-1/searchable-data.csv',
+      sourcePath: '/tmp/searchable-data.csv',
+      mimeType: 'text/csv',
+      previewKind: 'text',
+      fileSize: 1,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 1,
+      updatedAt: 1
+    })
+    const thread = repos.chat.createThread(workspace.id, 'provider')
+    repos.chat.addMessage(thread.id, 'user', 'searchable chat question')
+
+    expect(handlers[IpcChannel.GlobalSearch]('searchable')).toEqual({
+      ok: true,
+      data: {
+        documents: [expect.objectContaining({ id: 'd1' })],
+        workspaceFiles: [expect.objectContaining({ id: 'asset-1', workspaceName: 'Research' })],
+        chats: [expect.objectContaining({ threadId: thread.id, workspaceName: 'Research' })]
+      }
+    })
+    expect(documentSearch).toHaveBeenCalledWith('searchable', 10)
+    expect(handlers[IpcChannel.GlobalSearch]('   ')).toEqual({
+      ok: true,
+      data: { documents: [], workspaceFiles: [], chats: [] }
+    })
+  })
+
   it('delegates metadata refresh operations when the service is ready', () => {
     repos.documents.insert(makeDoc('d1'))
     const metadataService = {

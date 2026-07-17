@@ -6,6 +6,7 @@ import { IconContext } from '@phosphor-icons/react'
 import Sidebar from './components/Sidebar'
 import DocumentList from './components/DocumentList'
 import DetailPanel from './components/DetailPanel'
+import GlobalSearch from './components/GlobalSearch'
 import WorkspacePanel from './components/workspace/WorkspacePanel'
 import ResizeDivider from './components/ResizeDivider'
 import ConfirmDialog from './components/ConfirmDialog'
@@ -189,83 +190,95 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
       enableCustomFonts={false}
     >
       <ContextMenuHost />
-      <div className="app-root h-screen w-screen overflow-hidden bg-background text-foreground">
+      <div className="app-root relative isolate flex h-screen w-screen overflow-hidden bg-background text-foreground">
         {showWizard && <FirstRunWizard onDone={() => setShowWizard(false)} />}
-        {workspaceFullscreen ? (
-          <div className="relative z-40 h-full min-h-0 w-full overflow-hidden">
-            <WorkspacePanel />
-          </div>
-        ) : (
-          <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-            <div style={sidebarStyle} className="relative z-30 shrink-0">
-              <div className="sidebar-vibrancy-frame" aria-hidden="true">
-                <div className="sidebar-vibrancy-frame__mask" />
-              </div>
-              <div className="relative z-10 h-full min-h-0" style={{ padding: 'var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset)' }}>
-                <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
-              </div>
+        {!workspaceFullscreen && !sidebarCollapsed && (
+          <div style={sidebarStyle} className="relative z-30 shrink-0" data-testid="app-sidebar-layer">
+            <div className="sidebar-vibrancy-frame" aria-hidden="true">
+              <div className="sidebar-vibrancy-frame__mask" />
             </div>
-            {!sidebarCollapsed && (
-              <ResizeDivider onResize={handleSidebarResize} variant="gap" />
-            )}
-            <div
-              className={clsx(
-                'relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden transition-[width] duration-200',
-                workspacePanelOpen && documentListCompact ? 'shrink-0' : 'flex-1'
-              )}
-              style={
-                workspacePanelOpen && documentListCompact
-                  ? { width: `${documentListCompactWidth}px`, minWidth: DOC_LIST_COMPACT_MIN }
-                  : { minWidth: DOC_LIST_MIN }
-              }
-            >
-              <DocumentList
-                sidebarCollapsed={sidebarCollapsed}
-                compact={workspacePanelOpen && documentListCompact}
-                onToggleCompact={
-                  workspacePanelOpen
-                    ? () => setDocumentListCompact((compact) => !compact)
-                    : undefined
-                }
-              />
+            <div className="relative z-10 h-full min-h-0" style={{ padding: 'var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset)' }}>
+              <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
             </div>
-            {(rightPanelOpen || (workspacePanelOpen && documentListCompact)) && (
-              <ResizeDivider
-                onResize={
-                  workspacePanelOpen && documentListCompact
-                    ? handleDocumentListCompactResize
-                    : handleDetailResize
-                }
-                variant="line"
-              />
-            )}
-            <div
-              className={clsx(
-                'relative z-20 min-w-0 overflow-hidden transition-[width] duration-200',
-                rightPanelOpen ? 'border-l border-border' : 'w-0 border-0'
-              )}
-              style={rightPanelOpen ? { width: `${detailWidth}px`, minWidth: 0 } : { width: 0 }}
-            >
-              <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
-                <DetailPanel onClose={() => setRightPanelOpen(false)} />
-              </div>
-            </div>
-            {workspacePanelOpen && !documentListCompact && (
-              <ResizeDivider onResize={handleWorkspaceResize} variant="soft" />
-            )}
-            {workspacePanelOpen && (
-              <div
-                style={documentListCompact ? undefined : { width: `${workspaceWidth}px` }}
-                className={clsx(
-                  'relative z-20 min-h-0 min-w-0 overflow-hidden border-l border-border/50',
-                  documentListCompact ? 'flex-1' : 'shrink-0'
-                )}
-              >
-                <WorkspacePanel />
-              </div>
-            )}
           </div>
         )}
+        {!workspaceFullscreen && !sidebarCollapsed && (
+          <ResizeDivider onResize={handleSidebarResize} variant="gap" />
+        )}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-testid="app-main-layer">
+          {!showWizard && (
+            <div
+              className="drag-region relative z-[60] h-12 w-full shrink-0 border-b border-border/60 bg-background"
+              data-testid="app-top-bar"
+            >
+              {!workspaceFullscreen && sidebarCollapsed && (
+                <Sidebar collapsed onToggleCollapse={handleToggleSidebar} />
+              )}
+              <GlobalSearch />
+            </div>
+          )}
+          <div
+            className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
+            data-testid="app-panel-layer"
+          >
+            {workspaceFullscreen ? (
+              <div className="relative z-40 h-full min-h-0 w-full overflow-hidden">
+                <WorkspacePanel />
+              </div>
+            ) : (
+              <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+                <div
+                  className={clsx(
+                    'relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden transition-[width] duration-200',
+                    workspacePanelOpen && documentListCompact ? 'shrink-0' : 'flex-1'
+                  )}
+                  style={
+                    workspacePanelOpen && documentListCompact
+                      ? { width: `${documentListCompactWidth}px`, minWidth: DOC_LIST_COMPACT_MIN }
+                      : { minWidth: DOC_LIST_MIN }
+                  }
+                >
+                  <DocumentList compact={workspacePanelOpen && documentListCompact} />
+                </div>
+                {(rightPanelOpen || (workspacePanelOpen && documentListCompact)) && (
+                  <ResizeDivider
+                    onResize={
+                      workspacePanelOpen && documentListCompact
+                        ? handleDocumentListCompactResize
+                        : handleDetailResize
+                    }
+                    variant="line"
+                  />
+                )}
+                <div
+                  className={clsx(
+                    'relative z-20 min-w-0 overflow-hidden transition-[width] duration-200',
+                    rightPanelOpen ? 'border-l border-border' : 'w-0 border-0'
+                  )}
+                  style={rightPanelOpen ? { width: `${detailWidth}px`, minWidth: 0 } : { width: 0 }}
+                >
+                  <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
+                    <DetailPanel onClose={() => setRightPanelOpen(false)} />
+                  </div>
+                </div>
+                {workspacePanelOpen && !documentListCompact && (
+                  <ResizeDivider onResize={handleWorkspaceResize} variant="soft" />
+                )}
+                {workspacePanelOpen && (
+                  <div
+                    style={documentListCompact ? undefined : { width: `${workspaceWidth}px` }}
+                    className={clsx(
+                      'relative z-20 min-h-0 min-w-0 overflow-hidden border-l border-border/50',
+                      documentListCompact ? 'flex-1' : 'shrink-0'
+                    )}
+                  >
+                    <WorkspacePanel />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
         <ConfirmDialog />
         <Toast />
       </div>

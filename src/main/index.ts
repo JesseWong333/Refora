@@ -262,6 +262,7 @@ function createWindow(bounds?: { x?: number; y?: number; width?: number; height?
     show: false,
     title: 'Refora',
     ...(IS_MAC && {
+      acceptFirstMouse: true,
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 22, y: 22 },
       vibrancy: 'header',

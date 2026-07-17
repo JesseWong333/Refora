@@ -15,8 +15,6 @@
     --sidebar-inset: 8px;
     --sidebar-radius: 14px;
     --sidebar-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    --toolbar-preserve: 100px;
-
     --workspace-card-radius: 24px;
     --workspace-card-surface-base: #1e1e20;
     --workspace-card-surface: linear-gradient(145deg, #242426 0%, var(--workspace-card-surface-base) 100%);
@@ -33,11 +31,6 @@
 
     --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
       'Helvetica Neue', Helvetica, Arial, sans-serif;
-  }
-
-  [data-platform='mac'] {
-    --toolbar-preserve: 212px;
-    --traffic-light-width: 76px;
   }
 
   [data-theme='light'] {
@@ -969,9 +962,8 @@
     overflow: hidden;
   }
 
-  /* Floating toolbar that sits beside macOS traffic lights when sidebar is collapsed */
   .sidebar-floating-toolbar {
-    position: fixed;
+    position: absolute;
     top: 15px;
     z-index: 50;
     display: flex;

@@ -1,13 +1,13 @@
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRef, useState, useCallback, type ReactNode } from 'react'
-import { CaretUp, CaretDown, CaretLeft, CaretRight, Star, Warning, Lightning, Check, FileText, FolderOpen, Copy, ArrowClockwise, Trash, MagnifyingGlass, TreeStructure, Plus, FilePlus } from '@phosphor-icons/react'
+import { CaretUp, CaretDown, Star, Warning, Lightning, Check, FileText, FolderOpen, Copy, ArrowClockwise, Trash, MagnifyingGlass, TreeStructure, Plus, FilePlus } from '@phosphor-icons/react'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
 import { formatDate, formatFilePath } from '../utils/format'
-import { Input as UiInput, Button as UiButton, EmptyState } from './ui'
+import { Button as UiButton, EmptyState } from './ui'
 import type { Document, ColumnId, SortField, ListColumn, Category } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 
@@ -166,29 +166,17 @@ function visibleColumns(cols: ListColumn[]): ListColumn[] {
   return [...cols].filter((c) => c.visible).sort((a, b) => a.order - b.order)
 }
 
-const LABEL_MAP: Record<string, string> = {
-  allFiles: 'sidebar.allFiles',
-  recentlyRead: 'sidebar.recentlyRead',
-  recentlyAdded: 'sidebar.recentlyAdded',
-  starred: 'sidebar.starred'
-}
-
 interface DocumentListProps {
-  sidebarCollapsed?: boolean
   compact?: boolean
-  onToggleCompact?: () => void
 }
 
 export default function DocumentList({
-  sidebarCollapsed = false,
-  compact = false,
-  onToggleCompact
+  compact = false
 }: DocumentListProps = {}) {
   const { t } = useTranslation()
   const documents = useDocumentStore((s) => s.documents)
   const isLoading = useDocumentStore((s) => s.isLoading)
   const listColumnState = useDocumentStore((s) => s.listColumnState)
-  const listMode = useDocumentStore((s) => s.listMode)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
   const setSort = useDocumentStore((s) => s.setSort)
   const setColumns = useDocumentStore((s) => s.setColumns)
@@ -202,7 +190,6 @@ export default function DocumentList({
   const isSearching = useDocumentStore((s) => s.isSearching)
   const searchResults = useDocumentStore((s) => s.searchResults)
   const searchQuery = useDocumentStore((s) => s.searchQuery)
-  const performSearch = useDocumentStore((s) => s.performSearch)
   const clearSearch = useDocumentStore((s) => s.clearSearch)
   const categories = useDocumentStore((s) => s.categories)
   const createCategory = useDocumentStore((s) => s.createCategory)
@@ -231,10 +218,6 @@ export default function DocumentList({
     estimateSize: () => rowHeight,
     overscan: 5
   })
-
-  const headerLabel = isSearching
-    ? `${t('topbar.search')}: ${isLoading ? '' : displayDocs.length}`
-    : `${t(LABEL_MAP[listMode.mode] ?? 'sidebar.allFiles')} · ${documents.length}`
 
   const toggleColumn = useCallback(
     (id: ColumnId) => {
@@ -478,107 +461,6 @@ export default function DocumentList({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className={`relative z-10 flex h-12 shrink-0 items-center drag-region ${compact ? 'gap-1.5 px-2' : 'gap-2'}`}>
-        {sidebarCollapsed && (
-          <div
-            className="drag-region flex self-stretch shrink-0"
-            aria-hidden="true"
-            style={{ width: 'var(--toolbar-preserve, 168px)' }}
-          >
-            <div style={{ width: 'var(--traffic-light-width, 68px)' }} />
-            <div className="h-full flex-1" />
-          </div>
-        )}
-        <div className={`flex min-w-0 items-center no-drag ${compact ? 'flex-1 gap-1.5' : 'mx-auto w-4/5 max-w-[480px] gap-[10px]'}`}>
-          {compact ? (
-            <>
-              {!sidebarCollapsed && (
-                <div className="relative min-w-0 flex-1">
-                  <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                  <UiInput
-                    variant="outlined"
-                    inputSize="sm"
-                    className="doc-search-input min-w-0 pl-8 pr-2"
-                    placeholder={t('topbar.search')}
-                    title={`${t('topbar.search')} (⌘F)`}
-                    value={searchQuery}
-                    onChange={(e) => performSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault()
-                        clearSearch()
-                      }
-                    }}
-                  />
-                </div>
-              )}
-              {onToggleCompact && (
-                <UiButton
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  className="shrink-0"
-                  onClick={onToggleCompact}
-                  title={t('list.expand')}
-                  aria-label={t('list.expand')}
-                >
-                  <CaretRight className="h-4 w-4" />
-                </UiButton>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="relative min-w-0 flex-1">
-                <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                <UiInput
-                  variant="outlined"
-                  inputSize="sm"
-                  className="doc-search-input min-w-0 pl-8 pr-2"
-                  placeholder={t('topbar.search')}
-                  title={`${t('topbar.search')} (⌘F)`}
-                  value={searchQuery}
-                  onChange={(e) => performSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      e.preventDefault()
-                      clearSearch()
-                    }
-                  }}
-                />
-              </div>
-              {isSearching ? (
-                <span className="shrink-0 text-xs text-muted">
-                  {isLoading ? '' : `${displayDocs.length} ${t('common.results')}`}
-                </span>
-              ) : (
-                <span className="shrink-0 whitespace-nowrap text-xs font-medium text-muted">{headerLabel}</span>
-              )}
-              {onToggleCompact && (
-                <UiButton
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  className="shrink-0"
-                  onClick={onToggleCompact}
-                  title={t('list.compact')}
-                  aria-label={t('list.compact')}
-                >
-                  <CaretLeft className="h-4 w-4" />
-                </UiButton>
-              )}
-            </>
-          )}
-        </div>
-        {sidebarCollapsed && !compact && (
-          <div
-            className="shrink-0 self-stretch"
-            aria-hidden="true"
-            style={{ width: 'var(--toolbar-preserve, 168px)' }}
-          />
-        )}
-        <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(to right, var(--color-background), var(--color-border) 100px)' }} />
-      </div>
-
       {colHeaderBar}
 
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">

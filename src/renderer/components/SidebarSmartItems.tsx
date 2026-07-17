@@ -15,19 +15,26 @@ const SMART_ITEMS: { key: string; mode: ListMode; icon: ReactNode }[] = [
 export default function SidebarSmartItems() {
   const { t } = useTranslation()
   const listMode = useDocumentStore((s) => s.listMode)
+  const documentCount = useDocumentStore((s) => s.documents.length)
   const setListMode = useDocumentStore((s) => s.setListMode)
 
   return (
     <div className="mb-4 px-1">
-      {SMART_ITEMS.map((item) => (
-        <SidebarItem
-          key={item.key}
-          icon={item.icon}
-          label={t(`sidebar.${item.key}`)}
-          active={listMode.mode === item.mode}
-          onClick={() => setListMode({ mode: item.mode })}
-        />
-      ))}
+      {SMART_ITEMS.map((item) => {
+        const active = listMode.mode === item.mode
+        return (
+          <SidebarItem
+            key={item.key}
+            icon={item.icon}
+            label={t(`sidebar.${item.key}`)}
+            active={active}
+            trailing={active ? (
+              <span className="shrink-0 text-[10px] tabular-nums text-muted">{documentCount}</span>
+            ) : undefined}
+            onClick={() => setListMode({ mode: item.mode })}
+          />
+        )
+      })}
     </div>
   )
 }

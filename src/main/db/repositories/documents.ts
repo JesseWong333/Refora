@@ -215,23 +215,26 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     return rows.map((r) => mapDocument(r, lib()))
   }
 
-  function search(q: string): SearchResult {
+  function search(q: string, limit = 500): SearchResult {
     const trimmed = q.trim()
     if (trimmed.length === 0) return []
+    const safeLimit = Number.isFinite(limit)
+      ? Math.max(1, Math.min(500, Math.floor(limit)))
+      : 500
     if (trimmed.length >= 3 && deps.getSearchMode() === 'trigram') {
       const literalQuery = `"${trimmed.replace(/"/g, '""')}"`
       const rows = db
         .prepare(
-          'SELECT d.* FROM documents d JOIN docs_fts f ON d.rowid = f.rowid WHERE docs_fts MATCH ? ORDER BY rank LIMIT 500'
+          'SELECT d.* FROM documents d JOIN docs_fts f ON d.rowid = f.rowid WHERE docs_fts MATCH ? ORDER BY rank LIMIT ?'
         )
-        .all(literalQuery) as Record<string, unknown>[]
+        .all(literalQuery, safeLimit) as Record<string, unknown>[]
       return rows.map((r) => mapDocument(r, lib()))
     }
     const escaped = trimmed.replace(/[%_\\]/g, '\\$&')
     const like = `%${escaped}%`
     const clauses = FTS_LIKE_COLUMNS.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(' OR ')
     const params = FTS_LIKE_COLUMNS.map(() => like)
-    const rows = db.prepare(`SELECT * FROM documents WHERE ${clauses} LIMIT 500`).all(...params) as Record<
+    const rows = db.prepare(`SELECT * FROM documents WHERE ${clauses} LIMIT ?`).all(...params, safeLimit) as Record<
       string,
       unknown
     >[]

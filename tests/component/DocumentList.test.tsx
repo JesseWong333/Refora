@@ -154,6 +154,14 @@ describe('DocumentList', () => {
     expect(screen.queryByRole('checkbox')).toBeNull()
   })
 
+  it('starts with column headers and omits the document count toolbar', () => {
+    const { container } = render(<DocumentList />)
+
+    expect(screen.queryByText('sidebar.allFiles · 0')).not.toBeInTheDocument()
+    expect(container.firstElementChild?.firstElementChild).not.toHaveClass('h-12')
+    expect(screen.getByText('list.title')).toBeInTheDocument()
+  })
+
   it('renders 5 document rows when store has 5 documents', () => {
     mockState.documents = [
       makeDoc({ id: '1', title: 'Alpha Paper', authors: 'Alice', year: '2023', venue: 'Nature' }),
@@ -248,13 +256,12 @@ describe('DocumentList', () => {
     expect(sortIndicator).toBeInTheDocument()
   })
 
-  it('renders the compact two-line paper list and expands it from the toggle', async () => {
-    const onToggleCompact = vi.fn()
+  it('renders the compact two-line paper list without a document header', () => {
     mockState.documents = [
       makeDoc({ id: 'doc-1', title: 'Compact Paper', authors: 'Compact Author' })
     ]
 
-    render(<DocumentList compact onToggleCompact={onToggleCompact} />)
+    render(<DocumentList compact />)
 
     expect(screen.getByText('Compact Paper')).toHaveClass('text-xs')
     expect(screen.getByText('Compact Author')).toBeInTheDocument()
@@ -263,19 +270,13 @@ describe('DocumentList', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'detail.open' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'sidebar.starred' })).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'list.expand' }))
-
-    expect(onToggleCompact).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'list.expand' })).not.toBeInTheDocument()
   })
 
-  it('uses the compact search control sizing in the expanded list', () => {
+  it('leaves global search and file counts outside the document list', () => {
     render(<DocumentList />)
 
-    const searchInput = screen.getByPlaceholderText('topbar.search')
-    expect(searchInput).toHaveClass('h-7')
-    expect(searchInput.closest('.h-12')).not.toBeNull()
-    expect(searchInput.closest('[class~="w-4/5"]')).toHaveClass('max-w-[480px]')
-    expect(screen.getByText('sidebar.allFiles · 0')).toHaveClass('text-xs')
+    expect(screen.queryByPlaceholderText('topbar.search')).not.toBeInTheDocument()
+    expect(screen.queryByText('sidebar.allFiles · 0')).not.toBeInTheDocument()
   })
 })

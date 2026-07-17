@@ -35,6 +35,28 @@
     "search": "搜索标题、作者、期刊…",
     "settings": "设置"
   },
+  "globalSearch": {
+    "label": "全局搜索",
+    "placeholder": "搜索论文、Workspace 文件和 AI 对话…",
+    "loading": "正在搜索",
+    "clear": "清除搜索",
+    "results": "搜索结果",
+    "noResults": "没有匹配的论文、Workspace 文件或 AI 对话。",
+    "papers": "论文",
+    "workspaceFiles": "Workspace 文件",
+    "chats": "AI 对话",
+    "openPaper": "打开论文",
+    "openWorkspaceFile": "打开 Workspace 文件",
+    "openChat": "打开 AI 对话",
+    "paperFileMissing": "论文文件缺失，请先在论文详情中重新定位文件。",
+    "unavailableWhileStreaming": "请等待当前 AI 回复完成后再切换上下文。",
+    "untitledChat": "未命名对话",
+    "hint": "↑↓ 选择 · Enter 打开 · Esc 关闭",
+    "role": {
+      "user": "你",
+      "assistant": "AI"
+    }
+  },
   "tooltip": {
     "collapseSidebar": "收起侧边栏",
     "expandSidebar": "展开侧边栏",
