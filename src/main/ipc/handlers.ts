@@ -27,6 +27,9 @@ import type {
   SearchResult,
   WatchFolder,
   Workspace,
+  WorkspaceAsset,
+  WorkspaceAssetImportResult,
+  WorkspaceAssetTextPreview,
   WorkspaceCanvasViewport,
   WorkspaceConnection,
   WorkspaceConnectionAnchor,
@@ -57,6 +60,15 @@ import type { AiProvidersService } from '../services/aiProviders'
 import type { PdfTextService } from '../services/pdfText'
 import type { AiSummaryService } from '../services/aiSummary'
 import type { AiAgentService } from '../services/aiAgent'
+import {
+  deleteWorkspaceAsset,
+  deleteWorkspaceWithAssets,
+  getWorkspaceAssetTextPreview,
+  importWorkspaceAssets,
+  listWorkspaceAssets,
+  openWorkspaceAsset,
+  revealWorkspaceAsset
+} from '../services/workspaceAssets'
 
 type IpcChannelValue = (typeof IpcChannel)[keyof typeof IpcChannel]
 type HandlerChannel = Exclude<
@@ -549,8 +561,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       wrap(() => repos().workspaces.create(name)),
     [IpcChannel.WorkspacesRename]: (id: string, name: string): Result<void> =>
       wrap(() => repos().workspaces.rename(id, name)),
-    [IpcChannel.WorkspacesDelete]: (id: string): Result<void> =>
-      wrap(() => repos().workspaces.delete(id)),
+    [IpcChannel.WorkspacesDelete]: (id: string): Promise<Result<void>> =>
+      asyncWrap(() => deleteWorkspaceWithAssets(repos(), id)),
 
     [IpcChannel.WorkspaceItemsList]: (workspaceId: string): Result<WorkspaceItem[]> =>
       wrap(() => repos().workspaceItems.list(workspaceId)),
@@ -574,6 +586,34 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       wrap(() => repos().workspaceItems.resize(itemId, width, height)),
     [IpcChannel.WorkspaceItemsMove]: (itemId: string, x: number, y: number, zIndex: number): Result<WorkspaceItem> =>
       wrap(() => repos().workspaceItems.move(itemId, x, y, zIndex)),
+
+    [IpcChannel.WorkspaceAssetsList]: (workspaceId: string): Result<WorkspaceAsset[]> =>
+      wrap(() => listWorkspaceAssets(repos(), workspaceId)),
+    [IpcChannel.WorkspaceAssetsAddFiles]: (
+      workspaceId: string,
+      paths: string[],
+      placement?: WorkspaceItemPlacement
+    ): Promise<Result<WorkspaceAssetImportResult>> =>
+      asyncWrap(async () => {
+        let filePaths = paths
+        if (filePaths.length === 0) {
+          const result = await dialog.showOpenDialog(requireWin(), {
+            title: 'Add Files to Workspace',
+            properties: ['openFile', 'multiSelections']
+          })
+          if (result.canceled) return { imported: [], errors: [] }
+          filePaths = result.filePaths
+        }
+        return importWorkspaceAssets(repos(), workspaceId, filePaths, placement)
+      }),
+    [IpcChannel.WorkspaceAssetsTextPreview]: (id: string): Promise<Result<WorkspaceAssetTextPreview>> =>
+      asyncWrap(() => getWorkspaceAssetTextPreview(repos(), id)),
+    [IpcChannel.WorkspaceAssetsOpen]: (id: string): Promise<Result<void>> =>
+      asyncWrap(() => openWorkspaceAsset(repos(), id)),
+    [IpcChannel.WorkspaceAssetsReveal]: (id: string): Result<void> =>
+      wrap(() => revealWorkspaceAsset(repos(), id)),
+    [IpcChannel.WorkspaceAssetsDelete]: (id: string): Promise<Result<void>> =>
+      asyncWrap(() => deleteWorkspaceAsset(repos(), id)),
 
     [IpcChannel.WorkspaceCanvasGet]: (workspaceId: string): Result<WorkspaceCanvasViewport> =>
       wrap(() => repos().workspaceCanvas.get(workspaceId)),

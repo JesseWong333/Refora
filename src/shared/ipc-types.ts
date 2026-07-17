@@ -184,7 +184,36 @@ export const WORKSPACE_CANVAS_MIN_ZOOM = 0.25
 export const WORKSPACE_CANVAS_MAX_ZOOM = 2.5
 export const WORKSPACE_CANVAS_DEFAULT_ZOOM = 1
 
-export type WorkspaceItemKind = 'document' | 'report' | 'note'
+export type WorkspaceItemKind = 'document' | 'report' | 'note' | 'asset'
+
+export type WorkspaceAssetPreviewKind = 'image' | 'text' | 'audio' | 'video' | 'none'
+
+export const WORKSPACE_ASSET_DIRECTORY = 'refora-assets'
+
+export interface WorkspaceAsset {
+  id: string
+  workspaceId: string
+  fileName: string
+  filePath: string
+  sourcePath: string
+  mimeType: string
+  previewKind: WorkspaceAssetPreviewKind
+  fileSize: number
+  fileHash: string
+  fileMissing: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface WorkspaceAssetImportResult {
+  imported: WorkspaceAsset[]
+  errors: Array<{ path: string; message: string }>
+}
+
+export interface WorkspaceAssetTextPreview {
+  content: string
+  truncated: boolean
+}
 
 export interface Workspace {
   id: string
@@ -200,6 +229,7 @@ export interface WorkspaceItem {
   docId: string | null
   reportId: string | null
   noteId: string | null
+  assetId: string | null
   sortOrder: number
   width: number
   height: number
@@ -567,6 +597,15 @@ export interface ReforaApi {
     reorder(workspaceId: string, orderedIds: string[]): Promise<WorkspaceItem[]>
     resize(itemId: string, width: number, height: number): Promise<WorkspaceItem>
     move(itemId: string, x: number, y: number, zIndex: number): Promise<WorkspaceItem>
+  }
+  workspaceAssets: {
+    list(workspaceId: string): Promise<WorkspaceAsset[]>
+    addFiles(workspaceId: string, paths: string[], placement?: WorkspaceItemPlacement): Promise<WorkspaceAssetImportResult>
+    textPreview(id: string): Promise<WorkspaceAssetTextPreview>
+    open(id: string): Promise<void>
+    reveal(id: string): Promise<void>
+    delete(id: string): Promise<void>
+    previewUrl(id: string): string
   }
   workspaceNotes: {
     list(workspaceId: string): Promise<WorkspaceNote[]>

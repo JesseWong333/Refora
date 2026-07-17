@@ -101,10 +101,10 @@ describe('db migrations + schema', () => {
     expect(userVersion(db)).toBe(0)
     const result = runMigrations(adapt(db))
     expect(result.from).toBe(0)
-    expect(result.to).toBe(18)
-    expect(userVersion(db)).toBe(18)
+    expect(result.to).toBe(19)
+    expect(userVersion(db)).toBe(19)
 
-    for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps', 'workspace_connections']) {
+    for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps', 'workspace_connections', 'workspace_assets']) {
       const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)
       expect(row?.name).toBe(table)
     }
@@ -120,6 +120,9 @@ describe('db migrations + schema', () => {
     expect(providerCols.map((c) => c.name)).toContain('temperature')
     expect(providerCols.map((c) => c.name)).toContain('maxTokens')
     expect(providerCols.map((c) => c.name)).toContain('modelsJson')
+
+    const workspaceItemCols = db.prepare(`PRAGMA table_info(workspace_items)`).all() as Array<{ name: string }>
+    expect(workspaceItemCols.map((c) => c.name)).toContain('assetId')
   })
 
   it('verifies the trigram tokenizer at runtime', () => {
@@ -142,9 +145,44 @@ describe('db migrations + schema', () => {
   it('is idempotent: running migrations twice does not error or change version', () => {
     runMigrations(adapt(db))
     const second = runMigrations(adapt(db))
-    expect(second.from).toBe(18)
-    expect(second.to).toBe(18)
-    expect(userVersion(db)).toBe(18)
+    expect(second.from).toBe(19)
+    expect(second.to).toBe(19)
+    expect(userVersion(db)).toBe(19)
+  })
+
+  it('preserves existing canvas connections while adding asset-backed cards', () => {
+    migrateThrough(db, 18)
+    db.prepare('INSERT INTO workspaces (id, name, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
+      .run('ws-1', 'Research', 1, 1)
+    for (const id of ['doc-1', 'doc-2']) {
+      db.prepare(
+        `INSERT INTO documents (id, filePath, originalFolderPath, fileName, addedAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(id, `/tmp/${id}.pdf`, '/tmp', `${id}.pdf`, 1, 1)
+    }
+    db.prepare(
+      `INSERT INTO workspace_items
+       (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, x, y, zIndex, addedAt)
+       VALUES (?, ?, 'document', ?, NULL, NULL, ?, 300, 200, ?, 0, ?, 1)`
+    ).run('item-1', 'ws-1', 'doc-1', 0, 0, 0)
+    db.prepare(
+      `INSERT INTO workspace_items
+       (id, workspaceId, kind, docId, reportId, noteId, sortOrder, width, height, x, y, zIndex, addedAt)
+       VALUES (?, ?, 'document', ?, NULL, NULL, ?, 300, 200, ?, 0, ?, 1)`
+    ).run('item-2', 'ws-1', 'doc-2', 1, 400, 1)
+    db.prepare(
+      `INSERT INTO workspace_connections
+       (id, workspaceId, sourceItemId, targetItemId, sourceAnchor, targetAnchor, createdAt)
+       VALUES (?, ?, ?, ?, 'right', 'left', ?)`
+    ).run('connection-1', 'ws-1', 'item-1', 'item-2', 1)
+
+    const result = runMigrations(adapt(db))
+
+    expect(result.to).toBe(19)
+    expect(db.prepare('SELECT * FROM workspace_connections WHERE id = ?').get('connection-1'))
+      .toBeDefined()
+    expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_items') WHERE name = 'assetId'").get())
+      .toBeDefined()
   })
 
   it('reconciles a database created by the workspace branch before migrations were renumbered', () => {
@@ -157,7 +195,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(18)
+    expect(result.to).toBe(19)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'presetId'").get())
@@ -178,7 +216,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(18)
+    expect(result.to).toBe(19)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'reasoningEffort'").get())
@@ -256,7 +294,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 1`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(18)
+    expect(result.to).toBe(19)
     const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
     expect(cols.map((c) => c.name)).not.toContain('moveToLibrary')
   })
@@ -320,7 +358,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 3`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(18)
+    expect(result.to).toBe(19)
 
     const cols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>
     const names = cols.map((c) => c.name)
@@ -472,7 +510,7 @@ describe('db migrations + schema', () => {
     ).run('outside', '/Users/x/Downloads/other.pdf', '/Users/x/Downloads', 'other.pdf', 1000, 1000)
 
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(18)
+    expect(result.to).toBe(19)
 
     const inLib = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('in-lib') as { filePath: string }
     const nested = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('nested') as { filePath: string }

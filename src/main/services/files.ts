@@ -9,6 +9,7 @@ import { emitDocumentUpdated } from '../ipc/events'
 import { logger } from './logger'
 import { resolvePdfFilePath } from './pdfPath'
 import { streamFileHash } from './fileHash'
+import { WORKSPACE_ASSET_DIRECTORY } from '../../shared/ipc-types'
 
 export async function findPdfsRecursively(
   dir: string,
@@ -27,7 +28,10 @@ export async function findPdfsRecursively(
       const entries = await opendir(currentDir)
       for await (const entry of entries) {
         if (opts?.signal?.aborted) return
-        if (skipHidden && (entry.name === '.git' || entry.name.startsWith('.'))) continue
+        if (
+          entry.name === WORKSPACE_ASSET_DIRECTORY ||
+          (skipHidden && (entry.name === '.git' || entry.name.startsWith('.')))
+        ) continue
         if (entry.isSymbolicLink()) continue
         const full = resolvePath(join(currentDir, entry.name))
         if (entry.isDirectory()) {

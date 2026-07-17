@@ -19,6 +19,7 @@ function mapWorkspaceItem(row: Record<string, unknown>): WorkspaceItem {
     docId: (row.docId as string | null) ?? null,
     reportId: (row.reportId as string | null) ?? null,
     noteId: (row.noteId as string | null) ?? null,
+    assetId: (row.assetId as string | null) ?? null,
     sortOrder: row.sortOrder as number,
     width: row.width as number,
     height: row.height as number,
@@ -45,13 +46,19 @@ export function createWorkspaceItemsRepository(db: SqliteDb) {
   ): WorkspaceItem[] {
     const uniqueIds = [...new Set(ids.filter((id) => typeof id === 'string' && id.length > 0))]
     if (uniqueIds.length === 0) return []
-    if (kind !== 'document' && kind !== 'report' && kind !== 'note') {
+    if (kind !== 'document' && kind !== 'report' && kind !== 'note' && kind !== 'asset') {
       throw new RepoError('invalid_kind', `unsupported workspace item kind: ${String(kind)}`)
     }
     const workspace = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(workspaceId)
     if (!workspace) throw new RepoError('not_found', `workspace not found: ${workspaceId}`)
     for (const id of uniqueIds) {
-      const table = kind === 'document' ? 'documents' : kind === 'report' ? 'ai_reports' : 'workspace_notes'
+      const table = kind === 'document'
+        ? 'documents'
+        : kind === 'report'
+          ? 'ai_reports'
+          : kind === 'note'
+            ? 'workspace_notes'
+            : 'workspace_assets'
       const row = kind === 'document'
         ? db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id)
         : db.prepare(`SELECT id FROM ${table} WHERE id = ? AND workspaceId = ?`).get(id, workspaceId)
@@ -68,13 +75,13 @@ export function createWorkspaceItemsRepository(db: SqliteDb) {
     const now = Date.now()
     const stmt = db.prepare(
       `INSERT INTO workspace_items
-       (id, workspaceId, kind, docId, reportId, noteId, sortOrder, x, y, zIndex, addedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, workspaceId, kind, docId, reportId, noteId, assetId, sortOrder, x, y, zIndex, addedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const existingStmt = db.prepare(
       `SELECT id FROM workspace_items
        WHERE workspaceId = ? AND kind = ?
-         AND ((? = 'document' AND docId = ?) OR (? = 'report' AND reportId = ?) OR (? = 'note' AND noteId = ?))`
+         AND ((? = 'document' AND docId = ?) OR (? = 'report' AND reportId = ?) OR (? = 'note' AND noteId = ?) OR (? = 'asset' AND assetId = ?))`
     )
     const createdIds: string[] = []
     let createdCount = 0
@@ -82,7 +89,8 @@ export function createWorkspaceItemsRepository(db: SqliteDb) {
       const docId = kind === 'document' ? id : null
       const reportId = kind === 'report' ? id : null
       const noteId = kind === 'note' ? id : null
-      const existing = existingStmt.get(workspaceId, kind, kind, id, kind, id, kind, id) as
+      const assetId = kind === 'asset' ? id : null
+      const existing = existingStmt.get(workspaceId, kind, kind, id, kind, id, kind, id, kind, id) as
         | { id: string }
         | undefined
       if (existing) {
@@ -92,7 +100,7 @@ export function createWorkspaceItemsRepository(db: SqliteDb) {
       const itemId = randomUUID()
       const x = placement ? placement.x + (createdCount % 3) * 28 : (next % 4) * 332
       const y = placement ? placement.y + Math.floor(createdCount / 3) * 28 : Math.floor(next / 4) * 232
-      stmt.run(itemId, workspaceId, kind, docId, reportId, noteId, next, x, y, nextZIndex, now)
+      stmt.run(itemId, workspaceId, kind, docId, reportId, noteId, assetId, next, x, y, nextZIndex, now)
       createdIds.push(itemId)
       next += 1
       nextZIndex += 1
@@ -187,9 +195,13 @@ export function createWorkspaceItemsRepository(db: SqliteDb) {
     db.prepare('DELETE FROM workspace_items WHERE noteId = ?').run(noteId)
   }
 
+  function removeByAssetId(assetId: string): void {
+    db.prepare('DELETE FROM workspace_items WHERE assetId = ?').run(assetId)
+  }
+
   function touchWorkspace(workspaceId: string): void {
     db.prepare('UPDATE workspaces SET updatedAt = ? WHERE id = ?').run(Date.now(), workspaceId)
   }
 
-  return { list, add, remove, reorder, resize, move, removeByDocId, removeByReportId, removeByNoteId }
+  return { list, add, remove, reorder, resize, move, removeByDocId, removeByReportId, removeByNoteId, removeByAssetId }
 }

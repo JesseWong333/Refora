@@ -98,6 +98,14 @@ function migrationSchemaPresent(db: SqliteLike, version: number): boolean {
       ['index', 'idx_workspace_connections_workspace']
     ])
   }
+  if (version === 19) {
+    return hasColumns('workspace_items', ['assetId']) &&
+      hasObjects([
+        ['table', 'workspace_assets'],
+        ['index', 'idx_workspace_assets_workspace'],
+        ['index', 'uq_workspace_items_asset']
+      ])
+  }
   return version <= db.getUserVersion()
 }
 

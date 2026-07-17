@@ -58,6 +58,13 @@ export const IpcChannel = {
   WorkspaceItemsResize: 'workspaceItems:resize',
   WorkspaceItemsMove: 'workspaceItems:move',
 
+  WorkspaceAssetsList: 'workspaceAssets:list',
+  WorkspaceAssetsAddFiles: 'workspaceAssets:addFiles',
+  WorkspaceAssetsTextPreview: 'workspaceAssets:textPreview',
+  WorkspaceAssetsOpen: 'workspaceAssets:open',
+  WorkspaceAssetsReveal: 'workspaceAssets:reveal',
+  WorkspaceAssetsDelete: 'workspaceAssets:delete',
+
   WorkspaceCanvasGet: 'workspaceCanvas:get',
   WorkspaceCanvasUpdate: 'workspaceCanvas:update',
 

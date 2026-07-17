@@ -29,6 +29,7 @@
     --workspace-card-report: #aaaabd;
     --workspace-card-note: #a6b798;
     --workspace-card-sticky: #c3a889;
+    --workspace-card-asset: #9aaec7;
 
     --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
       'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -57,6 +58,7 @@
     --workspace-card-report: #6d6d80;
     --workspace-card-note: #5d7452;
     --workspace-card-sticky: #8b7055;
+    --workspace-card-asset: #496b91;
   }
 
   @media (prefers-color-scheme: light) {
@@ -78,6 +80,7 @@
       --workspace-card-report: #6d6d80;
       --workspace-card-note: #5d7452;
       --workspace-card-sticky: #8b7055;
+      --workspace-card-asset: #496b91;
     }
   }
 
@@ -232,6 +235,10 @@
       color-mix(in srgb, var(--workspace-card-accent) 6%, var(--workspace-card-surface-base)) 0,
       var(--workspace-card-surface-base) 100%
     );
+  }
+
+  .workspace-content-card--asset {
+    --workspace-card-accent: var(--workspace-card-asset);
   }
 
   .workspace-sticky-fold {
@@ -994,6 +1001,10 @@
 
   .workspace-connection-accent--sticky {
     --workspace-connection-accent: var(--workspace-card-sticky);
+  }
+
+  .workspace-connection-accent--asset {
+    --workspace-connection-accent: var(--workspace-card-asset);
   }
 
   .resizable-card:has(.workspace-content-card:hover) {

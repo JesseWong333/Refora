@@ -45,7 +45,7 @@ describe('workspace repositories', () => {
     expectRepoError(() => repos.workspaces.delete('missing'), 'not_found')
   })
 
-  it('adds unique document, report, and note cards with deterministic placement', () => {
+  it('adds unique document, report, note, and asset cards with deterministic placement', () => {
     repos.documents.insert(makeNewDocument('doc-1'))
     repos.documents.insert(makeNewDocument('doc-2'))
     const report = repos.aiReports.create({
@@ -56,6 +56,20 @@ describe('workspace repositories', () => {
       model: null
     })
     const note = repos.workspaceNotes.create(workspaceId, 'Note', 'Body', 'markdown')
+    const asset = repos.workspaceAssets.insert({
+      id: 'asset-1',
+      workspaceId,
+      fileName: 'notes.txt',
+      filePath: 'refora-assets/asset-1/notes.txt',
+      sourcePath: '/tmp/notes.txt',
+      mimeType: 'text/plain',
+      previewKind: 'text',
+      fileSize: 12,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 100,
+      updatedAt: 100
+    })
 
     const docs = repos.workspaceItems.add(workspaceId, 'document', ['doc-1', '', 'doc-1', 'doc-2'], {
       x: 10,
@@ -71,9 +85,10 @@ describe('workspace repositories', () => {
     expect(duplicate).toEqual([docs[0]])
     expect(repos.workspaceItems.add(workspaceId, 'report', [report.id])).toHaveLength(1)
     expect(repos.workspaceItems.add(workspaceId, 'note', [note.id])).toHaveLength(1)
+    expect(repos.workspaceItems.add(workspaceId, 'asset', [asset.id])).toHaveLength(1)
     expect(repos.workspaceItems.add(workspaceId, 'document', ['', ''])).toEqual([])
 
-    expect(repos.workspaceItems.list(workspaceId)).toHaveLength(4)
+    expect(repos.workspaceItems.list(workspaceId)).toHaveLength(5)
   })
 
   it('rejects invalid card sources, kinds, workspaces, and placements', () => {
@@ -178,13 +193,54 @@ describe('workspace repositories', () => {
       model: null
     })
     const note = repos.workspaceNotes.create(workspaceId, 'Note', '', 'plain')
+    const asset = repos.workspaceAssets.insert({
+      id: 'asset-1',
+      workspaceId,
+      fileName: 'data.bin',
+      filePath: 'refora-assets/asset-1/data.bin',
+      sourcePath: '/tmp/data.bin',
+      mimeType: 'application/octet-stream',
+      previewKind: 'none',
+      fileSize: 1,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 100,
+      updatedAt: 100
+    })
     repos.workspaceItems.add(workspaceId, 'document', ['doc-1'])
     repos.workspaceItems.add(workspaceId, 'report', [report.id])
     repos.workspaceItems.add(workspaceId, 'note', [note.id])
+    repos.workspaceItems.add(workspaceId, 'asset', [asset.id])
 
     repos.workspaceItems.removeByDocId('doc-1')
     repos.workspaceItems.removeByReportId(report.id)
     repos.workspaceItems.removeByNoteId(note.id)
+    repos.workspaceItems.removeByAssetId(asset.id)
+    expect(repos.workspaceItems.list(workspaceId)).toEqual([])
+  })
+
+  it('keeps workspace assets scoped to their workspace and cascades asset cards', () => {
+    const asset = repos.workspaceAssets.insert({
+      id: 'asset-1',
+      workspaceId,
+      fileName: 'image.png',
+      filePath: 'refora-assets/asset-1/image.png',
+      sourcePath: '/tmp/image.png',
+      mimeType: 'image/png',
+      previewKind: 'image',
+      fileSize: 10,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 100,
+      updatedAt: 100
+    })
+    const otherWorkspace = repos.workspaces.create('Other')
+
+    expectRepoError(() => repos.workspaceItems.add(otherWorkspace.id, 'asset', [asset.id]), 'not_found')
+    const item = repos.workspaceItems.add(workspaceId, 'asset', [asset.id])[0]
+    expect(item).toMatchObject({ kind: 'asset', assetId: asset.id })
+
+    repos.workspaceAssets.delete(asset.id)
     expect(repos.workspaceItems.list(workspaceId)).toEqual([])
   })
 

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsOutSimple, ArrowsInSimple, CaretDown, Check, NotePencil, SquaresFour, Sticker, X } from '@phosphor-icons/react'
+import { ArrowsOutSimple, ArrowsInSimple, CaretDown, Check, FilePlus, NotePencil, SquaresFour, Sticker, X } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { api } from '../../ipc'
@@ -125,6 +125,16 @@ export default function WorkspacePanel() {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1 no-drag">
+          <button
+            type="button"
+            className="sidebar-header-btn"
+            onClick={() => boardRef.current?.addFiles()}
+            disabled={!activeWorkspaceId}
+            title={t('workspace.assetAdd')}
+            aria-label={t('workspace.assetAdd')}
+          >
+            <FilePlus className="h-4 w-4" />
+          </button>
           <button
             type="button"
             className="sidebar-header-btn"
