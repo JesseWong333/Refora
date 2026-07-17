@@ -16,6 +16,8 @@ interface NoteCardProps {
   onAutoEditHandled?: () => void
   onDelete: () => void
   onUpdate: (id: string, patch: { title?: string; contentMd?: string }) => Promise<boolean>
+  onOpen?: () => void
+  onEdit?: () => void
   onCopy?: () => void
 }
 
@@ -25,6 +27,8 @@ export default function NoteCard({
   onAutoEditHandled,
   onDelete,
   onUpdate,
+  onOpen,
+  onEdit,
   onCopy
 }: NoteCardProps) {
   const { t } = useTranslation()
@@ -75,8 +79,11 @@ export default function NoteCard({
         label: t('workspace.noteEdit'),
         icon: <PencilSimple className="h-3.5 w-3.5" />,
         onClick: () => {
-          setExpanded(true)
-          enterEditMode()
+          if (onEdit) onEdit()
+          else {
+            setExpanded(true)
+            enterEditMode()
+          }
         }
       },
       {
@@ -135,8 +142,11 @@ export default function NoteCard({
           transition={{ duration: 0.18 }}
           data-card-kind="note"
           className={cardClassName('default', false, 'workspace-content-card workspace-content-card--note group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
-          onClick={() => setExpanded(true)}
-        onContextMenu={handleContextMenu}
+          onClick={() => {
+            if (onOpen) onOpen()
+            else setExpanded(true)
+          }}
+          onContextMenu={handleContextMenu}
         >
           <div className="flex shrink-0 items-start gap-2">
             <div className="workspace-card-heading min-w-0 flex-1">
@@ -150,8 +160,11 @@ export default function NoteCard({
                 className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
                 onClick={(e) => {
                   e.stopPropagation()
-                  setExpanded(true)
-                  enterEditMode()
+                  if (onEdit) onEdit()
+                  else {
+                    setExpanded(true)
+                    enterEditMode()
+                  }
                 }}
                 title={t('workspace.noteEdit')}
                 aria-label={t('workspace.noteEdit')}

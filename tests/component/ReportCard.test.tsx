@@ -19,9 +19,13 @@ const mockWorkspacePanelState = vi.hoisted(() => ({
   activeWorkspaceId: 'ws-1' as string | null,
   fullscreen: false,
   chatStreaming: false,
+  reports: [] as AiReport[],
+  notes: [] as WorkspaceNote[],
   setActiveWorkspace: vi.fn(),
   toggleFullscreen: vi.fn(),
-  closePanel: vi.fn()
+  closePanel: vi.fn(),
+  updateNote: vi.fn(),
+  updateReport: vi.fn()
 }))
 
 vi.mock('../../src/renderer/store/workspaceStore', () => ({
@@ -31,9 +35,24 @@ vi.mock('../../src/renderer/store/workspaceStore', () => ({
 vi.mock('../../src/renderer/components/workspace/Board', async () => {
   const React = await import('react')
   return {
-    default: React.forwardRef(function MockBoard(_, ref) {
-      React.useImperativeHandle(ref, () => ({ createNote: mockBoardCreateNote }))
-      return React.createElement('div', null, 'Board')
+    default: React.forwardRef(function MockBoard(
+      props: { onOpenMarkdownCard?: (card: { kind: 'report'; id: string }) => void },
+      ref
+    ) {
+      React.useImperativeHandle(ref, () => ({ createNote: mockBoardCreateNote, addFiles: vi.fn() }))
+      return React.createElement(
+        'div',
+        null,
+        React.createElement(
+          'button',
+          {
+            type: 'button',
+            onClick: () => props.onOpenMarkdownCard?.({ kind: 'report', id: 'report-1' })
+          },
+          'Open report card'
+        ),
+        'Board'
+      )
     })
   }
 })
@@ -47,6 +66,7 @@ vi.mock('../../src/renderer/components/ResizeDivider', () => ({
 }))
 
 vi.mock('@lobehub/ui', () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   Modal: ({ children, open, title, footer }: {
     children: React.ReactNode
     open: boolean
@@ -116,7 +136,11 @@ beforeEach(() => {
   mockWorkspacePanelState.activeWorkspaceId = 'ws-1'
   mockWorkspacePanelState.fullscreen = false
   mockWorkspacePanelState.chatStreaming = false
+  mockWorkspacePanelState.reports = []
+  mockWorkspacePanelState.notes = []
   mockWorkspacePanelState.setActiveWorkspace.mockReset()
+  mockWorkspacePanelState.updateNote.mockReset().mockResolvedValue(true)
+  mockWorkspacePanelState.updateReport.mockReset().mockResolvedValue(true)
 })
 
 afterEach(() => {
@@ -360,6 +384,21 @@ describe('Workspace card types', () => {
 })
 
 describe('WorkspacePanel workspace switcher', () => {
+  it('replaces the board and chat with a Markdown reader when an editable card opens', () => {
+    mockWorkspacePanelState.reports = [makeReport({ id: 'report-1' })]
+    render(<WorkspacePanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open report card' }))
+
+    expect(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.markdownRead' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('Chat panel')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' }))
+
+    expect(screen.getByText('Board')).toBeInTheDocument()
+  })
+
   it('shows all workspaces and marks the active workspace', () => {
     render(<WorkspacePanel />)
 

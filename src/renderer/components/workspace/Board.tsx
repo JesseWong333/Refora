@@ -70,7 +70,24 @@ export interface BoardHandle {
   addFiles: () => void
 }
 
-const Board = forwardRef<BoardHandle>(function Board(_, ref) {
+export type WorkspaceMarkdownCard =
+  | {
+      kind: 'note' | 'report'
+      id: string
+    }
+  | {
+      kind: 'summary'
+      doc: Document
+      summary: AiSummary
+    }
+
+export type WorkspaceMarkdownCardMode = 'read' | 'edit'
+
+interface BoardProps {
+  onOpenMarkdownCard?: (card: WorkspaceMarkdownCard, mode?: WorkspaceMarkdownCardMode) => void
+}
+
+const Board = forwardRef<BoardHandle, BoardProps>(function Board({ onOpenMarkdownCard }, ref) {
   const { t } = useTranslation()
   const items = useWorkspaceStore((s) => s.items)
   const reports = useWorkspaceStore((s) => s.reports)
@@ -691,9 +708,14 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
       : t('workspace.noteUntitled')
     const note = await createNote(title, '', noteType, placement ?? placementAtCanvasCenter())
     if (!note) return
-    if (noteType === 'plain') setAutoEditStickyNoteId(note.id)
-    else setAutoEditNoteId(note.id)
-  }, [createNote, placementAtCanvasCenter, t])
+    if (noteType === 'plain') {
+      setAutoEditStickyNoteId(note.id)
+    } else if (onOpenMarkdownCard) {
+      onOpenMarkdownCard({ kind: 'note', id: note.id }, 'edit')
+    } else {
+      setAutoEditNoteId(note.id)
+    }
+  }, [createNote, onOpenMarkdownCard, placementAtCanvasCenter, t])
 
   useImperativeHandle(ref, () => ({
     createNote: (noteType) => {
@@ -869,6 +891,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
             const docId = item.docId
             const doc = docs.get(docId) ?? null
             const summary = summaries.get(docId) ?? null
+            const summaryForReader = summary?.content ? summary : null
             return (
               <ResizableCard
                 key={item.id}
@@ -883,6 +906,9 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                   onSummarize={() => handleSummarize(docId)}
                   onOpenPdf={() => void api.documents.openPdf(docId)}
                   onRemove={() => void removeItem(item.id)}
+                  onOpenSummary={doc && summaryForReader && onOpenMarkdownCard
+                    ? () => onOpenMarkdownCard({ kind: 'summary', doc, summary: summaryForReader })
+                    : undefined}
                   onCopy={doc
                     ? () => handleCopyMarkdown(doc.title || doc.fileName, paperCardMarkdown(doc, summary))
                     : undefined}
@@ -905,6 +931,12 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                   onOpenSource={(docId) => void api.documents.openPdf(docId)}
                   onDelete={() => void deleteReport(report.id)}
                   onUpdate={updateReport}
+                  onOpen={onOpenMarkdownCard
+                    ? () => onOpenMarkdownCard({ kind: 'report', id: report.id })
+                    : undefined}
+                  onEdit={onOpenMarkdownCard
+                    ? () => onOpenMarkdownCard({ kind: 'report', id: report.id }, 'edit')
+                    : undefined}
                   onCopy={() => handleCopyMarkdown(
                     report.title,
                     markdownCardContent(report.title, report.contentMd)
@@ -946,6 +978,12 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                   onAutoEditHandled={() => setAutoEditNoteId(null)}
                   onDelete={() => void deleteNote(note.id)}
                   onUpdate={updateNote}
+                  onOpen={onOpenMarkdownCard
+                    ? () => onOpenMarkdownCard({ kind: 'note', id: note.id })
+                    : undefined}
+                  onEdit={onOpenMarkdownCard
+                    ? () => onOpenMarkdownCard({ kind: 'note', id: note.id }, 'edit')
+                    : undefined}
                   onCopy={() => handleCopyMarkdown(
                     note.title,
                     markdownCardContent(note.title, note.contentMd)

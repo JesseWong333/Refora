@@ -1,0 +1,243 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ArrowLeft, BookOpen, PencilSimple } from '@phosphor-icons/react'
+import ReactMarkdown from 'react-markdown'
+import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
+import { formatDate } from '../../utils/format'
+import { IconTooltip, Input, Textarea } from '../ui'
+
+export type WorkspaceMarkdownViewKind = 'note' | 'report' | 'summary'
+export type WorkspaceMarkdownViewMode = 'read' | 'edit'
+
+interface MarkdownDraft {
+  title: string
+  contentMd: string
+}
+
+interface WorkspaceMarkdownViewProps {
+  kind: WorkspaceMarkdownViewKind
+  id: string
+  title: string
+  contentMd: string
+  timestamp: number
+  initialMode?: WorkspaceMarkdownViewMode
+  fullscreen?: boolean
+  padTrafficLights?: boolean
+  onBack: () => void
+  onUpdate?: (id: string, patch: { title: string; contentMd: string }) => Promise<boolean>
+}
+
+export default function WorkspaceMarkdownView({
+  kind,
+  id,
+  title,
+  contentMd,
+  timestamp,
+  initialMode = 'read',
+  fullscreen = false,
+  padTrafficLights = false,
+  onBack,
+  onUpdate
+}: WorkspaceMarkdownViewProps) {
+  const { t } = useTranslation()
+  const [mode, setMode] = useState<WorkspaceMarkdownViewMode>(
+    kind === 'summary' ? 'read' : initialMode
+  )
+  const [draftTitle, setDraftTitle] = useState(title)
+  const [draftContent, setDraftContent] = useState(contentMd)
+  const [savedDraft, setSavedDraft] = useState({ title, contentMd })
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const savedDraftRef = useRef<MarkdownDraft>({ title, contentMd })
+  const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
+
+  const isReport = kind === 'report'
+  const editable = kind !== 'summary' && Boolean(onUpdate)
+  const titleLabel = t(isReport ? 'workspace.reportTitleLabel' : 'workspace.noteTitleLabel')
+  const contentLabel = t(isReport ? 'workspace.reportContentLabel' : 'workspace.noteContentLabel')
+  const saveFailed = t(isReport ? 'workspace.reportSaveFailed' : 'workspace.noteSaveFailed')
+  const typeLabel = t(kind === 'summary'
+    ? 'workspace.aiSummary'
+    : isReport ? 'workspace.cardTypeReport' : 'workspace.cardTypeNote')
+  const isDirty = draftTitle !== savedDraft.title || draftContent !== savedDraft.contentMd
+
+  const save = useCallback((draft: MarkdownDraft) => {
+    if (!onUpdate) return Promise.resolve(true)
+    const nextTitle = draft.title.trim()
+    if (!nextTitle) {
+      setSaveError(t('workspace.titleRequired'))
+      return Promise.resolve(false)
+    }
+
+    const nextDraft = { title: nextTitle, contentMd: draft.contentMd }
+    const run = async () => {
+      if (
+        savedDraftRef.current.title === nextDraft.title &&
+        savedDraftRef.current.contentMd === nextDraft.contentMd
+      ) {
+        return true
+      }
+      setSaveError(null)
+      let saved: boolean
+      try {
+        saved = await onUpdate(id, nextDraft)
+      } catch {
+        setSaveError(saveFailed)
+        return false
+      }
+      if (!saved) {
+        setSaveError(saveFailed)
+        return false
+      }
+      savedDraftRef.current = nextDraft
+      setSavedDraft(nextDraft)
+      setDraftTitle((currentTitle) => currentTitle === draft.title ? nextTitle : currentTitle)
+      return true
+    }
+    const queuedSave = saveQueueRef.current.then(run, run)
+    saveQueueRef.current = queuedSave
+    return queuedSave
+  }, [id, onUpdate, saveFailed, t])
+
+  useEffect(() => {
+    if (!editable || mode !== 'edit' || !isDirty || !draftTitle.trim()) return
+    const timeout = window.setTimeout(() => {
+      void save({ title: draftTitle, contentMd: draftContent })
+    }, 800)
+    return () => window.clearTimeout(timeout)
+  }, [draftContent, draftTitle, editable, isDirty, mode, save])
+
+  const saveCurrentDraft = () => save({ title: draftTitle, contentMd: draftContent })
+
+  const changeMode = async (nextMode: WorkspaceMarkdownViewMode) => {
+    if (nextMode === mode) return
+    if (nextMode === 'read' && isDirty) {
+      if (await saveCurrentDraft()) setMode('read')
+      return
+    }
+    setSaveError(null)
+    setMode(nextMode)
+  }
+
+  const handleBack = async () => {
+    if (isDirty) {
+      if (await saveCurrentDraft()) onBack()
+      return
+    }
+    onBack()
+  }
+
+  return (
+    <div className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background ${
+      fullscreen ? 'workspace-fullscreen' : ''
+    }`}>
+      <div className={`drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 ${
+        padTrafficLights ? 'pl-[86px]' : ''
+      }`}>
+        <IconTooltip label={t('workspace.markdownBackToBoard')} appearance="sidebar">
+          <button
+            type="button"
+            className="sidebar-header-btn no-drag shrink-0"
+            onClick={() => void handleBack()}
+            aria-label={t('workspace.markdownBackToBoard')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        </IconTooltip>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{draftTitle || savedDraft.title}</p>
+        </div>
+        {editable && (
+          <div
+            className="no-drag flex shrink-0 items-center gap-1"
+            role="group"
+            aria-label={t('workspace.markdownMode')}
+          >
+            <IconTooltip label={t('workspace.markdownRead')} appearance="sidebar">
+              <button
+                type="button"
+                className={[
+                  'sidebar-header-btn',
+                  mode === 'read' ? 'bg-active text-accent hover:bg-active' : ''
+                ].filter(Boolean).join(' ')}
+                aria-label={t('workspace.markdownRead')}
+                aria-pressed={mode === 'read'}
+                onClick={() => void changeMode('read')}
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
+            </IconTooltip>
+            <IconTooltip label={t('workspace.markdownEdit')} appearance="sidebar">
+              <button
+                type="button"
+                className={[
+                  'sidebar-header-btn',
+                  mode === 'edit' ? 'bg-active text-accent hover:bg-active' : ''
+                ].filter(Boolean).join(' ')}
+                aria-label={t('workspace.markdownEdit')}
+                aria-pressed={mode === 'edit'}
+                onClick={() => void changeMode('edit')}
+              >
+                <PencilSimple className="h-4 w-4" />
+              </button>
+            </IconTooltip>
+          </div>
+        )}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-5 py-8 sm:px-10">
+          {saveError && (
+            <div className="mb-5 rounded-lg bg-error/10 px-3 py-2 text-sm text-error" role="alert">
+              {saveError}
+            </div>
+          )}
+          {mode === 'edit' ? (
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <Input
+                variant="borderless"
+                inputSize="md"
+                className="h-11 px-0 text-xl font-semibold hover:bg-transparent focus:bg-transparent focus:ring-0 focus-visible:outline-none"
+                value={draftTitle}
+                onChange={(event) => {
+                  setDraftTitle(event.target.value)
+                  setSaveError(null)
+                }}
+                aria-label={titleLabel}
+              />
+              <Textarea
+                variant="borderless"
+                textareaSize="md"
+                className="min-h-[420px] flex-1 resize-none px-0 py-2 font-mono leading-6 hover:bg-transparent focus:bg-transparent focus:ring-0 focus-visible:outline-none"
+                value={draftContent}
+                onChange={(event) => {
+                  setDraftContent(event.target.value)
+                  setSaveError(null)
+                }}
+                aria-label={contentLabel}
+              />
+            </div>
+          ) : (
+            <article className="markdown-body select-text text-sm text-foreground [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted [&_code]:rounded [&_code]:bg-panel-2 [&_code]:px-1 [&_h1]:mt-0 [&_h1]:text-2xl [&_h2]:mt-8 [&_h3]:mt-6 [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-4 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-panel-2 [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-5">
+              <div className="mb-8 border-b border-border pb-5">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">{typeLabel}</p>
+                <h1 className="m-0 text-3xl font-semibold tracking-tight text-foreground">{savedDraft.title}</h1>
+                <p className="mb-0 mt-3 text-xs text-muted">{formatDate(timestamp)}</p>
+              </div>
+              {savedDraft.contentMd ? (
+                <ReactMarkdown
+                  remarkPlugins={REMARK_PLUGINS}
+                  rehypePlugins={REHYPE_PLUGINS}
+                  components={MARKDOWN_COMPONENTS}
+                >
+                  {savedDraft.contentMd}
+                </ReactMarkdown>
+              ) : (
+                <p className="italic text-muted">{t('workspace.markdownEmpty')}</p>
+              )}
+            </article>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

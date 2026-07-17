@@ -15,6 +15,7 @@ interface PaperCardProps {
   onSummarize: () => void
   onOpenPdf: () => void
   onRemove: () => void
+  onOpenSummary?: () => void
   onCopy?: () => void
 }
 
@@ -26,6 +27,7 @@ export default function PaperCard({
   onSummarize,
   onOpenPdf,
   onRemove,
+  onOpenSummary,
   onCopy
 }: PaperCardProps) {
   const { t } = useTranslation()
@@ -80,7 +82,10 @@ export default function PaperCard({
         transition={{ duration: 0.18 }}
         data-card-kind="document"
         className={cardClassName('default', false, 'workspace-content-card workspace-content-card--document group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
-        onClick={() => setModalOpen(true)}
+        onClick={() => {
+          if (onOpenSummary) onOpenSummary()
+          else setModalOpen(true)
+        }}
         onContextMenu={handleContextMenu}
       >
         <div className="flex shrink-0 items-start gap-2">

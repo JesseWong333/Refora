@@ -5,11 +5,19 @@ import { useWorkspaceStore } from '../../store/workspaceStore'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { api } from '../../ipc'
 import ResizeDivider from '../ResizeDivider'
-import Board, { type BoardHandle } from './Board'
+import Board, {
+  type BoardHandle,
+  type WorkspaceMarkdownCard,
+  type WorkspaceMarkdownCardMode
+} from './Board'
 import ChatPanel from './ChatPanel'
+import WorkspaceMarkdownView from './WorkspaceMarkdownView'
+import { aiSummaryMarkdown } from '../../utils/workspaceCardMarkdown'
 
 const CHAT_MIN = 220
 const CHAT_DEFAULT = 280
+
+type ActiveMarkdownCard = WorkspaceMarkdownCard & { mode: WorkspaceMarkdownCardMode }
 
 export default function WorkspacePanel() {
   const { t } = useTranslation()
@@ -18,11 +26,16 @@ export default function WorkspacePanel() {
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
   const fullscreen = useWorkspaceStore((s) => s.fullscreen)
   const chatStreaming = useWorkspaceStore((s) => s.chatStreaming)
+  const reports = useWorkspaceStore((s) => s.reports)
+  const notes = useWorkspaceStore((s) => s.notes)
   const toggleFullscreen = useWorkspaceStore((s) => s.toggleFullscreen)
   const closePanel = useWorkspaceStore((s) => s.closePanel)
+  const updateNote = useWorkspaceStore((s) => s.updateNote)
+  const updateReport = useWorkspaceStore((s) => s.updateReport)
 
   const [chatHeight, setChatHeight] = useState(CHAT_DEFAULT)
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
+  const [activeMarkdownCard, setActiveMarkdownCard] = useState<ActiveMarkdownCard | null>(null)
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null)
   const boardRef = useRef<BoardHandle | null>(null)
 
@@ -46,14 +59,87 @@ export default function WorkspacePanel() {
     return () => clearTimeout(timer)
   }, [chatHeight])
 
+  useEffect(() => {
+    setActiveMarkdownCard(null)
+  }, [activeWorkspaceId])
+
   const handleChatResize = useCallback((delta: number) => {
     setChatHeight((h) => Math.max(CHAT_MIN, Math.min(chatMax, h - delta)))
   }, [chatMax])
+
+  const handleOpenMarkdownCard = useCallback((
+    card: WorkspaceMarkdownCard,
+    mode: WorkspaceMarkdownCardMode = 'read'
+  ) => {
+    setWorkspaceMenuOpen(false)
+    setActiveMarkdownCard({ ...card, mode })
+  }, [])
 
   const isMac = document.documentElement.dataset.platform === 'mac'
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
   const name = active?.name ?? t('workspace.untitled')
   const padTrafficLights = isMac && fullscreen
+  const activeNote = activeMarkdownCard?.kind === 'note'
+    ? notes.find((note) => note.id === activeMarkdownCard.id) ?? null
+    : null
+  const activeReport = activeMarkdownCard?.kind === 'report'
+    ? reports.find((report) => report.id === activeMarkdownCard.id) ?? null
+    : null
+  const activeSummary = activeMarkdownCard?.kind === 'summary'
+    ? activeMarkdownCard
+    : null
+
+  if (activeNote) {
+    return (
+      <WorkspaceMarkdownView
+        key={`note:${activeNote.id}`}
+        kind="note"
+        id={activeNote.id}
+        title={activeNote.title}
+        contentMd={activeNote.contentMd}
+        timestamp={activeNote.updatedAt}
+        initialMode={activeMarkdownCard?.mode}
+        fullscreen={fullscreen}
+        padTrafficLights={padTrafficLights}
+        onBack={() => setActiveMarkdownCard(null)}
+        onUpdate={updateNote}
+      />
+    )
+  }
+
+  if (activeReport) {
+    return (
+      <WorkspaceMarkdownView
+        key={`report:${activeReport.id}`}
+        kind="report"
+        id={activeReport.id}
+        title={activeReport.title}
+        contentMd={activeReport.contentMd}
+        timestamp={activeReport.createdAt}
+        initialMode={activeMarkdownCard?.mode}
+        fullscreen={fullscreen}
+        padTrafficLights={padTrafficLights}
+        onBack={() => setActiveMarkdownCard(null)}
+        onUpdate={updateReport}
+      />
+    )
+  }
+
+  if (activeSummary) {
+    return (
+      <WorkspaceMarkdownView
+        key={'summary:' + activeSummary.doc.id + ':' + activeSummary.summary.updatedAt}
+        kind="summary"
+        id={activeSummary.doc.id}
+        title={activeSummary.doc.title || activeSummary.doc.fileName}
+        contentMd={aiSummaryMarkdown(activeSummary.summary)}
+        timestamp={activeSummary.summary.updatedAt}
+        fullscreen={fullscreen}
+        padTrafficLights={padTrafficLights}
+        onBack={() => setActiveMarkdownCard(null)}
+      />
+    )
+  }
 
   return (
     <div
@@ -180,7 +266,7 @@ export default function WorkspacePanel() {
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-          <Board ref={boardRef} />
+          <Board ref={boardRef} onOpenMarkdownCard={handleOpenMarkdownCard} />
         </div>
         <ResizeDivider onResize={handleChatResize} orientation="horizontal" variant="line" />
         <div

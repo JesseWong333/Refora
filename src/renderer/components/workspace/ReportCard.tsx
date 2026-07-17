@@ -15,6 +15,8 @@ interface ReportCardProps {
   report: AiReport
   onDelete: () => void
   onUpdate: (id: string, patch: { title?: string; contentMd?: string }) => Promise<boolean>
+  onOpen?: () => void
+  onEdit?: () => void
   onCopy?: () => void
   sourceDocuments?: Map<string, Document>
   onOpenSource?: (docId: string) => void
@@ -24,6 +26,8 @@ export default function ReportCard({
   report,
   onDelete,
   onUpdate,
+  onOpen,
+  onEdit,
   onCopy,
   sourceDocuments = new Map(),
   onOpenSource
@@ -69,8 +73,11 @@ export default function ReportCard({
         label: t('workspace.reportEdit'),
         icon: <PencilSimple className="h-3.5 w-3.5" />,
         onClick: () => {
-          setExpanded(true)
-          enterEditMode()
+          if (onEdit) onEdit()
+          else {
+            setExpanded(true)
+            enterEditMode()
+          }
         }
       },
       {
@@ -129,7 +136,10 @@ export default function ReportCard({
         transition={{ duration: 0.18 }}
         data-card-kind="report"
         className={cardClassName('default', false, 'workspace-content-card workspace-content-card--report group/card flex h-full w-full cursor-pointer flex-col gap-2 overflow-hidden p-3')}
-        onClick={() => setExpanded(true)}
+        onClick={() => {
+          if (onOpen) onOpen()
+          else setExpanded(true)
+        }}
         onContextMenu={handleContextMenu}
       >
         <div className="flex shrink-0 items-start gap-2">
@@ -147,7 +157,14 @@ export default function ReportCard({
             <button
               type="button"
               className="rounded p-1 text-muted transition-colors duration-150 hover:text-accent"
-              onClick={(e) => { e.stopPropagation(); setExpanded(true); enterEditMode() }}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (onEdit) onEdit()
+                else {
+                  setExpanded(true)
+                  enterEditMode()
+                }
+              }}
               title={t('workspace.reportEdit')}
               aria-label={t('workspace.reportEdit')}
             >
