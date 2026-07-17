@@ -29,6 +29,7 @@ import PaperCard from './PaperCard'
 import ReportCard from './ReportCard'
 import NoteCard from './NoteCard'
 import StickyNoteCard from './StickyNoteCard'
+import AssetCard from './AssetCard'
 import ResizableCard, {
   clampCardSize,
   type CardPosition,
@@ -65,6 +66,7 @@ function clampZoom(zoom: number): number {
 
 export interface BoardHandle {
   createNote: (noteType: WorkspaceNoteType) => void
+  addFiles: () => void
 }
 
 const Board = forwardRef<BoardHandle>(function Board(_, ref) {
@@ -72,8 +74,11 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   const items = useWorkspaceStore((s) => s.items)
   const reports = useWorkspaceStore((s) => s.reports)
   const notes = useWorkspaceStore((s) => s.notes) ?? EMPTY_NOTES
+  const assets = useWorkspaceStore((s) => s.assets) ?? []
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const addDocs = useWorkspaceStore((s) => s.addDocs)
+  const addAssets = useWorkspaceStore((s) => s.addAssets)
+  const deleteAsset = useWorkspaceStore((s) => s.deleteAsset)
   const removeItem = useWorkspaceStore((s) => s.removeItem)
   const resizeItem = useWorkspaceStore((s) => s.resizeItem)
   const moveItem = useWorkspaceStore((s) => s.moveItem)
@@ -116,6 +121,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   )
   const reportMap = useMemo(() => new Map(reports.map((report) => [report.id, report])), [reports])
   const noteMap = useMemo(() => new Map(notes.map((note) => [note.id, note])), [notes])
+  const assetMap = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets])
   const itemMap = useMemo(() => new Map(sortedItems.map((item) => [item.id, item])), [sortedItems])
   const workspaceDocIds = useMemo(
     () => sortedItems
@@ -572,8 +578,13 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   const hasDocPayload = (e: React.DragEvent) =>
     Array.from(e.dataTransfer.types).includes(DOC_MIME)
 
+  const hasFilePayload = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer.types).includes('Files')
+
+  const hasSupportedPayload = (e: React.DragEvent) => hasDocPayload(e) || hasFilePayload(e)
+
   const handleDragEnter = (e: React.DragEvent) => {
-    if (!hasDocPayload(e)) return
+    if (!hasSupportedPayload(e)) return
     e.preventDefault()
     e.stopPropagation()
     e.dataTransfer.dropEffect = 'copy'
@@ -581,7 +592,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   }
 
   const handleDragOver = (e: React.DragEvent) => {
-    if (!hasDocPayload(e)) return
+    if (!hasSupportedPayload(e)) return
     e.preventDefault()
     e.stopPropagation()
     e.dataTransfer.dropEffect = 'copy'
@@ -607,15 +618,24 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   }
 
   const handleDrop = async (e: React.DragEvent) => {
-    if (!hasDocPayload(e)) return
+    if (!hasSupportedPayload(e)) return
     e.preventDefault()
     e.stopPropagation()
     setDropActive(false)
-    const ids = parseDocIds(e)
-    if (ids.length === 0) return
     const world = worldPositionAt(e.clientX, e.clientY)
+    const placement = { x: Math.round(world.x - 150), y: Math.round(world.y - 100) }
     try {
-      await addDocs(ids, { x: Math.round(world.x - 150), y: Math.round(world.y - 100) })
+      if (hasDocPayload(e)) {
+        const ids = parseDocIds(e)
+        if (ids.length === 0) return
+        await addDocs(ids, placement)
+      } else {
+        const paths = Array.from(e.dataTransfer.files)
+          .map((file) => api.getPathForFile(file))
+          .filter((path) => path.length > 0)
+        if (paths.length === 0) return
+        await addAssets(paths, placement)
+      }
     } catch (error) {
       setSummaryErrors((previous) => new Map(previous).set('__drop__', errorMessage(error, t('workspace.addFailed'))))
       if (dropErrorTimerRef.current) clearTimeout(dropErrorTimerRef.current)
@@ -628,6 +648,18 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
       }, 3500)
     }
   }
+
+  const handleOpenAsset = useCallback((assetId: string) => {
+    void api.workspaceAssets.open(assetId).catch((error) => {
+      useDocumentStore.getState().showToast(errorMessage(error, t('workspace.assetOpenFailed')))
+    })
+  }, [t])
+
+  const handleRevealAsset = useCallback((assetId: string) => {
+    void api.workspaceAssets.reveal(assetId).catch((error) => {
+      useDocumentStore.getState().showToast(errorMessage(error, t('workspace.assetRevealFailed')))
+    })
+  }, [t])
 
   const handleCreateNote = useCallback(async (
     noteType: WorkspaceNoteType,
@@ -645,8 +677,11 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
   useImperativeHandle(ref, () => ({
     createNote: (noteType) => {
       void handleCreateNote(noteType)
+    },
+    addFiles: () => {
+      void addAssets([], placementAtCanvasCenter())
     }
-  }), [handleCreateNote])
+  }), [addAssets, handleCreateNote, placementAtCanvasCenter])
 
   const handleCanvasContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
@@ -656,6 +691,13 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
     const world = worldPositionAt(event.clientX, event.clientY)
     const placement = { x: Math.round(world.x - 150), y: Math.round(world.y - 100) }
     const items: ContextMenuItem[] = [
+      {
+        key: 'add-files',
+        label: t('workspace.assetAdd'),
+        icon: <FilePlus className="h-3.5 w-3.5" />,
+        onClick: () => void addAssets([], placement)
+      },
+      { type: 'divider', key: 'file-divider' },
       {
         key: 'create-sticky-note',
         label: t('workspace.createStickyNote'),
@@ -670,7 +712,7 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
       }
     ]
     showContextMenu(items)
-  }, [handleCreateNote, t, worldPositionAt])
+  }, [addAssets, handleCreateNote, t, worldPositionAt])
 
   const cardProps = (item: WorkspaceItem) => ({
     sizeKey: item.id,
@@ -873,6 +915,24 @@ const Board = forwardRef<BoardHandle>(function Board(_, ref) {
                   onAutoEditHandled={() => setAutoEditNoteId(null)}
                   onDelete={() => void deleteNote(note.id)}
                   onUpdate={updateNote}
+                />
+              </ResizableCard>
+            )
+          }
+          if (item.kind === 'asset' && item.assetId) {
+            const asset = assetMap.get(item.assetId)
+            if (!asset) return null
+            return (
+              <ResizableCard
+                key={item.id}
+                {...cardProps(item)}
+                className="workspace-connection-accent--asset"
+              >
+                <AssetCard
+                  asset={asset}
+                  onOpen={() => handleOpenAsset(asset.id)}
+                  onReveal={() => handleRevealAsset(asset.id)}
+                  onDelete={() => void deleteAsset(asset.id)}
                 />
               </ResizableCard>
             )

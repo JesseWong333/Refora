@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage } from 'electron'
+import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage, net, protocol } from 'electron'
 import { join, resolve as resolvePath } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { existsSync, statSync } from 'node:fs'
 import { initLogger, logger } from './services/logger'
 import { openDatabase, seedSettings, closeDatabase, getSetting, getSearchMode } from './db/connection'
@@ -27,6 +28,14 @@ import type { LibrarySwitchResult } from '../shared/ipc-types'
 import { createExclusiveTask } from './services/exclusiveTask'
 import { runMenuAction } from './services/menuAction'
 import { prepareReplacement } from './services/resourceReplacement'
+import { requireWorkspaceAssetFile } from './services/workspaceAssets'
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'refora-asset',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  }
+])
 
 let isDev = false
 const IS_MAC = process.platform === 'darwin'
@@ -66,9 +75,9 @@ function reportMenuError(action: string, error: unknown): void {
 
 function applyCsp(): void {
   const prod =
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: refora-asset:; media-src 'self' refora-asset:; connect-src 'self'"
   const dev =
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://localhost:*"
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: refora-asset:; media-src 'self' refora-asset:; connect-src 'self' ws://localhost:*"
   const csp = app.isPackaged ? prod : dev
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -77,6 +86,34 @@ function applyCsp(): void {
         'Content-Security-Policy': [csp]
       }
     })
+  })
+}
+
+function registerWorkspaceAssetProtocol(): void {
+  void protocol.handle('refora-asset', async (request) => {
+    try {
+      const url = new URL(request.url)
+      const id = decodeURIComponent(url.pathname.replace(/^\//, ''))
+      if (url.hostname !== 'asset' || !id || id.includes('/')) {
+        return new Response('Not found', { status: 404 })
+      }
+      const current = runtime
+      if (!current) return new Response('Runtime unavailable', { status: 503 })
+      const { asset, filePath } = requireWorkspaceAssetFile(current.repos, id)
+      if (asset.previewKind !== 'image' && asset.previewKind !== 'audio' && asset.previewKind !== 'video') {
+        return new Response('Preview not supported', { status: 415 })
+      }
+      const response = await net.fetch(pathToFileURL(filePath).toString(), {
+        headers: request.headers,
+        bypassCustomProtocolHandlers: true
+      })
+      const headers = new Headers(response.headers)
+      headers.set('Content-Type', asset.mimeType)
+      headers.set('X-Content-Type-Options', 'nosniff')
+      return new Response(response.body, { status: response.status, headers })
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
   })
 }
 
@@ -556,6 +593,7 @@ void app.whenReady().then(() => {
 
   const dbPath = resolveStartupDbPath()
   runtime = buildRuntime(dbPath)
+  registerWorkspaceAssetProtocol()
   const r = runtime.repos
   const savedBounds = r.settings.get<{ x?: number; y?: number; width?: number; height?: number } | null>('windowBounds', null)
   win = createWindow(savedBounds)

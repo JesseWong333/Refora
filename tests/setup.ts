@@ -149,6 +149,16 @@ const noop = async () => undefined
     }),
   },
 
+  workspaceAssets: {
+    list: async () => [],
+    addFiles: async () => ({ imported: [], errors: [] }),
+    textPreview: async () => ({ content: '', truncated: false }),
+    open: noop,
+    reveal: noop,
+    delete: noop,
+    previewUrl: (id: string) => `refora-asset://asset/${encodeURIComponent(id)}`,
+  },
+
   workspaceNotes: {
     list: async () => [],
     create: async (workspaceId: string, title: string, contentMd: string, noteType: 'markdown' | 'plain') => ({

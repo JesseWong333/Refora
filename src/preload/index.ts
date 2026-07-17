@@ -35,6 +35,9 @@ import type {
   SummaryErrorEvent,
   WatchFolder,
   Workspace,
+  WorkspaceAsset,
+  WorkspaceAssetImportResult,
+  WorkspaceAssetTextPreview,
   WorkspaceCanvasViewport,
   WorkspaceConnection,
   WorkspaceConnectionAnchor,
@@ -200,6 +203,19 @@ const api: ReforaApi = {
       invoke<WorkspaceItem>(IpcChannel.WorkspaceItemsResize, itemId, width, height),
     move: (itemId: string, x: number, y: number, zIndex: number) =>
       invoke<WorkspaceItem>(IpcChannel.WorkspaceItemsMove, itemId, x, y, zIndex)
+  },
+
+  workspaceAssets: {
+    list: (workspaceId: string) =>
+      invoke<WorkspaceAsset[]>(IpcChannel.WorkspaceAssetsList, workspaceId),
+    addFiles: (workspaceId: string, paths: string[], placement?: WorkspaceItemPlacement) =>
+      invoke<WorkspaceAssetImportResult>(IpcChannel.WorkspaceAssetsAddFiles, workspaceId, paths, placement),
+    textPreview: (id: string) =>
+      invoke<WorkspaceAssetTextPreview>(IpcChannel.WorkspaceAssetsTextPreview, id),
+    open: (id: string) => invoke<void>(IpcChannel.WorkspaceAssetsOpen, id),
+    reveal: (id: string) => invoke<void>(IpcChannel.WorkspaceAssetsReveal, id),
+    delete: (id: string) => invoke<void>(IpcChannel.WorkspaceAssetsDelete, id),
+    previewUrl: (id: string) => `refora-asset://asset/${encodeURIComponent(id)}`
   },
 
   workspaceNotes: {

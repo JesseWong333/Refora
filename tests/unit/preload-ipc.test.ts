@@ -101,6 +101,12 @@ describe('preload IPC bridge', () => {
       { channel: IpcChannel.WorkspaceItemsReorder, args: ['workspace-1', ['item-1']], invoke: (value) => value.workspaceItems.reorder('workspace-1', ['item-1']) },
       { channel: IpcChannel.WorkspaceItemsResize, args: ['item-1', 320, 240], invoke: (value) => value.workspaceItems.resize('item-1', 320, 240) },
       { channel: IpcChannel.WorkspaceItemsMove, args: ['item-1', 10, 20, 3], invoke: (value) => value.workspaceItems.move('item-1', 10, 20, 3) },
+      { channel: IpcChannel.WorkspaceAssetsList, args: ['workspace-1'], invoke: (value) => value.workspaceAssets.list('workspace-1') },
+      { channel: IpcChannel.WorkspaceAssetsAddFiles, args: ['workspace-1', ['/tmp/file.txt'], { x: 1, y: 2 }], invoke: (value) => value.workspaceAssets.addFiles('workspace-1', ['/tmp/file.txt'], { x: 1, y: 2 }) },
+      { channel: IpcChannel.WorkspaceAssetsTextPreview, args: ['asset-1'], invoke: (value) => value.workspaceAssets.textPreview('asset-1') },
+      { channel: IpcChannel.WorkspaceAssetsOpen, args: ['asset-1'], invoke: (value) => value.workspaceAssets.open('asset-1') },
+      { channel: IpcChannel.WorkspaceAssetsReveal, args: ['asset-1'], invoke: (value) => value.workspaceAssets.reveal('asset-1') },
+      { channel: IpcChannel.WorkspaceAssetsDelete, args: ['asset-1'], invoke: (value) => value.workspaceAssets.delete('asset-1') },
       { channel: IpcChannel.WorkspaceNotesList, args: ['workspace-1'], invoke: (value) => value.workspaceNotes.list('workspace-1') },
       { channel: IpcChannel.WorkspaceNotesCreate, args: ['workspace-1', 'Note', 'Body', 'plain', { x: 1, y: 2 }], invoke: (value) => value.workspaceNotes.create('workspace-1', 'Note', 'Body', 'plain', { x: 1, y: 2 }) },
       { channel: IpcChannel.WorkspaceNotesUpdate, args: ['note-1', { title: 'Updated' }], invoke: (value) => value.workspaceNotes.update('note-1', { title: 'Updated' }) },
@@ -156,6 +162,11 @@ describe('preload IPC bridge', () => {
     const file = { name: 'paper.pdf' }
     expect(api.getPathForFile(file)).toBe('/tmp/paper.pdf')
     expect(electronMocks.getPathForFile).toHaveBeenCalledWith(file)
+  })
+
+  it('builds encoded read-only preview URLs without invoking IPC', () => {
+    expect(api.workspaceAssets.previewUrl('asset / 1')).toBe('refora-asset://asset/asset%20%2F%201')
+    expect(electronMocks.invoke).not.toHaveBeenCalled()
   })
 
   it('subscribes every event method and forwards only the payload', () => {

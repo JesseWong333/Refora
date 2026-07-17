@@ -12,7 +12,8 @@ import type {
   AiReport,
   WorkspaceItem,
   WorkspaceItemsChangedEvent,
-  WorkspaceNote
+  WorkspaceNote,
+  WorkspaceAsset
 } from '../../src/shared/ipc-types'
 
 function makeReport(overrides: Partial<AiReport> = {}): AiReport {
@@ -36,6 +37,7 @@ function makeItem(overrides: Partial<WorkspaceItem> = {}): WorkspaceItem {
     docId: 'doc-1',
     reportId: null,
     noteId: null,
+    assetId: null,
     sortOrder: 0,
     width: 300,
     height: 200,
@@ -43,6 +45,24 @@ function makeItem(overrides: Partial<WorkspaceItem> = {}): WorkspaceItem {
     y: 0,
     zIndex: 0,
     addedAt: 0,
+    ...overrides
+  }
+}
+
+function makeAsset(overrides: Partial<WorkspaceAsset> = {}): WorkspaceAsset {
+  return {
+    id: 'asset-1',
+    workspaceId: 'ws-1',
+    fileName: 'notes.txt',
+    filePath: 'refora-assets/asset-1/notes.txt',
+    sourcePath: '/tmp/notes.txt',
+    mimeType: 'text/plain',
+    previewKind: 'text',
+    fileSize: 12,
+    fileHash: 'hash',
+    fileMissing: 0,
+    createdAt: 0,
+    updatedAt: 0,
     ...overrides
   }
 }
@@ -80,6 +100,9 @@ const mockWorkspaceItemsRemove = vi.fn()
 const mockWorkspaceItemsReorder = vi.fn()
 const mockWorkspaceItemsResize = vi.fn()
 const mockWorkspaceItemsMove = vi.fn()
+const mockWorkspaceAssetsList = vi.fn()
+const mockWorkspaceAssetsAddFiles = vi.fn()
+const mockWorkspaceAssetsDelete = vi.fn()
 const mockWorkspaceNotesList = vi.fn()
 const mockWorkspaceNotesCreate = vi.fn()
 const mockWorkspaceNotesDelete = vi.fn()
@@ -96,6 +119,7 @@ function resetStoreState(): void {
     items: [],
     reports: [],
     notes: [],
+    assets: [],
     threads: [],
     initialized: false
   })
@@ -122,6 +146,9 @@ beforeEach(() => {
   mockWorkspaceItemsReorder.mockReset()
   mockWorkspaceItemsResize.mockReset()
   mockWorkspaceItemsMove.mockReset()
+  mockWorkspaceAssetsList.mockReset()
+  mockWorkspaceAssetsAddFiles.mockReset()
+  mockWorkspaceAssetsDelete.mockReset()
   mockWorkspaceNotesList.mockReset()
   mockWorkspaceNotesCreate.mockReset()
   mockWorkspaceNotesDelete.mockReset()
@@ -153,6 +180,9 @@ beforeEach(() => {
   mockWorkspaceItemsMove.mockImplementation(async (id: string, x: number, y: number, zIndex: number) =>
     makeItem({ id, x, y, zIndex })
   )
+  mockWorkspaceAssetsList.mockResolvedValue([])
+  mockWorkspaceAssetsAddFiles.mockResolvedValue({ imported: [], errors: [] })
+  mockWorkspaceAssetsDelete.mockResolvedValue(undefined)
   mockWorkspaceNotesList.mockResolvedValue([])
   mockWorkspaceNotesCreate.mockResolvedValue(makeNote())
   mockWorkspaceNotesDelete.mockResolvedValue(undefined)
@@ -188,6 +218,11 @@ beforeEach(() => {
   workspaceItems.reorder = mockWorkspaceItemsReorder
   workspaceItems.resize = mockWorkspaceItemsResize
   workspaceItems.move = mockWorkspaceItemsMove
+
+  const workspaceAssets = api.workspaceAssets as Record<string, unknown>
+  workspaceAssets.list = mockWorkspaceAssetsList
+  workspaceAssets.addFiles = mockWorkspaceAssetsAddFiles
+  workspaceAssets.delete = mockWorkspaceAssetsDelete
 
   const workspaceNotes = api.workspaceNotes as Record<string, unknown>
   workspaceNotes.list = mockWorkspaceNotesList
@@ -618,6 +653,34 @@ describe('WorkspaceStore', () => {
       mockWorkspaceItemsRemove.mockRejectedValueOnce(new Error('remove failed'))
       await useWorkspaceStore.getState().removeItem('item-1')
       expect(mockShowToast).toHaveBeenCalledWith('remove failed')
+    })
+
+    it('imports managed files and deletes their cards optimistically', async () => {
+      const asset = makeAsset()
+      const item = makeItem({
+        kind: 'asset',
+        docId: null,
+        assetId: asset.id
+      })
+      const placement = { x: 20, y: 30 }
+      mockWorkspaceAssetsAddFiles.mockResolvedValue({ imported: [asset], errors: [] })
+      mockWorkspaceAssetsList.mockResolvedValue([asset])
+      useWorkspaceStore.setState({ activeWorkspaceId: 'ws-1' })
+
+      await useWorkspaceStore.getState().addAssets(['/tmp/notes.txt'], placement)
+      expect(mockWorkspaceAssetsAddFiles).toHaveBeenCalledWith(
+        'ws-1',
+        ['/tmp/notes.txt'],
+        placement
+      )
+      expect(mockWorkspaceAssetsList).toHaveBeenCalledWith('ws-1')
+
+      useWorkspaceStore.setState({ assets: [asset], items: [item] })
+      const deletion = useWorkspaceStore.getState().deleteAsset(asset.id)
+      expect(useWorkspaceStore.getState().assets).toEqual([])
+      expect(useWorkspaceStore.getState().items).toEqual([])
+      await deletion
+      expect(mockWorkspaceAssetsDelete).toHaveBeenCalledWith(asset.id)
     })
 
     it('deletes notes optimistically and restores them on failure', async () => {

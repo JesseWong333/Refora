@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createRepositories } from '../../src/main/db/repositories'
 import {
   createIpcHandlers,
@@ -21,6 +24,7 @@ const electronMocks = vi.hoisted(() => ({
   showMessageBox: vi.fn(),
   trashItem: vi.fn(),
   showItemInFolder: vi.fn(),
+  openPath: vi.fn(),
   setProxy: vi.fn()
 }))
 
@@ -34,6 +38,7 @@ vi.mock('electron', () => ({
   shell: {
     trashItem: electronMocks.trashItem,
     showItemInFolder: electronMocks.showItemInFolder,
+    openPath: electronMocks.openPath,
     openExternal: vi.fn()
   },
   session: { defaultSession: { setProxy: electronMocks.setProxy } }
@@ -62,9 +67,13 @@ describe('workspace IPC handlers', () => {
   let db: MainTestDb
   let repos: ReturnType<typeof createRepositories>
   let handlers: IpcHandlerMap
+  let directory: string
 
   beforeEach(() => {
     vi.clearAllMocks()
+    directory = mkdtempSync(join(tmpdir(), 'refora-workspace-assets-'))
+    electronMocks.trashItem.mockResolvedValue(undefined)
+    electronMocks.openPath.mockResolvedValue('')
     db = createMainTestDb()
     repos = createRepositories(migrateMainTestDb(db))
     handlers = createIpcHandlers({
@@ -75,18 +84,19 @@ describe('workspace IPC handlers', () => {
 
   afterEach(() => {
     db.close()
+    rmSync(directory, { recursive: true, force: true })
   })
 
-  it('round-trips workspace lifecycle operations through Result envelopes', () => {
+  it('round-trips workspace lifecycle operations through Result envelopes', async () => {
     const created = expectOk(handlers[IpcChannel.WorkspacesCreate]('Research'))
     expect(expectOk(handlers[IpcChannel.WorkspacesList]())).toEqual([created])
 
     expectOk(handlers[IpcChannel.WorkspacesRename](created.id, 'Renamed'))
     expect(expectOk(handlers[IpcChannel.WorkspacesList]())[0].name).toBe('Renamed')
 
-    expectOk(handlers[IpcChannel.WorkspacesDelete](created.id))
+    expectOk(await handlers[IpcChannel.WorkspacesDelete](created.id))
     expect(expectOk(handlers[IpcChannel.WorkspacesList]())).toEqual([])
-    expectError(handlers[IpcChannel.WorkspacesDelete]('missing'), 'not_found')
+    expectError(await handlers[IpcChannel.WorkspacesDelete]('missing'), 'not_found')
   })
 
   it('round-trips card add, list, reorder, resize, move, and remove operations', () => {
@@ -213,6 +223,52 @@ describe('workspace IPC handlers', () => {
     expect(expectOk(handlers[IpcChannel.WorkspaceConnectionsList](workspace.id))).toEqual([connection])
     expectOk(handlers[IpcChannel.WorkspaceConnectionsDelete](connection.id))
     expect(expectOk(handlers[IpcChannel.WorkspaceConnectionsList](workspace.id))).toEqual([])
+  })
+
+  it('copies arbitrary files into managed assets and exposes text preview actions', async () => {
+    repos.settings.set('libraryFolderPath', directory)
+    const workspace = repos.workspaces.create('Files')
+    const source = join(directory, 'source.md')
+    writeFileSync(source, '# Workspace file\n\nHello')
+
+    const result = expectOk(await handlers[IpcChannel.WorkspaceAssetsAddFiles](
+      workspace.id,
+      [source],
+      { x: 12, y: 34 }
+    ))
+
+    expect(result.errors).toEqual([])
+    expect(result.imported).toHaveLength(1)
+    const asset = result.imported[0]
+    expect(asset).toMatchObject({
+      workspaceId: workspace.id,
+      fileName: 'source.md',
+      mimeType: 'text/markdown',
+      previewKind: 'text'
+    })
+    expect(asset.filePath).toBe(`refora-assets/${asset.id}/source.md`)
+    expect(existsSync(join(directory, asset.filePath))).toBe(true)
+    expect(repos.workspaceItems.list(workspace.id)[0]).toMatchObject({
+      kind: 'asset',
+      assetId: asset.id,
+      x: 12,
+      y: 34
+    })
+
+    expect(expectOk(handlers[IpcChannel.WorkspaceAssetsList](workspace.id))).toEqual([asset])
+    expect(expectOk(await handlers[IpcChannel.WorkspaceAssetsTextPreview](asset.id))).toEqual({
+      content: '# Workspace file\n\nHello',
+      truncated: false
+    })
+    expectOk(await handlers[IpcChannel.WorkspaceAssetsOpen](asset.id))
+    expect(electronMocks.openPath).toHaveBeenCalledWith(join(directory, asset.filePath))
+    expectOk(handlers[IpcChannel.WorkspaceAssetsReveal](asset.id))
+    expect(electronMocks.showItemInFolder).toHaveBeenCalledWith(join(directory, asset.filePath))
+
+    expectOk(await handlers[IpcChannel.WorkspaceAssetsDelete](asset.id))
+    expect(electronMocks.trashItem).toHaveBeenCalledWith(join(directory, 'refora-assets', asset.id))
+    expect(repos.workspaceAssets.get(asset.id)).toBeNull()
+    expect(repos.workspaceItems.list(workspace.id)).toEqual([])
   })
 
   it('registers every handler and forwards invocation arguments', () => {

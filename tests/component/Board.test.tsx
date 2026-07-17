@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import Board from '@renderer/components/workspace/Board'
-import type { WorkspaceItem } from '@shared/ipc-types'
+import type { WorkspaceAsset, WorkspaceItem } from '@shared/ipc-types'
 
 const DOC_MIME = 'application/x-refora-docids'
 
 const mockAddDocs = vi.fn()
+const mockAddAssets = vi.fn()
+const mockDeleteAsset = vi.fn()
 const mockFetchItems = vi.fn()
 const mockRemoveItem = vi.fn()
 const mockDeleteReport = vi.fn()
@@ -26,6 +28,7 @@ const { mockShowToast, mockTranslate } = vi.hoisted(() => ({
 let mockItems: WorkspaceItem[] = []
 let mockReports: unknown[] = []
 let mockNotes: unknown[] = []
+let mockAssets: WorkspaceAsset[] = []
 let mockActiveWorkspaceId: string | null = 'ws-1'
 
 vi.mock('@renderer/store/workspaceStore', () => ({
@@ -34,8 +37,11 @@ vi.mock('@renderer/store/workspaceStore', () => ({
       items: mockItems,
       reports: mockReports,
       notes: mockNotes,
+      assets: mockAssets,
       activeWorkspaceId: mockActiveWorkspaceId,
       addDocs: mockAddDocs,
+      addAssets: mockAddAssets,
+      deleteAsset: mockDeleteAsset,
       fetchItems: mockFetchItems,
       removeItem: mockRemoveItem,
       deleteReport: mockDeleteReport,
@@ -64,6 +70,8 @@ vi.mock('@lobehub/ui', async () => import('../mocks/lobehub-ui'))
 
 beforeEach(() => {
   mockAddDocs.mockReset().mockResolvedValue(undefined)
+  mockAddAssets.mockReset().mockResolvedValue(undefined)
+  mockDeleteAsset.mockReset().mockResolvedValue(undefined)
   mockFetchItems.mockReset().mockResolvedValue(undefined)
   mockRemoveItem.mockReset()
   mockDeleteReport.mockReset()
@@ -80,6 +88,7 @@ beforeEach(() => {
   mockItems = []
   mockReports = []
   mockNotes = []
+  mockAssets = []
   mockActiveWorkspaceId = 'ws-1'
 
   const api = window.api as unknown as Record<string, unknown>
@@ -91,6 +100,12 @@ beforeEach(() => {
   workspaceConnections.list = mockConnectionsList
   workspaceConnections.create = mockConnectionsCreate
   workspaceConnections.delete = mockConnectionsDelete
+  api.getPathForFile = vi.fn((file: { name?: string }) => file.name ? `/tmp/${file.name}` : '')
+  const workspaceAssets = api.workspaceAssets as Record<string, unknown>
+  workspaceAssets.textPreview = vi.fn().mockResolvedValue({ content: '', truncated: false })
+  workspaceAssets.previewUrl = vi.fn((id: string) => `refora-asset://asset/${id}`)
+  workspaceAssets.open = vi.fn().mockResolvedValue(undefined)
+  workspaceAssets.reveal = vi.fn().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -105,6 +120,7 @@ function makeItem(id: string, docId: string, x: number): WorkspaceItem {
     docId,
     reportId: null,
     noteId: null,
+    assetId: null,
     sortOrder: x,
     width: 300,
     height: 200,
@@ -163,19 +179,73 @@ describe('Board drag-and-drop', () => {
     expect(mockAddDocs).not.toHaveBeenCalled()
   })
 
-  it('ignores drops with no document payload', () => {
+  it('accepts Finder file drops and calls addAssets with managed paths', async () => {
     const { container } = render(<Board />)
     const board = container.firstElementChild as HTMLElement
 
     const dataTransfer = {
       types: ['Files'],
       dropEffect: 'none',
+      files: [{ name: 'notes.md' }, { name: 'image.png' }],
       getData: () => '',
       setData: vi.fn()
     }
 
-    fireEvent.drop(board, { dataTransfer })
-    expect(mockAddDocs).not.toHaveBeenCalled()
+    const dropEvent = new MouseEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 320,
+      clientY: 240
+    })
+    Object.defineProperty(dropEvent, 'dataTransfer', { value: dataTransfer })
+    fireEvent(board, dropEvent)
+
+    await waitFor(() => {
+      expect(mockAddAssets).toHaveBeenCalledWith(
+        ['/tmp/notes.md', '/tmp/image.png'],
+        { x: 170, y: 140 }
+      )
+    })
+  })
+})
+
+describe('Board workspace assets', () => {
+  it('renders a managed text file preview on an asset card', async () => {
+    const asset: WorkspaceAsset = {
+      id: 'asset-1',
+      workspaceId: 'ws-1',
+      fileName: 'notes.md',
+      filePath: 'refora-assets/asset-1/notes.md',
+      sourcePath: '/tmp/notes.md',
+      mimeType: 'text/markdown',
+      previewKind: 'text',
+      fileSize: 20,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 0,
+      updatedAt: 0
+    }
+    mockAssets = [asset]
+    mockItems = [{
+      ...makeItem('item-asset', '', 0),
+      kind: 'asset',
+      docId: null,
+      assetId: asset.id
+    }]
+    const api = window.api as unknown as Record<string, unknown>
+    const workspaceAssets = api.workspaceAssets as Record<string, unknown>
+    workspaceAssets.textPreview = vi.fn().mockResolvedValue({
+      content: '# Managed file\n\nPreview body',
+      truncated: false
+    })
+
+    const { container } = render(<Board />)
+
+    expect(container.querySelector('[data-card-kind="asset"]')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Managed file')).toBeInTheDocument()
+      expect(screen.getByText('Preview body')).toBeInTheDocument()
+    })
   })
 })
 

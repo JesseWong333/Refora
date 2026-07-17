@@ -80,7 +80,7 @@ export default function ResizableCard({
   const startPointerDrag = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     const target = e.target as HTMLElement
-    if (target.closest('button, a, input, textarea, select, [contenteditable="true"], [role="button"], [role="link"], [data-card-resize]')) return
+    if (target.closest('button, a, input, textarea, select, audio, video, [contenteditable="true"], [role="button"], [role="link"], [data-card-resize]')) return
     moveCleanupRef.current?.()
     moveStartRef.current = {
       x: e.clientX,

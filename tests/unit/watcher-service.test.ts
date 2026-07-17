@@ -262,6 +262,15 @@ describe('createWatcher', () => {
       expect(importFiles).toHaveBeenCalledWith(['/lib/new.pdf'], true)
     })
 
+    it('excludes managed workspace assets from PDF auto-import', () => {
+      w.startLibraryWatcher('/lib')
+
+      const opts = watchMockFn.mock.calls[0]?.[1]
+      expect(opts?.ignored('/lib/refora-assets')).toBe(true)
+      expect(opts?.ignored('/lib/refora-assets/asset-1/paper.pdf')).toBe(true)
+      expect(opts?.ignored('/lib/paper.pdf')).toBe(false)
+    })
+
     it('startLibraryWatcher restarts when folder changes', () => {
       w.startLibraryWatcher('/lib')
       const firstCall = watchMockFn.mock.calls.length

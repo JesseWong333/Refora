@@ -2,6 +2,8 @@ import { watch, type FSWatcher } from 'chokidar'
 import { existsSync } from 'node:fs'
 import { logger } from './logger'
 import { isInsideLibrary } from './paths'
+import { WORKSPACE_ASSET_DIRECTORY } from '../../shared/ipc-types'
+import { join } from 'node:path'
 import type { WatchFolder } from '../../shared/ipc-types'
 
 export interface WatcherDeps {
@@ -124,11 +126,13 @@ export function createWatcher(deps: WatcherDeps) {
       return
     }
 
+    const assetFolder = join(folder, WORKSPACE_ASSET_DIRECTORY)
     const inst = watch(folder, {
       depth: 20,
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 },
       ignored: (testPath: string) => {
         if (testPath === folder) return false
+        if (testPath === assetFolder || isInsideLibrary(testPath, assetFolder)) return true
         const base = testPath.split('/').pop() ?? testPath
         if (!base.includes('.')) return false
         return !base.toLowerCase().endsWith('.pdf')

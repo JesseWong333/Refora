@@ -8,7 +8,8 @@ import type {
   WorkspaceNote,
   WorkspaceNoteType,
   ChatThread,
-  WorkspaceItemsChangedEvent
+  WorkspaceItemsChangedEvent,
+  WorkspaceAsset
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 import { api } from '../ipc'
@@ -24,6 +25,7 @@ interface WorkspaceState {
   items: WorkspaceItem[]
   reports: AiReport[]
   notes: WorkspaceNote[]
+  assets: WorkspaceAsset[]
   threads: ChatThread[]
   initialized: boolean
   init: () => void
@@ -43,6 +45,9 @@ interface WorkspaceState {
   closePanel: () => void
   toggleFullscreen: () => void
   fetchItems: () => Promise<void>
+  fetchAssets: () => Promise<void>
+  addAssets: (paths: string[], placement?: WorkspaceItemPlacement) => Promise<void>
+  deleteAsset: (id: string) => Promise<void>
   addDocs: (docIds: string[], placement?: WorkspaceItemPlacement) => Promise<void>
   removeItem: (itemId: string) => Promise<void>
   reorderItems: (orderedIds: string[]) => Promise<void>
@@ -76,6 +81,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   items: [],
   reports: [],
   notes: [],
+  assets: [],
   threads: [],
   initialized: false,
 
@@ -172,6 +178,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 items: [],
                 reports: [],
                 notes: [],
+                assets: [],
                 threads: []
               }
             : {})
@@ -191,11 +198,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       items: [],
       reports: [],
       notes: [],
+      assets: [],
       threads: []
     })
     void get().fetchItems()
     void get().fetchReports()
     void get().fetchNotes()
+    void get().fetchAssets()
     void get().fetchThreads({ selectLatestIfNone: true })
   },
 
@@ -303,6 +312,58 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     } catch (e) {
       toast(errorMessage(e, 'Failed to add documents to workspace'))
       throw e
+    }
+  },
+
+  fetchAssets: async () => {
+    const id = get().activeWorkspaceId
+    if (!id) {
+      set({ assets: [] })
+      return
+    }
+    try {
+      const list = await api.workspaceAssets.list(id)
+      if (get().activeWorkspaceId !== id) return
+      set({ assets: list })
+    } catch (e) {
+      if (get().activeWorkspaceId !== id) return
+      toast(errorMessage(e, 'Failed to load workspace files'))
+    }
+  },
+
+  addAssets: async (paths: string[], placement?: WorkspaceItemPlacement) => {
+    const workspaceId = get().activeWorkspaceId
+    if (!workspaceId) return
+    try {
+      const result = placement
+        ? await api.workspaceAssets.addFiles(workspaceId, paths, placement)
+        : await api.workspaceAssets.addFiles(workspaceId, paths)
+      if (get().activeWorkspaceId !== workspaceId) return
+      await Promise.all([get().fetchItems(), get().fetchAssets()])
+      if (result.errors.length > 0) {
+        toast(result.errors[0].message)
+      }
+    } catch (e) {
+      toast(errorMessage(e, 'Failed to add files to workspace'))
+      throw e
+    }
+  },
+
+  deleteAsset: async (id: string) => {
+    const workspaceId = get().activeWorkspaceId
+    const previousAssets = get().assets
+    const previousItems = get().items
+    set((state) => ({
+      assets: state.assets.filter((asset) => asset.id !== id),
+      items: state.items.filter((item) => item.assetId !== id)
+    }))
+    try {
+      await api.workspaceAssets.delete(id)
+    } catch (e) {
+      if (get().activeWorkspaceId === workspaceId) {
+        set({ assets: previousAssets, items: previousItems })
+      }
+      toast(errorMessage(e, 'Failed to delete workspace file'))
     }
   },
 
