@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { showContextMenu } from '@lobehub/ui'
 import Board from '@renderer/components/workspace/Board'
-import type { AiReport, Document, WorkspaceAsset, WorkspaceItem, WorkspaceNote } from '@shared/ipc-types'
+import type { AiReport, AiSummary, Document, WorkspaceAsset, WorkspaceItem, WorkspaceNote } from '@shared/ipc-types'
 
 const DOC_MIME = 'application/x-refora-docids'
 
@@ -223,6 +223,100 @@ describe('Board drag-and-drop', () => {
 })
 
 describe('Board card clipboard actions', () => {
+  it('opens Markdown notes and reports in the workspace Markdown view', () => {
+    const report: AiReport = {
+      id: 'report-1',
+      workspaceId: 'ws-1',
+      title: 'Research report',
+      contentMd: 'Report body',
+      sourceDocIds: [],
+      model: null,
+      createdAt: 1
+    }
+    const note: WorkspaceNote = {
+      id: 'note-1',
+      workspaceId: 'ws-1',
+      noteType: 'markdown',
+      title: 'Markdown note',
+      contentMd: '- Item',
+      createdAt: 1,
+      updatedAt: 1
+    }
+    const onOpenMarkdownCard = vi.fn()
+    mockReports = [report]
+    mockNotes = [note]
+    mockItems = [
+      {
+        ...makeItem('item-report', '', 0),
+        kind: 'report',
+        docId: null,
+        reportId: report.id
+      },
+      {
+        ...makeItem('item-note', '', 1),
+        kind: 'note',
+        docId: null,
+        noteId: note.id
+      }
+    ]
+
+    const { container } = render(<Board onOpenMarkdownCard={onOpenMarkdownCard} />)
+    fireEvent.click(container.querySelector('[data-card-kind="report"]') as HTMLElement)
+    fireEvent.click(container.querySelector('[data-card-kind="note"]') as HTMLElement)
+
+    expect(onOpenMarkdownCard).toHaveBeenNthCalledWith(1, { kind: 'report', id: report.id })
+    expect(onOpenMarkdownCard).toHaveBeenNthCalledWith(2, { kind: 'note', id: note.id })
+
+    fireEvent.contextMenu(container.querySelector('[data-card-kind="report"]') as HTMLElement)
+    const items = vi.mocked(showContextMenu).mock.calls.at(-1)?.[0] as Array<{
+      key: string
+      onClick?: () => void
+    }>
+    items.find((item) => item.key === 'edit')?.onClick?.()
+
+    expect(onOpenMarkdownCard).toHaveBeenLastCalledWith(
+      { kind: 'report', id: report.id },
+      'edit'
+    )
+  })
+
+  it('opens a document AI summary in the workspace Markdown reader', async () => {
+    const document = {
+      id: 'doc-1',
+      fileName: 'paper.pdf',
+      title: 'Paper title'
+    } as Document
+    const summary: AiSummary = {
+      docId: document.id,
+      model: 'test',
+      content: {
+        core: 'Core summary',
+        keyPoints: ['Point one'],
+        methods: 'Methods',
+        contribution: 'Contribution'
+      },
+      createdAt: 1,
+      updatedAt: 2
+    }
+    const onOpenMarkdownCard = vi.fn()
+    mockItems = [makeItem('item-paper', document.id, 0)]
+    const api = window.api as unknown as Record<string, unknown>
+    const documents = api.documents as Record<string, unknown>
+    const ai = api.ai as Record<string, unknown>
+    documents.get = vi.fn().mockResolvedValue(document)
+    ai.summaryGet = vi.fn().mockResolvedValue(summary)
+
+    const { container } = render(<Board onOpenMarkdownCard={onOpenMarkdownCard} />)
+    await waitFor(() => expect(screen.getByText('Paper title')).toBeInTheDocument())
+    fireEvent.click(container.querySelector('[data-card-kind="document"]') as HTMLElement)
+
+    expect(onOpenMarkdownCard).toHaveBeenCalledWith({
+      kind: 'summary',
+      doc: document,
+      summary
+    })
+  })
+
   it('copies reports and Markdown notes as Markdown files', () => {
     const report: AiReport = {
       id: 'report-1',

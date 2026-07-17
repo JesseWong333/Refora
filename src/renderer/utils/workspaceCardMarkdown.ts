@@ -34,3 +34,15 @@ export function paperCardMarkdown(doc: Document, summary: AiSummary | null): str
 
   return `${sections.join('\n\n')}\n`
 }
+
+export function aiSummaryMarkdown(summary: AiSummary): string {
+  const content = summary.content
+  if (!content) return ''
+  const sections = [content.core]
+  if (content.keyPoints.length > 0) {
+    sections.push('## Key Points\n\n' + content.keyPoints.map((point) => '- ' + point).join('\n'))
+  }
+  if (content.methods) sections.push('## Methods\n\n' + content.methods)
+  if (content.contribution) sections.push('## Contribution\n\n' + content.contribution)
+  return sections.join('\n\n') + '\n'
+}
