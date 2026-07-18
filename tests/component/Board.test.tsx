@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { showContextMenu } from '@lobehub/ui'
 import Board from '@renderer/components/workspace/Board'
-import type { AiReport, AiSummary, Document, WorkspaceAsset, WorkspaceItem, WorkspaceNote } from '@shared/ipc-types'
+import type {
+  AiReport,
+  AiSummary,
+  Document,
+  WorkspaceAsset,
+  WorkspaceItem,
+  WorkspaceItemsChangedEvent,
+  WorkspaceNote
+} from '@shared/ipc-types'
 
 const DOC_MIME = 'application/x-refora-docids'
 
@@ -34,6 +42,7 @@ let mockReports: unknown[] = []
 let mockNotes: unknown[] = []
 let mockAssets: WorkspaceAsset[] = []
 let mockActiveWorkspaceId: string | null = 'ws-1'
+let mockWorkspaceItemsChangedHandler: ((payload: WorkspaceItemsChangedEvent) => void) | null = null
 
 vi.mock('@renderer/store/workspaceStore', () => ({
   useWorkspaceStore: (selector: (s: Record<string, unknown>) => unknown) =>
@@ -98,6 +107,7 @@ beforeEach(() => {
   mockNotes = []
   mockAssets = []
   mockActiveWorkspaceId = 'ws-1'
+  mockWorkspaceItemsChangedHandler = null
 
   const api = window.api as unknown as Record<string, unknown>
   const documents = api.documents as Record<string, unknown>
@@ -108,6 +118,11 @@ beforeEach(() => {
   workspaceConnections.list = mockConnectionsList
   workspaceConnections.create = mockConnectionsCreate
   workspaceConnections.delete = mockConnectionsDelete
+  const events = api.events as Record<string, unknown>
+  events.onWorkspaceItemsChanged = vi.fn((cb: (payload: WorkspaceItemsChangedEvent) => void) => {
+    mockWorkspaceItemsChangedHandler = cb
+  })
+  events.off = vi.fn()
   api.getPathForFile = vi.fn((file: { name?: string }) => file.name ? `/tmp/${file.name}` : '')
   const workspaceAssets = api.workspaceAssets as Record<string, unknown>
   workspaceAssets.textPreview = vi.fn().mockResolvedValue({ content: '', truncated: false })
@@ -606,6 +621,23 @@ describe('Board canvas controls and connections', () => {
     Object.defineProperty(document, 'elementsFromPoint', {
       configurable: true,
       value: originalElementsFromPoint
+    })
+  })
+
+  it('reloads connections after an agent workspace change event', async () => {
+    mockConnectionsList.mockResolvedValue([])
+    render(<Board />)
+
+    await waitFor(() => {
+      expect(mockConnectionsList).toHaveBeenCalledTimes(1)
+    })
+
+    act(() => {
+      mockWorkspaceItemsChangedHandler?.({ workspaceId: 'ws-1', reason: 'other' })
+    })
+
+    await waitFor(() => {
+      expect(mockConnectionsList).toHaveBeenCalledTimes(2)
     })
   })
 })

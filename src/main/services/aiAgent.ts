@@ -81,6 +81,9 @@ const SYSTEM_PROMPT =
   'When the user asks for a report, survey, or comparison, call generate_report to pin a structured report to the board. ' +
   'Use search_library for full-text search across the entire library, not just the workspace. ' +
   'When the user wants papers added to this workspace, first use search_library to find them, then call add_docs_to_workspace with the docIds. ' +
+  'Use list_workspace_context when you need the current papers, reports, notes, assets, card itemIds, or existing connections. ' +
+  'When the user asks to connect workspace cards or build a relationship map, call list_workspace_context first, then call create_workspace_connections with those itemIds. ' +
+  'Use find_related_papers to find metadata-similar papers that already exist in the local library. ' +
   'When the user asks for a summary or overview, use read_paper_fulltext to read the paper and summarize it yourself. Only call request_summary to pre-generate a cached summary for future use - it returns immediately without the actual summary. ' +
   'When the user message includes [Attached papers], prioritize those docIds in your analysis. ' +
   'If the workspace catalog is empty, suggest using search_library and add_docs_to_workspace rather than asking the user to add papers manually. ' +
@@ -91,6 +94,58 @@ const SYSTEM_PROMPT =
 
 const workspaceContextCache = new Map<string, { context: string; docIdKey: string; ts: number }>()
 const WORKSPACE_CONTEXT_TTL_MS = 60_000
+
+const RELATED_PAPER_STOP_TERMS = new Set([
+  'about',
+  'after',
+  'also',
+  'among',
+  'analysis',
+  'based',
+  'before',
+  'between',
+  'from',
+  'into',
+  'method',
+  'methods',
+  'paper',
+  'results',
+  'study',
+  'that',
+  'their',
+  'these',
+  'this',
+  'through',
+  'using',
+  'with'
+])
+
+function normalizedTerms(value: string | null | undefined): Set<string> {
+  const matches = value
+    ?.normalize('NFKC')
+    .toLocaleLowerCase()
+    .match(/[\p{L}\p{N}]+/gu)
+  return new Set(
+    (matches ?? []).filter((term) => term.length >= 2 && !RELATED_PAPER_STOP_TERMS.has(term))
+  )
+}
+
+function normalizedAuthors(value: string | null | undefined): Set<string> {
+  return new Set(
+    (value ?? '')
+      .split(/;|\band\b/iu)
+      .map((author) => author.normalize('NFKC').toLocaleLowerCase().trim())
+      .filter((author) => author.length > 0)
+  )
+}
+
+function sharedValues(left: Set<string>, right: Set<string>): string[] {
+  return [...left].filter((value) => right.has(value)).sort()
+}
+
+function normalizeComparable(value: string | null | undefined): string {
+  return (value ?? '').normalize('NFKC').toLocaleLowerCase().trim()
+}
 
 function buildWorkspaceContext(repos: Repositories, workspaceId: string): string {
   const items = repos.workspaceItems.list(workspaceId).filter((i) => i.kind === 'document')
@@ -319,6 +374,251 @@ export function createAiAgentService(
   const activeRuns = new Map<string, AbortController>()
 
   function buildTools(req: ChatSendRequest, providerModel: string, signal: AbortSignal) {
+    const listWorkspaceContext = new DynamicStructuredTool({
+      name: 'list_workspace_context',
+      description:
+        'List the current workspace cards and connections. ' +
+        'Returns itemIds for documents, reports, notes, and assets plus existing directed connections. ' +
+        'Use the returned itemIds with create_workspace_connections.',
+      schema: z.object({}),
+      func: async () => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        const items = repos.workspaceItems.list(req.workspaceId)
+        const reports = new Map(repos.aiReports.list(req.workspaceId).map((report) => [report.id, report]))
+        const notes = new Map(repos.workspaceNotes.list(req.workspaceId).map((note) => [note.id, note]))
+        const assets = new Map(repos.workspaceAssets.list(req.workspaceId).map((asset) => [asset.id, asset]))
+        const contextItems = items.map((item) => {
+          const base = {
+            itemId: item.id,
+            kind: item.kind,
+            sortOrder: item.sortOrder
+          }
+          if (item.kind === 'document' && item.docId) {
+            const doc = repos.documents.get(item.docId)
+            return {
+              ...base,
+              docId: item.docId,
+              title: doc?.title ?? doc?.fileName ?? item.docId,
+              authors: doc?.authors ?? '',
+              year: doc?.year ?? '',
+              hasSummary: !!repos.aiSummaries.getSummary(item.docId)?.content,
+              unavailable: !doc
+            }
+          }
+          if (item.kind === 'report' && item.reportId) {
+            const report = reports.get(item.reportId)
+            return {
+              ...base,
+              reportId: item.reportId,
+              title: report?.title ?? item.reportId,
+              sourceDocIds: report?.sourceDocIds ?? [],
+              unavailable: !report
+            }
+          }
+          if (item.kind === 'note' && item.noteId) {
+            const note = notes.get(item.noteId)
+            return {
+              ...base,
+              noteId: item.noteId,
+              title: note?.title ?? item.noteId,
+              noteType: note?.noteType ?? null,
+              unavailable: !note
+            }
+          }
+          if (item.kind === 'asset' && item.assetId) {
+            const asset = assets.get(item.assetId)
+            return {
+              ...base,
+              assetId: item.assetId,
+              fileName: asset?.fileName ?? item.assetId,
+              mimeType: asset?.mimeType ?? null,
+              previewKind: asset?.previewKind ?? null,
+              fileMissing: asset?.fileMissing ?? 1,
+              unavailable: !asset
+            }
+          }
+          return { ...base, unavailable: true }
+        })
+        const connections = repos.workspaceConnections.list(req.workspaceId).map((connection) => ({
+          connectionId: connection.id,
+          sourceItemId: connection.sourceItemId,
+          targetItemId: connection.targetItemId,
+          sourceAnchor: connection.sourceAnchor,
+          targetAnchor: connection.targetAnchor
+        }))
+        return JSON.stringify({
+          workspaceId: req.workspaceId,
+          itemCount: contextItems.length,
+          connectionCount: connections.length,
+          items: contextItems,
+          connections
+        })
+      }
+    })
+
+    const createWorkspaceConnections = new DynamicStructuredTool({
+      name: 'create_workspace_connections',
+      description:
+        'Create directed connections between cards in the current workspace. ' +
+        'Call list_workspace_context first and use only itemIds returned by it. ' +
+        'Invalid, duplicate, and self connections are reported without creating them.',
+      schema: z.object({
+        connections: z
+          .array(
+            z.object({
+              sourceItemId: z.string().min(1).describe('Source workspace card itemId'),
+              targetItemId: z.string().min(1).describe('Target workspace card itemId'),
+              sourceAnchor: z.enum(['top', 'right', 'bottom', 'left']).optional().default('right'),
+              targetAnchor: z.enum(['top', 'right', 'bottom', 'left']).optional().default('left')
+            })
+          )
+          .min(1)
+          .max(20)
+      }),
+      func: async ({ connections }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        const itemIds = new Set(repos.workspaceItems.list(req.workspaceId).map((item) => item.id))
+        const existingPairs = new Set(
+          repos.workspaceConnections
+            .list(req.workspaceId)
+            .map((connection) => `${connection.sourceItemId}\u0000${connection.targetItemId}`)
+        )
+        const requestedPairs = new Set<string>()
+        const valid: typeof connections = []
+        const errors: Array<{ sourceItemId: string; targetItemId: string; message: string }> = []
+
+        for (const connection of connections) {
+          const pair = `${connection.sourceItemId}\u0000${connection.targetItemId}`
+          if (connection.sourceItemId === connection.targetItemId) {
+            errors.push({
+              sourceItemId: connection.sourceItemId,
+              targetItemId: connection.targetItemId,
+              message: 'A card cannot connect to itself.'
+            })
+            continue
+          }
+          if (!itemIds.has(connection.sourceItemId) || !itemIds.has(connection.targetItemId)) {
+            errors.push({
+              sourceItemId: connection.sourceItemId,
+              targetItemId: connection.targetItemId,
+              message: 'Connection endpoint is not in the current workspace.'
+            })
+            continue
+          }
+          if (existingPairs.has(pair) || requestedPairs.has(pair)) {
+            errors.push({
+              sourceItemId: connection.sourceItemId,
+              targetItemId: connection.targetItemId,
+              message: 'Connection already exists.'
+            })
+            continue
+          }
+          requestedPairs.add(pair)
+          valid.push(connection)
+        }
+
+        const created = valid.length > 0
+          ? repos.transaction(() =>
+              valid.map((connection) =>
+                repos.workspaceConnections.create(
+                  req.workspaceId,
+                  connection.sourceItemId,
+                  connection.targetItemId,
+                  connection.sourceAnchor,
+                  connection.targetAnchor
+                )
+              )
+            )
+          : []
+        const w = getWin()
+        if (created.length > 0 && w) {
+          emitWorkspaceItemsChanged(w, { workspaceId: req.workspaceId, reason: 'other' })
+        }
+        return JSON.stringify({ created, errors })
+      }
+    })
+
+    const findRelatedPapers = new DynamicStructuredTool({
+      name: 'find_related_papers',
+      description:
+        'Find related papers that already exist in the local library using title, keywords, abstract, authors, venue, and year metadata. ' +
+        'Returns ranked results and whether each paper is already in the current workspace. Does not access the network.',
+      schema: z.object({
+        docId: z.string().min(1).describe('Seed paper docId'),
+        limit: z.number().int().min(1).max(20).optional().default(8)
+      }),
+      func: async ({ docId, limit }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        const seedId = docId.trim()
+        const seed = repos.documents.get(seedId)
+        if (!seed) return JSON.stringify({ error: 'Document not found', docId: seedId })
+
+        const seedTitle = normalizedTerms(seed.title ?? seed.fileName)
+        const seedKeywords = normalizedTerms(seed.keywords)
+        const seedAbstract = normalizedTerms(seed.abstract)
+        const seedAuthors = normalizedAuthors(seed.authors)
+        const seedVenue = normalizeComparable(seed.venue)
+        const seedYear = Number.parseInt(seed.year ?? '', 10)
+        const workspaceDocIds = new Set(
+          repos.workspaceItems
+            .list(req.workspaceId)
+            .filter((item) => item.kind === 'document' && item.docId)
+            .map((item) => item.docId as string)
+        )
+
+        const related = repos.documents
+          .list({ mode: 'all' })
+          .filter((candidate) => candidate.id !== seedId)
+          .map((candidate) => {
+            const sharedKeywords = sharedValues(seedKeywords, normalizedTerms(candidate.keywords))
+            const sharedTitleTerms = sharedValues(
+              seedTitle,
+              normalizedTerms(candidate.title ?? candidate.fileName)
+            )
+            const sharedAbstractTerms = sharedValues(
+              seedAbstract,
+              normalizedTerms(candidate.abstract)
+            )
+            const sharedAuthors = sharedValues(seedAuthors, normalizedAuthors(candidate.authors))
+            const sameVenue = seedVenue.length > 0 && seedVenue === normalizeComparable(candidate.venue)
+            const candidateYear = Number.parseInt(candidate.year ?? '', 10)
+            const nearbyYear =
+              Number.isFinite(seedYear) &&
+              Number.isFinite(candidateYear) &&
+              Math.abs(seedYear - candidateYear) <= 1
+            const evidenceScore =
+              sharedKeywords.length * 4 +
+              sharedTitleTerms.length * 2 +
+              Math.min(sharedAbstractTerms.length, 12) * 0.25 +
+              sharedAuthors.length * 3 +
+              (sameVenue ? 1 : 0)
+            const score = evidenceScore > 0 ? evidenceScore + (nearbyYear ? 0.25 : 0) : 0
+            return {
+              docId: candidate.id,
+              title: candidate.title ?? candidate.fileName,
+              authors: candidate.authors ?? '',
+              year: candidate.year ?? '',
+              venue: candidate.venue ?? '',
+              inWorkspace: workspaceDocIds.has(candidate.id),
+              score: Math.round(score * 100) / 100,
+              reasons: {
+                sharedKeywords,
+                sharedAuthors,
+                sharedTitleTerms: sharedTitleTerms.slice(0, 8),
+                sharedAbstractTerms: sharedAbstractTerms.slice(0, 8),
+                sameVenue,
+                nearbyYear
+              }
+            }
+          })
+          .filter((candidate) => candidate.score > 0)
+          .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
+          .slice(0, limit)
+
+        return JSON.stringify({ seedDocId: seedId, results: related })
+      }
+    })
+
     const searchWorkspaceDocs = new DynamicTool({
       name: 'search_workspace_docs',
       description:
@@ -644,13 +944,16 @@ export function createAiAgentService(
     })
 
     return [
+      listWorkspaceContext,
       searchWorkspaceDocs,
       searchLibrary,
+      findRelatedPapers,
       readPaperFulltext,
       getPaperSummary,
       getPaperMetadata,
       openPaper,
       generateReport,
+      createWorkspaceConnections,
       addDocsToWorkspace,
       requestSummary
     ]

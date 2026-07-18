@@ -78,12 +78,26 @@ function formatToolLabel(
           ? t('workspace.chat.toolSearchWorkspace', 'Searching workspace…')
           : t('workspace.chat.toolSearchWorkspaceDone', 'Searched workspace')
       }
+    case 'list_workspace_context':
+      return {
+        icon: 'search',
+        text: running
+          ? t('workspace.chat.toolListWorkspaceContext', 'Inspecting workspace…')
+          : t('workspace.chat.toolListWorkspaceContextDone', 'Inspected workspace')
+      }
     case 'search_library':
       return {
         icon: 'search',
         text: running
           ? t('workspace.chat.toolSearchLibrary', 'Searching library…')
           : t('workspace.chat.toolSearchLibraryDone', 'Searched library')
+      }
+    case 'find_related_papers':
+      return {
+        icon: 'search',
+        text: running
+          ? t('workspace.chat.toolFindRelatedPapers', 'Finding related papers…')
+          : t('workspace.chat.toolFindRelatedPapersDone', 'Found related papers')
       }
     case 'read_paper_fulltext': {
       const docId = typeof objParam.docId === 'string' ? objParam.docId : ''
@@ -145,6 +159,13 @@ function formatToolLabel(
         text: running
           ? t('workspace.chat.toolAddDocs', 'Adding to workspace…')
           : t('workspace.chat.toolAddDocsDone', 'Added to workspace')
+      }
+    case 'create_workspace_connections':
+      return {
+        icon: 'add',
+        text: running
+          ? t('workspace.chat.toolCreateConnections', 'Connecting workspace cards…')
+          : t('workspace.chat.toolCreateConnectionsDone', 'Connected workspace cards')
       }
     case 'request_summary':
       return {

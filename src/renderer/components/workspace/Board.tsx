@@ -22,6 +22,7 @@ import type {
   WorkspaceConnection,
   WorkspaceConnectionAnchor,
   WorkspaceItem,
+  WorkspaceItemsChangedEvent,
   WorkspaceItemPlacement,
   WorkspaceNote,
   WorkspaceNoteType
@@ -205,17 +206,25 @@ const Board = forwardRef<BoardHandle, BoardProps>(function Board({ onOpenMarkdow
     if (!activeWorkspaceId) return
     const workspaceId = activeWorkspaceId
     let cancelled = false
-    void api.workspaceConnections.list(workspaceId).then((saved) => {
-      if (!cancelled && activeWorkspaceIdRef.current === workspaceId) {
-        setConnections(saved)
-      }
-    }).catch((e) => {
-      if (!cancelled) {
-        useDocumentStore.getState().showToast(errorMessage(e, t('workspace.connectionLoadFailed')))
-      }
-    })
+    const loadConnections = () => {
+      void api.workspaceConnections.list(workspaceId).then((saved) => {
+        if (!cancelled && activeWorkspaceIdRef.current === workspaceId) {
+          setConnections(saved)
+        }
+      }).catch((e) => {
+        if (!cancelled) {
+          useDocumentStore.getState().showToast(errorMessage(e, t('workspace.connectionLoadFailed')))
+        }
+      })
+    }
+    const handleWorkspaceItemsChanged = (payload: WorkspaceItemsChangedEvent) => {
+      if (payload.workspaceId === workspaceId) loadConnections()
+    }
+    loadConnections()
+    api.events.onWorkspaceItemsChanged(handleWorkspaceItemsChanged)
     return () => {
       cancelled = true
+      api.events.off('workspace:items:changed', handleWorkspaceItemsChanged)
     }
   }, [activeWorkspaceId, t])
 
