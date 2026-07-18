@@ -34,7 +34,7 @@ describe('WorkspaceMarkdownView', () => {
     renderView({ fullscreen: true })
 
     const backButton = screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })
-    expect(backButton.closest('.h-12')).toHaveClass('drag-region')
+    expect(backButton.closest('.h-8')).toHaveClass('drag-region')
     expect(backButton).toHaveClass('no-drag')
   })
 

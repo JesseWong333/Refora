@@ -401,12 +401,12 @@ describe('WorkspacePanel workspace switcher', () => {
   it('keeps the workspace toolbar draggable while preserving interactive controls', () => {
     render(<WorkspacePanel />)
 
-    const toolbar = screen.getByText('Research').closest('.h-12')
+    const toolbar = screen.getByText('Research').closest('.h-8')
     expect(toolbar).toHaveClass('drag-region')
     expect(screen.getByRole('button', { name: 'workspace.switchWorkspace' })).toHaveClass('no-drag')
   })
 
-  it('replaces the board and chat with a Markdown reader when an editable card opens', () => {
+  it('replaces the board with a Markdown reader while keeping the chat panel when an editable card opens', () => {
     mockWorkspacePanelState.reports = [makeReport({ id: 'report-1' })]
     render(<WorkspacePanel />)
 
@@ -414,7 +414,7 @@ describe('WorkspacePanel workspace switcher', () => {
 
     expect(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'workspace.markdownRead' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.queryByText('Chat panel')).not.toBeInTheDocument()
+    expect(screen.getByText('Chat panel')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' }))
 

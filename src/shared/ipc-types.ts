@@ -32,6 +32,13 @@ export interface ListFilter {
   sort?: { field: SortField; dir: 'asc' | 'desc' }
 }
 
+export interface DocumentCounts {
+  all: number
+  recentlyRead: number
+  recentlyAdded: number
+  starred: number
+}
+
 export type EditableField =
   | 'title'
   | 'authors'
@@ -559,6 +566,7 @@ export interface ReforaApi {
   getBootstrap(): Promise<BootstrapData>
   documents: {
     list(filter: ListFilter): Promise<Document[]>
+    counts(): Promise<DocumentCounts>
     search(q: string): Promise<SearchResult>
     get(id: string): Promise<Document | null>
     update(id: string, patch: DocumentPatch): Promise<Document>

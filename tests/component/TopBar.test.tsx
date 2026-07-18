@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     focusedDocId: null,
     selectedIds: [] as string[],
     documents: [],
+    documentCounts: { all: 0, recentlyRead: 0, recentlyAdded: 0, starred: 0 },
     importProgress: null as { current: number; total: number } | null,
     setListMode: vi.fn(),
     fetchCategories: vi.fn(),
@@ -68,6 +69,7 @@ describe('Sidebar actions', () => {
     mocks.state.importProgress = null
     mocks.state.categories = []
     mocks.state.documents = []
+    mocks.state.documentCounts = { all: 0, recentlyRead: 0, recentlyAdded: 0, starred: 0 }
   })
 
   afterEach(() => {

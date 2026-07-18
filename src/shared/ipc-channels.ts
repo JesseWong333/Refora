@@ -2,6 +2,7 @@ export const IpcChannel = {
   Bootstrap: 'app:bootstrap',
 
   DocumentsList: 'documents:list',
+  DocumentsCount: 'documents:count',
   DocumentsSearch: 'documents:search',
   DocumentsGet: 'documents:get',
   DocumentsUpdate: 'documents:update',

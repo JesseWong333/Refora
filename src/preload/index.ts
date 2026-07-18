@@ -20,6 +20,7 @@ import type {
   ChatTraceEvent,
   ChatTitleUpdatedEvent,
   Document,
+  DocumentCounts,
   DocumentPatch,
   EventChannel,
   GlobalSearchResult,
@@ -115,6 +116,7 @@ const api: ReforaApi = {
 
   documents: {
     list: (filter: ListFilter) => invoke<Document[]>(IpcChannel.DocumentsList, filter),
+    counts: () => invoke<DocumentCounts>(IpcChannel.DocumentsCount),
     search: (q: string) => invoke<SearchResult>(IpcChannel.DocumentsSearch, q),
     get: (id: string) => invoke<Document | null>(IpcChannel.DocumentsGet, id),
     update: (id: string, patch: DocumentPatch) =>

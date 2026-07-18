@@ -76,14 +76,15 @@ describe('IPC handlers (data layer)', () => {
   })
 
   function seedListDocs(): void {
+    const now = Date.now()
     repos.documents.insert(
-      makeDoc('d1', { addedAt: 100, lastReadAt: 500, starred: 1, originalFolderPath: '/folderA', title: 'Alpha' })
+      makeDoc('d1', { addedAt: now - 2 * 24 * 60 * 60 * 1000, lastReadAt: 500, starred: 1, originalFolderPath: '/folderA', title: 'Alpha' })
     )
     repos.documents.insert(
-      makeDoc('d2', { addedAt: 200, lastReadAt: null, starred: 0, originalFolderPath: '/folderB', title: 'Beta' })
+      makeDoc('d2', { addedAt: now - 3 * 24 * 60 * 60 * 1000, lastReadAt: null, starred: 0, originalFolderPath: '/folderB', title: 'Beta' })
     )
     repos.documents.insert(
-      makeDoc('d3', { addedAt: 300, lastReadAt: 300, starred: 1, originalFolderPath: '/folderA', title: 'Gamma' })
+      makeDoc('d3', { addedAt: now, lastReadAt: 300, starred: 1, originalFolderPath: '/folderA', title: 'Gamma' })
     )
   }
 
@@ -99,11 +100,24 @@ describe('IPC handlers (data layer)', () => {
       return ids((r as { ok: true; data: { id: string }[] }).data)
     }
 
-    expect(list({ mode: 'all' })).toEqual(['d3', 'd2', 'd1'])
+    expect(list({ mode: 'all' })).toEqual(['d3', 'd1', 'd2'])
     expect(list({ mode: 'recentlyRead' })).toEqual(['d1', 'd3'])
-    expect(list({ mode: 'recentlyAdded' })).toEqual(['d3', 'd2', 'd1'])
+    expect(list({ mode: 'recentlyAdded' })).toEqual(['d3', 'd1', 'd2'])
     expect(list({ mode: 'starred' })).toEqual(['d3', 'd1'])
     expect(list({ mode: 'category', categoryId: cat.id })).toEqual(['d3', 'd1'])
+  })
+
+  it('documents.counts returns totals per smart mode through IPC', () => {
+    seedListDocs()
+    repos.documents.insert(makeDoc('recent', { addedAt: Date.now(), lastReadAt: null, starred: 0 }))
+    const r = handlers[IpcChannel.DocumentsCount]()
+    expect(isOk(r)).toBe(true)
+    expect((r as { ok: true; data: { all: number; recentlyRead: number; starred: number; recentlyAdded: number } }).data).toMatchObject({
+      all: 4,
+      recentlyRead: 2,
+      starred: 2,
+      recentlyAdded: 4
+    })
   })
 
   it('documents.update rejects non-editable fields with forbidden_field (never throws)', () => {

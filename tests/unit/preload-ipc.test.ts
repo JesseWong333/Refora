@@ -55,6 +55,7 @@ describe('preload IPC bridge', () => {
     const cases: InvocationCase[] = [
       { channel: IpcChannel.Bootstrap, args: [], invoke: (value) => value.getBootstrap() },
       { channel: IpcChannel.DocumentsList, args: [{ mode: 'all' }], invoke: (value) => value.documents.list({ mode: 'all' }) },
+      { channel: IpcChannel.DocumentsCount, args: [], invoke: (value) => value.documents.counts() },
       { channel: IpcChannel.DocumentsSearch, args: ['query'], invoke: (value) => value.documents.search('query') },
       { channel: IpcChannel.DocumentsGet, args: ['doc-1'], invoke: (value) => value.documents.get('doc-1') },
       { channel: IpcChannel.DocumentsUpdate, args: ['doc-1', { title: 'Title' }], invoke: (value) => value.documents.update('doc-1', { title: 'Title' }) },

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { isAbsolute } from 'node:path'
 import type {
   Document,
+  DocumentCounts,
   DocumentPatch,
   EditableField,
   ListFilter,
@@ -201,6 +202,9 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
     const params: unknown[] = []
     if (filter.mode === 'recentlyRead') {
       where = 'WHERE lastReadAt IS NOT NULL'
+    } else if (filter.mode === 'recentlyAdded') {
+      where = 'WHERE addedAt >= ?'
+      params.push(Date.now() - 7 * 24 * 60 * 60 * 1000)
     } else if (filter.mode === 'starred') {
       where = 'WHERE starred = 1'
     } else if (filter.mode === 'category') {
@@ -213,6 +217,27 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
       unknown
     >[]
     return rows.map((r) => mapDocument(r, lib()))
+  }
+
+  function counts(): DocumentCounts {
+    const row = db
+      .prepare(
+        'SELECT ' +
+          'count(*) AS "all", ' +
+          'count(*) FILTER (WHERE lastReadAt IS NOT NULL) AS recentlyRead, ' +
+          'count(*) FILTER (WHERE starred = 1) AS starred ' +
+          'FROM documents'
+      )
+      .get() as { all: number; recentlyRead: number; starred: number }
+    const recentlyAdded = (db
+      .prepare('SELECT count(*) AS c FROM documents WHERE addedAt >= ?')
+      .get(Date.now() - 7 * 24 * 60 * 60 * 1000) as { c: number }).c
+    return {
+      all: row.all,
+      recentlyRead: row.recentlyRead,
+      recentlyAdded,
+      starred: row.starred
+    }
   }
 
   function search(q: string, limit = 500): SearchResult {
@@ -465,6 +490,7 @@ export function createDocumentsRepository(db: SqliteDb, deps: DocumentsRepoDeps)
 
   return {
     list,
+    counts,
     search,
     get,
     insert,
