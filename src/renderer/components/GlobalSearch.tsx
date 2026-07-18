@@ -220,7 +220,7 @@ export default function GlobalSearch() {
   return (
     <div
       ref={rootRef}
-      className="no-drag pointer-events-auto absolute left-1/2 top-2.5 z-10 isolate w-[min(480px,calc(100vw-32px))] -translate-x-1/2"
+      className="no-drag pointer-events-auto absolute left-1/2 top-2.5 z-[60] isolate w-[min(480px,calc(100vw-32px))] -translate-x-1/2"
       onMouseDownCapture={(event) => {
         const target = event.target
         if (!(target instanceof Element) || !target.closest('button')) {

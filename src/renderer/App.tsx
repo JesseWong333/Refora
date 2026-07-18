@@ -208,13 +208,18 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-testid="app-main-layer">
           {!showWizard && (
             <div
-              className="drag-region relative z-[60] h-12 w-full shrink-0 border-b border-border/60 bg-background"
+              className="drag-region relative h-12 w-full shrink-0 bg-background"
               data-testid="app-top-bar"
             >
               {!workspaceFullscreen && sidebarCollapsed && (
                 <Sidebar collapsed onToggleCollapse={handleToggleSidebar} />
               )}
               <GlobalSearch />
+              <div
+                className="pointer-events-none absolute bottom-0 left-0 right-0 h-px"
+                style={{ background: 'linear-gradient(to right, var(--color-background), var(--color-border) 100px)' }}
+                data-testid="app-top-bar-separator"
+              />
             </div>
           )}
           <div

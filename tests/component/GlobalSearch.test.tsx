@@ -121,7 +121,7 @@ describe('GlobalSearch', () => {
       'left-1/2',
       'top-2.5',
       '-translate-x-1/2',
-      'z-10',
+      'z-[60]',
       'isolate',
       'no-drag',
       'pointer-events-auto'

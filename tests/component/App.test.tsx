@@ -122,7 +122,11 @@ describe('App root layout', () => {
 
     expect(mainLayer).toHaveClass('flex', 'flex-1', 'flex-col')
     expect(topBar.parentElement).toBe(mainLayer)
-    expect(topBar).toHaveClass('drag-region', 'h-12', 'shrink-0', 'z-[60]')
+    expect(topBar).toHaveClass('drag-region', 'h-12', 'shrink-0')
+    expect(topBar).not.toHaveClass('z-[60]', 'border-b')
+    expect(within(topBar).getByTestId('app-top-bar-separator')).toHaveStyle({
+      background: 'linear-gradient(to right, var(--color-background), var(--color-border) 100px)'
+    })
     expect(panelLayer).toHaveClass('min-h-0', 'flex-1', 'overflow-hidden')
     expect(within(topBar).getByTestId('global-search')).toBeInTheDocument()
     expect(screen.getByTestId('app-sidebar-layer')).toContainElement(screen.getByTestId('sidebar'))
