@@ -128,7 +128,7 @@ describe('GlobalSearch', () => {
     )
     expect(container.firstElementChild).not.toHaveClass('fixed', 'pointer-events-none', 'inset-x-0')
     expect(input).toHaveClass('h-7', 'rounded-lg', 'bg-background')
-    expect(screen.getByText('⌘F')).toHaveClass('pointer-events-none')
+    expect(screen.queryByText('⌘F')).not.toBeInTheDocument()
     fireEvent.mouseDown(input.parentElement as HTMLElement)
     expect(input).toHaveFocus()
     fireEvent.change(input, { target: { value: 'transformer' } })
@@ -178,6 +178,35 @@ describe('GlobalSearch', () => {
 
     expect(mocks.setActiveWorkspace).toHaveBeenCalledWith('ws-chat')
     expect(mocks.setActiveThreadId).toHaveBeenCalledWith('thread-1')
+    expect(onOpenChat).toHaveBeenCalledOnce()
+  })
+
+  it('opens a global chat result without opening an empty workspace panel', async () => {
+    api.search.global = vi.fn().mockResolvedValue({
+      ...results,
+      documents: [],
+      workspaceFiles: [],
+      chats: [{
+        ...results.chats[0],
+        workspaceId: null,
+        workspaceName: null,
+        threadId: 'global-thread'
+      }]
+    })
+    const onOpenChat = vi.fn()
+    render(<GlobalSearch onOpenChat={onOpenChat} />)
+    const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
+    fireEvent.change(input, { target: { value: 'transformer' } })
+
+    const option = await screen.findByRole('option', {
+      name: 'globalSearch.openChat: Transformer discussion'
+    })
+    expect(option).toHaveTextContent('globalSearch.globalChat')
+    fireEvent.click(option)
+
+    expect(mocks.setActiveWorkspace).toHaveBeenCalledWith(null)
+    expect(mocks.openPanel).not.toHaveBeenCalled()
+    expect(mocks.setActiveThreadId).toHaveBeenCalledWith('global-thread')
     expect(onOpenChat).toHaveBeenCalledOnce()
   })
 

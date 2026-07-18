@@ -34,7 +34,7 @@ interface WorkspaceState {
   createWorkspace: (name: string) => Promise<Workspace | null>
   renameWorkspace: (id: string, name: string) => Promise<void>
   deleteWorkspace: (id: string) => Promise<void>
-  setActiveWorkspace: (id: string) => void
+  setActiveWorkspace: (id: string | null) => void
   setActiveThreadId: (id: string | null) => void
   setChatStreaming: (streaming: boolean) => void
   deleteThread: (threadId: string) => Promise<void>
@@ -189,22 +189,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  setActiveWorkspace: (id: string) => {
+  setActiveWorkspace: (id: string | null) => {
     if (get().chatStreaming) return
     set({
       activeWorkspaceId: id,
       activeThreadId: null,
-      panelOpen: true,
+      panelOpen: id !== null,
       items: [],
       reports: [],
       notes: [],
       assets: [],
       threads: []
     })
-    void get().fetchItems()
-    void get().fetchReports()
-    void get().fetchNotes()
-    void get().fetchAssets()
+    if (id) {
+      void get().fetchItems()
+      void get().fetchReports()
+      void get().fetchNotes()
+      void get().fetchAssets()
+    }
     void get().fetchThreads({ selectLatestIfNone: true })
   },
 
@@ -242,10 +244,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   fetchThreads: async (options) => {
     const id = get().activeWorkspaceId
-    if (!id) {
-      set({ threads: [], activeThreadId: null })
-      return
-    }
     try {
       const list = await api.ai.chatThreads(id)
       if (get().activeWorkspaceId !== id) return

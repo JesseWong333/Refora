@@ -51,6 +51,7 @@
     "paperFileMissing": "论文文件缺失，请先在论文详情中重新定位文件。",
     "unavailableWhileStreaming": "请等待当前 AI 回复完成后再切换上下文。",
     "untitledChat": "未命名对话",
+    "globalChat": "全局聊天",
     "hint": "↑↓ 选择 · Enter 打开 · Esc 关闭",
     "role": {
       "user": "你",

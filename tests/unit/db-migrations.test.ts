@@ -101,8 +101,8 @@ describe('db migrations + schema', () => {
     expect(userVersion(db)).toBe(0)
     const result = runMigrations(adapt(db))
     expect(result.from).toBe(0)
-    expect(result.to).toBe(19)
-    expect(userVersion(db)).toBe(19)
+    expect(result.to).toBe(20)
+    expect(userVersion(db)).toBe(20)
 
     for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps', 'workspace_connections', 'workspace_assets']) {
       const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)
@@ -145,9 +145,9 @@ describe('db migrations + schema', () => {
   it('is idempotent: running migrations twice does not error or change version', () => {
     runMigrations(adapt(db))
     const second = runMigrations(adapt(db))
-    expect(second.from).toBe(19)
-    expect(second.to).toBe(19)
-    expect(userVersion(db)).toBe(19)
+    expect(second.from).toBe(20)
+    expect(second.to).toBe(20)
+    expect(userVersion(db)).toBe(20)
   })
 
   it('preserves existing canvas connections while adding asset-backed cards', () => {
@@ -178,11 +178,57 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(19)
+    expect(result.to).toBe(20)
     expect(db.prepare('SELECT * FROM workspace_connections WHERE id = ?').get('connection-1'))
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_items') WHERE name = 'assetId'").get())
       .toBeDefined()
+  })
+
+  it('preserves existing chat data and allows global threads', () => {
+    migrateThrough(db, 19)
+    db.prepare('INSERT INTO workspaces (id, name, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
+      .run('ws-1', 'Research', 1, 1)
+    db.prepare(
+      'INSERT INTO chat_threads (id, workspaceId, providerId, createdAt, title) VALUES (?, ?, ?, ?, ?)'
+    ).run('thread-1', 'ws-1', 'provider-1', 1, 'Existing chat')
+    db.prepare(
+      'INSERT INTO chat_messages (id, threadId, role, content, createdAt) VALUES (?, ?, ?, ?, ?)'
+    ).run('message-1', 'thread-1', 'user', 'Existing message', 2)
+    db.prepare(
+      `INSERT INTO agent_trace_steps
+       (id, threadId, runId, kind, name, input, output, status, startedAt, endedAt, seq,
+        inputTokens, outputTokens, totalTokens)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      'trace-1', 'thread-1', 'run-1', 'llm', 'model_call', 'input', 'output', 'done',
+      3, 4, 0, 10, 20, 30
+    )
+
+    const result = runMigrations(adapt(db))
+
+    expect(result.to).toBe(20)
+    expect(db.prepare('SELECT * FROM chat_threads WHERE id = ?').get('thread-1'))
+      .toMatchObject({ workspaceId: 'ws-1', title: 'Existing chat' })
+    expect(db.prepare('SELECT * FROM chat_messages WHERE id = ?').get('message-1'))
+      .toMatchObject({ content: 'Existing message' })
+    expect(db.prepare('SELECT * FROM agent_trace_steps WHERE id = ?').get('trace-1'))
+      .toMatchObject({ inputTokens: 10, outputTokens: 20, totalTokens: 30 })
+
+    const workspaceColumn = db
+      .prepare("SELECT * FROM pragma_table_info('chat_threads') WHERE name = 'workspaceId'")
+      .get() as { notnull: number }
+    expect(workspaceColumn.notnull).toBe(0)
+    db.prepare(
+      'INSERT INTO chat_threads (id, workspaceId, providerId, createdAt, title) VALUES (?, NULL, ?, ?, ?)'
+    ).run('global-thread', 'provider-1', 5, 'Global chat')
+
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run('ws-1')
+
+    expect(db.prepare('SELECT * FROM chat_threads WHERE id = ?').get('thread-1')).toBeUndefined()
+    expect(db.prepare('SELECT * FROM chat_messages WHERE id = ?').get('message-1')).toBeUndefined()
+    expect(db.prepare('SELECT * FROM agent_trace_steps WHERE id = ?').get('trace-1')).toBeUndefined()
+    expect(db.prepare('SELECT * FROM chat_threads WHERE id = ?').get('global-thread')).toBeDefined()
   })
 
   it('reconciles a database created by the workspace branch before migrations were renumbered', () => {
@@ -195,7 +241,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(19)
+    expect(result.to).toBe(20)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'presetId'").get())
@@ -216,7 +262,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(19)
+    expect(result.to).toBe(20)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'reasoningEffort'").get())
@@ -294,7 +340,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 1`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(19)
+    expect(result.to).toBe(20)
     const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
     expect(cols.map((c) => c.name)).not.toContain('moveToLibrary')
   })
@@ -358,7 +404,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 3`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(19)
+    expect(result.to).toBe(20)
 
     const cols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>
     const names = cols.map((c) => c.name)
@@ -510,7 +556,7 @@ describe('db migrations + schema', () => {
     ).run('outside', '/Users/x/Downloads/other.pdf', '/Users/x/Downloads', 'other.pdf', 1000, 1000)
 
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(19)
+    expect(result.to).toBe(20)
 
     const inLib = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('in-lib') as { filePath: string }
     const nested = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('nested') as { filePath: string }

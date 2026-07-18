@@ -73,24 +73,27 @@ function normalizeReasoningEffort(
 }
 
 const SYSTEM_PROMPT =
-  'You are a research assistant working in a workspace of academic papers. ' +
+  'You are a research assistant working with the user\'s local library of academic papers. ' +
   'Papers live in the user library and are indexed in the local database (not as a filesystem folder for this chat). ' +
-  'Use the workspace paper catalog in this system message for docId, title, and whether a cached AI summary exists. ' +
   'Use tools to search, read full text, and retrieve summaries when you need more detail. ' +
   'Prefer get_paper_summary when hasSummary is true; use read_paper_fulltext only when summary is missing or insufficient. ' +
-  'When the user asks for a report, survey, or comparison, call generate_report to pin a structured report to the board. ' +
-  'Use search_library for full-text search across the entire library, not just the workspace. ' +
-  'When the user wants papers added to this workspace, first use search_library to find them, then call add_docs_to_workspace with the docIds. ' +
-  'Use list_workspace_context when you need the current papers, reports, notes, assets, card itemIds, or existing connections. ' +
-  'When the user asks to connect workspace cards or build a relationship map, call list_workspace_context first, then call create_workspace_connections with those itemIds. ' +
+  'Use search_library for full-text search across the entire library. ' +
   'Use find_related_papers to find metadata-similar papers that already exist in the local library. ' +
   'When the user asks for a summary or overview, use read_paper_fulltext to read the paper and summarize it yourself. Only call request_summary to pre-generate a cached summary for future use - it returns immediately without the actual summary. ' +
-  'When the user message includes [Attached papers], prioritize those docIds in your analysis. ' +
-  'If the workspace catalog is empty, suggest using search_library and add_docs_to_workspace rather than asking the user to add papers manually. ' +
   'Reference papers by their docId. ' +
   'Full text: use read_paper_fulltext with offset/limit; it returns a window with nextOffset - follow nextOffset until done or you have enough evidence. Do not assume the first window is the whole paper. When quoting, include the offset range you used. ' +
   'Citations: cite papers as markdown links [Title](refora://doc/<docId>). Prefer titles users can recognize. ' +
-  'Never invent docIds; only use ids from the workspace catalog, tools, or attachments.'
+  'Never invent docIds; only use ids returned by tools or supplied by the user.'
+
+const WORKSPACE_SYSTEM_PROMPT =
+  'A workspace is selected for this chat. ' +
+  'Use the workspace paper catalog in this system message for docId, title, and whether a cached AI summary exists. ' +
+  'When the user asks for a report, survey, or comparison, call generate_report to pin a structured report to the board. ' +
+  'When the user wants papers added to this workspace, first use search_library to find them, then call add_docs_to_workspace with the docIds. ' +
+  'Use list_workspace_context when you need the current papers, reports, notes, assets, card itemIds, or existing connections. ' +
+  'When the user asks to connect workspace cards or build a relationship map, call list_workspace_context first, then call create_workspace_connections with those itemIds. ' +
+  'When the user message includes [Attached papers], prioritize those docIds in your analysis. ' +
+  'If the workspace catalog is empty, suggest using search_library and add_docs_to_workspace rather than asking the user to add papers manually.'
 
 const workspaceContextCache = new Map<string, { context: string; docIdKey: string; ts: number }>()
 const WORKSPACE_CONTEXT_TTL_MS = 60_000
@@ -374,6 +377,7 @@ export function createAiAgentService(
   const activeRuns = new Map<string, AbortController>()
 
   function buildTools(req: ChatSendRequest, providerModel: string, signal: AbortSignal) {
+    const workspaceId = req.workspaceId ?? ''
     const listWorkspaceContext = new DynamicStructuredTool({
       name: 'list_workspace_context',
       description:
@@ -383,10 +387,10 @@ export function createAiAgentService(
       schema: z.object({}),
       func: async () => {
         if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
-        const items = repos.workspaceItems.list(req.workspaceId)
-        const reports = new Map(repos.aiReports.list(req.workspaceId).map((report) => [report.id, report]))
-        const notes = new Map(repos.workspaceNotes.list(req.workspaceId).map((note) => [note.id, note]))
-        const assets = new Map(repos.workspaceAssets.list(req.workspaceId).map((asset) => [asset.id, asset]))
+        const items = repos.workspaceItems.list(workspaceId)
+        const reports = new Map(repos.aiReports.list(workspaceId).map((report) => [report.id, report]))
+        const notes = new Map(repos.workspaceNotes.list(workspaceId).map((note) => [note.id, note]))
+        const assets = new Map(repos.workspaceAssets.list(workspaceId).map((asset) => [asset.id, asset]))
         const contextItems = items.map((item) => {
           const base = {
             itemId: item.id,
@@ -439,7 +443,7 @@ export function createAiAgentService(
           }
           return { ...base, unavailable: true }
         })
-        const connections = repos.workspaceConnections.list(req.workspaceId).map((connection) => ({
+        const connections = repos.workspaceConnections.list(workspaceId).map((connection) => ({
           connectionId: connection.id,
           sourceItemId: connection.sourceItemId,
           targetItemId: connection.targetItemId,
@@ -447,7 +451,7 @@ export function createAiAgentService(
           targetAnchor: connection.targetAnchor
         }))
         return JSON.stringify({
-          workspaceId: req.workspaceId,
+          workspaceId,
           itemCount: contextItems.length,
           connectionCount: connections.length,
           items: contextItems,
@@ -477,10 +481,10 @@ export function createAiAgentService(
       }),
       func: async ({ connections }) => {
         if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
-        const itemIds = new Set(repos.workspaceItems.list(req.workspaceId).map((item) => item.id))
+        const itemIds = new Set(repos.workspaceItems.list(workspaceId).map((item) => item.id))
         const existingPairs = new Set(
           repos.workspaceConnections
-            .list(req.workspaceId)
+            .list(workspaceId)
             .map((connection) => `${connection.sourceItemId}\u0000${connection.targetItemId}`)
         )
         const requestedPairs = new Set<string>()
@@ -521,7 +525,7 @@ export function createAiAgentService(
           ? repos.transaction(() =>
               valid.map((connection) =>
                 repos.workspaceConnections.create(
-                  req.workspaceId,
+                  workspaceId,
                   connection.sourceItemId,
                   connection.targetItemId,
                   connection.sourceAnchor,
@@ -532,7 +536,7 @@ export function createAiAgentService(
           : []
         const w = getWin()
         if (created.length > 0 && w) {
-          emitWorkspaceItemsChanged(w, { workspaceId: req.workspaceId, reason: 'other' })
+          emitWorkspaceItemsChanged(w, { workspaceId, reason: 'other' })
         }
         return JSON.stringify({ created, errors })
       }
@@ -559,12 +563,14 @@ export function createAiAgentService(
         const seedAuthors = normalizedAuthors(seed.authors)
         const seedVenue = normalizeComparable(seed.venue)
         const seedYear = Number.parseInt(seed.year ?? '', 10)
-        const workspaceDocIds = new Set(
-          repos.workspaceItems
-            .list(req.workspaceId)
-            .filter((item) => item.kind === 'document' && item.docId)
-            .map((item) => item.docId as string)
-        )
+        const workspaceDocIds = workspaceId
+          ? new Set(
+              repos.workspaceItems
+                .list(workspaceId)
+                .filter((item) => item.kind === 'document' && item.docId)
+                .map((item) => item.docId as string)
+            )
+          : new Set<string>()
 
         const related = repos.documents
           .list({ mode: 'all' })
@@ -627,7 +633,7 @@ export function createAiAgentService(
       func: async (query: string): Promise<string> => {
         if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const items = repos.workspaceItems
-          .list(req.workspaceId)
+          .list(workspaceId)
           .filter((i) => i.kind === 'document')
         const workspaceDocIds = new Set(
           items.map((i) => i.docId).filter((d): d is string => d !== null)
@@ -766,26 +772,26 @@ export function createAiAgentService(
         if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const allowedDocIds = new Set(
           repos.workspaceItems
-            .list(req.workspaceId)
+            .list(workspaceId)
             .filter((item) => item.kind === 'document' && item.docId)
             .map((item) => item.docId as string)
         )
         const ids = parseSourceDocIds(sourceDocIds).filter((id) => allowedDocIds.has(id))
         const report = repos.transaction(() => {
           const created = repos.aiReports.create({
-            workspaceId: req.workspaceId,
+            workspaceId,
             title,
             contentMd,
             sourceDocIds: ids,
             model: providerModel
           })
-          repos.workspaceItems.add(req.workspaceId, 'report', [created.id])
+          repos.workspaceItems.add(workspaceId, 'report', [created.id])
           return created
         })
         const w = getWin()
         if (w) {
           emitAiReportCreated(w, report)
-          emitWorkspaceItemsChanged(w, { workspaceId: req.workspaceId, reason: 'other' })
+          emitWorkspaceItemsChanged(w, { workspaceId, reason: 'other' })
         }
         return 'Report created and pinned to the board.'
       }
@@ -814,7 +820,7 @@ export function createAiAgentService(
           })
         }
         const existingItems = repos.workspaceItems
-          .list(req.workspaceId)
+          .list(workspaceId)
           .filter((i) => i.kind === 'document')
           .map((i) => i.docId)
           .filter((d): d is string => d !== null)
@@ -836,12 +842,12 @@ export function createAiAgentService(
           validIds.push(id)
         }
         if (validIds.length > 0) {
-          repos.workspaceItems.add(req.workspaceId, 'document', validIds)
+          repos.workspaceItems.add(workspaceId, 'document', validIds)
           added.push(...validIds)
           const w = getWin()
           if (w) {
             emitWorkspaceItemsChanged(w, {
-              workspaceId: req.workspaceId,
+              workspaceId,
               reason: 'agent_add_docs',
               docIds: added
             })
@@ -929,9 +935,11 @@ export function createAiAgentService(
       func: async (docId: string) => {
         if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const id = docId.trim()
-        const wsItems = repos.workspaceItems.list(req.workspaceId).filter((i) => i.kind === 'document')
+        const wsItems = workspaceId
+          ? repos.workspaceItems.list(workspaceId).filter((i) => i.kind === 'document')
+          : []
         const wsDocIds = new Set(wsItems.map((i) => i.docId).filter((d): d is string => d !== null))
-        if (!wsDocIds.has(id)) {
+        if (workspaceId && !wsDocIds.has(id)) {
           return 'Document is not in the current workspace. Use search_workspace_docs to find papers in this workspace.'
         }
         try {
@@ -943,15 +951,20 @@ export function createAiAgentService(
       }
     })
 
-    return [
-      listWorkspaceContext,
-      searchWorkspaceDocs,
+    const libraryTools = [
       searchLibrary,
       findRelatedPapers,
       readPaperFulltext,
       getPaperSummary,
       getPaperMetadata,
       openPaper,
+      requestSummary
+    ]
+    if (!workspaceId) return libraryTools
+    return [
+      listWorkspaceContext,
+      searchWorkspaceDocs,
+      ...libraryTools.slice(0, -1),
       generateReport,
       createWorkspaceConnections,
       addDocsToWorkspace,
@@ -1122,11 +1135,11 @@ export function createAiAgentService(
           ? 'native'
           : resolveDeepThinkingMode(modelId)
         : 'none'
-      const workspaceContext = buildWorkspaceContext(repos, req.workspaceId)
       const systemPrompt = [
         SYSTEM_PROMPT,
+        req.workspaceId ? WORKSPACE_SYSTEM_PROMPT : '',
         thinkingMode === 'prompt' ? 'Prefer careful multi-step reasoning before answering.' : '',
-        workspaceContext
+        req.workspaceId ? buildWorkspaceContext(repos, req.workspaceId) : ''
       ]
         .filter((s) => s.length > 0)
         .join('\n\n')
@@ -1156,7 +1169,7 @@ export function createAiAgentService(
       const historyMsgs = historyToMessages(truncatedHistory)
       const inputMsgs = [new SystemMessage(systemPrompt), ...historyMsgs]
 
-      if (req.attachments?.length) {
+      if (req.workspaceId && req.attachments?.length) {
         const lastIdx = inputMsgs.length - 1
         const lastMsg = inputMsgs[lastIdx]
         if (lastMsg instanceof HumanMessage && typeof lastMsg.content === 'string') {

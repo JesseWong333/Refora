@@ -51,6 +51,7 @@
     "paperFileMissing": "This paper file is missing. Relocate it from the paper details first.",
     "unavailableWhileStreaming": "Wait for the current AI response to finish before switching context.",
     "untitledChat": "Untitled conversation",
+    "globalChat": "Global chat",
     "hint": "↑↓ Navigate · Enter Open · Esc Close",
     "role": {
       "user": "You",

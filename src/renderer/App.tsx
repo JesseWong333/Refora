@@ -59,7 +59,9 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed)
   const [showWizard, setShowWizard] = useState(firstRun)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
-  const [chatOpen, setChatOpen] = useState(true)
+  const [chatOpen, setChatOpen] = useState(
+    () => useWorkspaceStore.getState().activeWorkspaceId !== null
+  )
   const [documentListOpen, setDocumentListOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT)
@@ -89,6 +91,14 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const workspaceFullscreen = useWorkspaceStore((s) => s.fullscreen)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const chatStreaming = useWorkspaceStore((s) => s.chatStreaming)
+  const previousActiveWorkspaceIdRef = useRef(activeWorkspaceId)
+
+  useEffect(() => {
+    if (previousActiveWorkspaceIdRef.current === null && activeWorkspaceId !== null) {
+      setChatOpen(true)
+    }
+    previousActiveWorkspaceIdRef.current = activeWorkspaceId
+  }, [activeWorkspaceId])
 
   useEffect(() => {
     setDocumentListCompact(workspacePanelOpen)
@@ -253,10 +263,11 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const sidebarStyle = sidebarCollapsed
     ? { width: '0px' }
     : { width: `${sidebarWidth}px` }
-  const chatVisible = chatOpen && activeWorkspaceId !== null
+  const chatVisible = chatOpen
   const chatToggleLabel = chatVisible
     ? t('workspace.chat.closePanel')
     : t('workspace.chat.openPanel')
+  const workspaceNeedsLeadingBorder = rightPanelOpen || (documentListOpen && !documentListCompact)
   const chatPane = chatVisible ? (
     <>
       <ResizeDivider onResize={handleChatResize} orientation="vertical" variant="line" />
@@ -315,7 +326,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
                       : 'text-muted hover:bg-hover hover:text-foreground'
                   )}
                   onClick={() => setChatOpen((open) => !open)}
-                  disabled={!activeWorkspaceId || (chatStreaming && chatVisible)}
+                  disabled={chatStreaming && chatVisible}
                   title={chatToggleLabel}
                   aria-label={chatToggleLabel}
                   aria-pressed={chatVisible}
@@ -382,7 +393,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
                   <div
                     className={clsx(
                       'relative z-20 min-w-0 overflow-hidden transition-[width] duration-200',
-                      rightPanelOpen ? 'border-l border-border' : 'w-0 border-0'
+                      !rightPanelOpen && 'w-0'
                     )}
                     style={rightPanelOpen ? { width: `${detailWidth}px`, minWidth: 0 } : { width: 0 }}
                   >
@@ -398,7 +409,8 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
                       ref={workspacePanelRef}
                       style={documentListCompact ? undefined : { width: `${workspaceWidth}px` }}
                       className={clsx(
-                        'relative z-20 min-h-0 min-w-0 overflow-hidden border-l border-border/50',
+                        'relative z-20 min-h-0 min-w-0 overflow-hidden',
+                        workspaceNeedsLeadingBorder && 'border-l border-border/50',
                         documentListCompact ? 'flex-1' : 'shrink-0'
                       )}
                       data-testid="app-workspace-panel"

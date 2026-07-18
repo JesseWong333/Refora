@@ -291,6 +291,25 @@ describe('IPC AI Handlers', () => {
       }
     })
 
+    it('creates a global thread when no workspace is selected', async () => {
+      const pid = seedProvider()
+      const result = await callAsync(IpcChannel.AiChatSend, {
+        workspaceId: null,
+        text: 'Search my library',
+        providerId: pid
+      })
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(repos.chat.getThread(result.data.threadId)?.workspaceId).toBeNull()
+      }
+      expect(runtime.aiAgentService!.run).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: null, text: 'Search my library' }),
+        expect.any(String),
+        expect.any(String)
+      )
+    })
+
     it('reuses existing thread when threadId provided and valid', async () => {
       const pid = seedProvider()
       const thread = repos.chat.createThread('ws-1', pid)
@@ -435,6 +454,24 @@ describe('IPC AI Handlers', () => {
       expect(repos.chat.listThreads('ws-1')).toEqual([])
     })
 
+    it('rejects attachments when no workspace is selected', async () => {
+      const pid = seedProvider()
+      const result = await callAsync(IpcChannel.AiChatSend, {
+        workspaceId: null,
+        text: 'Use this paper',
+        providerId: pid,
+        attachments: [{ type: 'document', docId: 'doc-1' }]
+      })
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          ok: false,
+          error: expect.objectContaining({ code: 'invalid_attachment' })
+        })
+      )
+      expect(repos.chat.listThreads(null)).toEqual([])
+    })
+
     it('removes the previous exchange and its trace before regeneration', async () => {
       const pid = seedProvider()
       const thread = repos.chat.createThread('ws-1', pid)
@@ -514,6 +551,20 @@ describe('IPC AI Handlers', () => {
         const threads = result.data as ChatThread[]
         expect(threads).toHaveLength(2)
         threads.forEach((t) => expect(t.workspaceId).toBe('ws-1'))
+      }
+    })
+
+    it('returns only global threads for a null workspace scope', () => {
+      repos.chat.createThread(null, 'p1')
+      repos.chat.createThread('ws-1', 'p1')
+
+      const result = callSync(IpcChannel.AiChatThreads, null)
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        const threads = result.data as ChatThread[]
+        expect(threads).toHaveLength(1)
+        expect(threads[0].workspaceId).toBeNull()
       }
     })
   })

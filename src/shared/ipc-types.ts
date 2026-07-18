@@ -129,8 +129,8 @@ export interface WorkspaceFileSearchResult {
 
 export interface ChatSearchResult {
   threadId: string
-  workspaceId: string
-  workspaceName: string
+  workspaceId: string | null
+  workspaceName: string | null
   title: string | null
   snippet: string
   role: 'user' | 'assistant' | null
@@ -432,7 +432,7 @@ export interface WorkspaceNotePatch {
 
 export interface ChatThread {
   id: string
-  workspaceId: string
+  workspaceId: string | null
   providerId: string
   createdAt: number
   title: string | null
@@ -452,7 +452,7 @@ export interface ChatMessage {
 }
 
 export interface ChatSendRequest {
-  workspaceId: string
+  workspaceId: string | null
   threadId?: string
   runId?: string
   text: string
@@ -685,7 +685,7 @@ export interface ReforaApi {
     summaryGet(docId: string): Promise<AiSummary | null>
     chatSend(req: ChatSendRequest): Promise<{ threadId: string; runId: string }>
     chatHistory(threadId: string): Promise<ChatMessage[]>
-    chatThreads(workspaceId: string): Promise<ChatThread[]>
+    chatThreads(workspaceId: string | null): Promise<ChatThread[]>
     chatTraces(threadId: string): Promise<AgentTraceStep[]>
     chatCancel(threadId: string): Promise<void>
     chatDeleteThread(threadId: string): Promise<void>

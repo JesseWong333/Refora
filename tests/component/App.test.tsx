@@ -211,6 +211,40 @@ describe('App root layout', () => {
     expect(screen.getByTestId('app-chat-panel')).toBeInTheDocument()
   })
 
+  it('opens AI chat from the root bar when no workspace is selected', () => {
+    mocks.workspaceState.activeWorkspaceId = null
+    mocks.workspaceState.panelOpen = false
+
+    render(<App listColumnState={null} sidebarCollapsed={false} firstRun={false} />)
+
+    const openButton = screen.getByRole('button', { name: 'workspace.chat.openPanel' })
+    expect(openButton).toBeEnabled()
+    expect(screen.queryByTestId('app-chat-panel')).not.toBeInTheDocument()
+
+    fireEvent.click(openButton)
+
+    expect(screen.getByTestId('app-chat-panel')).toBeInTheDocument()
+  })
+
+  it('renders one separator at each adjacent panel boundary', async () => {
+    const view = render(<App listColumnState={null} sidebarCollapsed={false} firstRun={false} />)
+
+    const primaryPanels = screen.getByTestId('app-primary-panels')
+    const workspacePanel = screen.getByTestId('app-workspace-panel')
+    expect(within(primaryPanels).getAllByTestId('resize-divider')).toHaveLength(1)
+    expect(workspacePanel).not.toHaveClass('border-l')
+
+    mocks.documentState.focusedDocId = 'doc-1'
+    view.rerender(<App listColumnState={null} sidebarCollapsed={false} firstRun={false} />)
+
+    await waitFor(() => {
+      const detailPanelContainer = screen.getByTestId('detail-panel').parentElement?.parentElement
+      expect(detailPanelContainer).not.toHaveClass('border-l')
+      expect(workspacePanel).toHaveClass('border-l', 'border-border/50')
+    })
+    expect(within(primaryPanels).getAllByTestId('resize-divider')).toHaveLength(1)
+  })
+
   it('closes AI chat from its tab and reopens it from the root bar', () => {
     render(<App listColumnState={null} sidebarCollapsed={false} firstRun={false} />)
 

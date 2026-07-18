@@ -754,6 +754,9 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (!raw || !raw.apiKeyEnc) throw new RepoError('no_api_key', 'Provider has no API key')
 
         if (req.attachments?.length) {
+          if (!req.workspaceId) {
+            throw new RepoError('invalid_attachment', 'Attachments require a workspace')
+          }
           const wsItems = repos().workspaceItems.list(req.workspaceId).filter((i) => i.kind === 'document')
           const wsDocIds = new Set(wsItems.map((i) => i.docId).filter((d): d is string => d !== null))
           for (const att of req.attachments) {
@@ -793,7 +796,7 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         if (!threadId) return []
         return repos().chat.listMessages(threadId).filter((m) => m.role !== 'tool')
       }),
-    [IpcChannel.AiChatThreads]: (workspaceId: string): Result<ChatThread[]> =>
+    [IpcChannel.AiChatThreads]: (workspaceId: string | null): Result<ChatThread[]> =>
       wrap(() => repos().chat.listThreads(workspaceId)),
     [IpcChannel.AiChatTraces]: (threadId: string): Result<AgentTraceStep[]> =>
       wrap(() => {

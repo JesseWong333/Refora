@@ -150,7 +150,7 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
       if (store.chatStreaming) return
       if (store.activeWorkspaceId !== selection.value.workspaceId) {
         store.setActiveWorkspace(selection.value.workspaceId)
-      } else {
+      } else if (selection.value.workspaceId) {
         store.openPanel()
       }
       useWorkspaceStore.getState().setActiveThreadId(selection.value.threadId)
@@ -239,7 +239,7 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
           ref={inputRef}
           variant="outlined"
           inputSize="sm"
-          className="doc-search-input min-w-0 bg-background pl-8 pr-20 shadow-sm"
+          className="doc-search-input min-w-0 bg-background pl-8 pr-14 shadow-sm"
           value={query}
           placeholder={t('globalSearch.placeholder')}
           role="combobox"
@@ -287,7 +287,6 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
               <X className="h-3.5 w-3.5" />
             </button>
           )}
-          {!query && <kbd className="pointer-events-none rounded border border-border px-1.5 py-0.5 text-[9px] leading-none text-muted">⌘F</kbd>}
         </div>
 
         {showResults && (
@@ -363,7 +362,7 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
                         {highlightMatch(chat.title?.trim() || t('globalSearch.untitledChat'), query)}
                       </span>
                       <span className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted">
-                        {chat.workspaceName}
+                        {chat.workspaceName ?? t('globalSearch.globalChat')}
                         {chat.role && <> · {t(`globalSearch.role.${chat.role}`)}</>}
                         {' · '}{highlightMatch(chat.snippet, query)}
                       </span>

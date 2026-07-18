@@ -589,12 +589,13 @@ describe('ChatInput attachment loading', () => {
 
 function renderChatStream(
   activeThreadId: string | null = 'thread-1',
-  reasoningEffort?: AiReasoningEffort
+  reasoningEffort?: AiReasoningEffort,
+  activeWorkspaceId: string | null = 'ws-1'
 ) {
   setupApi([])
   return renderHook(() =>
     useChatStream({
-      activeWorkspaceId: 'ws-1',
+      activeWorkspaceId,
       activeProviderId: 'p1',
       activeThreadId,
       requestModel: '',
@@ -608,6 +609,20 @@ function renderChatStream(
 }
 
 describe('useChatStream lifecycle', () => {
+  it('sends a new chat with a null workspace scope', async () => {
+    const { result } = renderChatStream(null, undefined, null)
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+
+    await act(async () => {
+      await result.current.sendText('Search my library', [], null)
+    })
+
+    expect(mockChatSend.mock.calls[0][0] as ChatSendRequest).toMatchObject({
+      workspaceId: null,
+      text: 'Search my library'
+    })
+  })
+
   it('keeps a new chat alive after the Strict Mode effect replay', async () => {
     setupApi([])
     const setActiveThreadId = vi.fn()

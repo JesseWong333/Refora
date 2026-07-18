@@ -331,6 +331,23 @@ describe('WorkspaceStore', () => {
       })
     })
 
+    it('loads global chat threads without opening a workspace panel', async () => {
+      mockChatThreads.mockResolvedValue([
+        { id: 'global-thread', workspaceId: null, providerId: 'p1', createdAt: 1, title: null }
+      ])
+
+      useWorkspaceStore.getState().setActiveWorkspace(null)
+
+      expect(useWorkspaceStore.getState().activeWorkspaceId).toBeNull()
+      expect(useWorkspaceStore.getState().panelOpen).toBe(false)
+      await vi.waitFor(() => {
+        expect(mockChatThreads).toHaveBeenCalledWith(null)
+        expect(useWorkspaceStore.getState().activeThreadId).toBe('global-thread')
+      })
+      expect(mockWorkspaceItemsList).not.toHaveBeenCalled()
+      expect(mockReportsList).not.toHaveBeenCalled()
+    })
+
     it('preserves the selected thread during a normal refresh', async () => {
       const threads = [
         { id: 'latest', workspaceId: 'ws-1', providerId: 'p1', createdAt: 2, title: null },

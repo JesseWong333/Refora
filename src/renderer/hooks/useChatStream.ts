@@ -329,7 +329,7 @@ export function useChatStream({
     replacement: ChatReplacementOptions = {}
   ) => {
     if (isSendingRef.current) return
-    if (!activeWorkspaceId || !activeProviderId || !text.trim() || streaming) return
+    if (!activeProviderId || !text.trim() || streaming) return
     cancelledRef.current = false
     if (text.length > MAX_INPUT_LENGTH) {
       setError(t('workspace.chat.inputTooLong', 'Message is too long. Please shorten it.'))

@@ -125,7 +125,7 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
     fetchThreads
   })
 
-  const canSend = !!activeWorkspaceId && !!activeProviderId && !!input.trim() && !chat.streaming
+  const canSend = !!activeProviderId && !!input.trim() && !chat.streaming
 
   const loadProviders = useCallback(async () => {
     try {
@@ -190,6 +190,10 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
   useEffect(() => {
     void loadProviders()
   }, [loadProviders])
+
+  useEffect(() => {
+    void fetchThreads({ selectLatestIfNone: true })
+  }, [activeWorkspaceId, fetchThreads])
 
   useEffect(() => {
     const reloadProviders = () => void loadProviders()

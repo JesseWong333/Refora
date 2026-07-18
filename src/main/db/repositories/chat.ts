@@ -6,7 +6,7 @@ import { RepoError } from './errors'
 function mapThread(row: Record<string, unknown>): ChatThread {
   return {
     id: row.id as string,
-    workspaceId: row.workspaceId as string,
+    workspaceId: (row.workspaceId as string | null) ?? null,
     providerId: row.providerId as string,
     createdAt: row.createdAt as number,
     title: (row.title as string | null) ?? null
@@ -24,7 +24,7 @@ function mapMessage(row: Record<string, unknown>): ChatMessage {
 }
 
 export function createChatRepository(db: SqliteDb) {
-  function createThread(workspaceId: string, providerId: string): ChatThread {
+  function createThread(workspaceId: string | null, providerId: string): ChatThread {
     const id = randomUUID()
     const now = Date.now()
     db.prepare(
@@ -37,9 +37,9 @@ export function createChatRepository(db: SqliteDb) {
     return mapThread(row)
   }
 
-  function listThreads(workspaceId: string): ChatThread[] {
+  function listThreads(workspaceId: string | null): ChatThread[] {
     const rows = db
-      .prepare('SELECT * FROM chat_threads WHERE workspaceId = ? ORDER BY createdAt DESC')
+      .prepare('SELECT * FROM chat_threads WHERE workspaceId IS ? ORDER BY createdAt DESC')
       .all(workspaceId) as Record<string, unknown>[]
     return rows.map(mapThread)
   }
@@ -92,7 +92,7 @@ export function createChatRepository(db: SqliteDb) {
          SELECT t.id AS threadId, t.workspaceId, w.name AS workspaceName, t.title,
                 m.role, m.content, COALESCE(m.createdAt, t.createdAt) AS matchedAt
          FROM chat_threads t
-         JOIN workspaces w ON w.id = t.workspaceId
+         LEFT JOIN workspaces w ON w.id = t.workspaceId
          LEFT JOIN matching_messages m ON m.threadId = t.id AND m.matchRank = 1
          WHERE t.title LIKE ? ESCAPE '\\'
             OR m.threadId IS NOT NULL
@@ -113,8 +113,8 @@ export function createChatRepository(db: SqliteDb) {
       const excerpt = content.slice(start, start + 240).trim()
       results.push({
         threadId,
-        workspaceId: row.workspaceId as string,
-        workspaceName: row.workspaceName as string,
+        workspaceId: (row.workspaceId as string | null) ?? null,
+        workspaceName: (row.workspaceName as string | null) ?? null,
         title: (row.title as string | null) ?? null,
         snippet: excerpt || ((row.title as string | null) ?? ''),
         role: row.role === 'assistant' ? 'assistant' : row.role === 'user' ? 'user' : null,

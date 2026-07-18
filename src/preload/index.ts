@@ -290,7 +290,7 @@ const api: ReforaApi = {
     chatSend: (req: ChatSendRequest) =>
       invoke<{ threadId: string; runId: string }>(IpcChannel.AiChatSend, req),
     chatHistory: (threadId: string) => invoke<ChatMessage[]>(IpcChannel.AiChatHistory, threadId),
-    chatThreads: (workspaceId: string) =>
+    chatThreads: (workspaceId: string | null) =>
       invoke<ChatThread[]>(IpcChannel.AiChatThreads, workspaceId),
     chatTraces: (threadId: string) =>
       invoke<AgentTraceStep[]>(IpcChannel.AiChatTraces, threadId),

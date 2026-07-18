@@ -11,7 +11,8 @@ interface CapturedTool {
 
 const mocks = vi.hoisted(() => ({
   openPath: vi.fn<(path: string) => Promise<string>>(),
-  tools: [] as CapturedTool[]
+  tools: [] as CapturedTool[],
+  messages: [] as unknown[]
 }))
 
 vi.mock('electron', () => ({
@@ -32,7 +33,10 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
   createReactAgent: ({ tools }: { tools: CapturedTool[] }) => {
     mocks.tools = tools
     return {
-      streamEvents: async function* () {}
+      streamEvents: async function* (input: { messages: unknown[] }) {
+        mocks.messages = input.messages
+        yield* []
+      }
     }
   }
 }))
@@ -180,6 +184,36 @@ describe('AI agent tools', () => {
       aiSummaryService
     )
     await service.run(req, 'thread-1')
+  })
+
+  it('uses only library context and tools for a global chat', async () => {
+    vi.mocked(repos.workspaceItems.list).mockClear()
+    const { createAiAgentService } = await import('../../src/main/services/aiAgent')
+    const service = createAiAgentService(
+      repos,
+      () => mockWin,
+      aiProvidersService,
+      pdfTextService,
+      aiSummaryService
+    )
+
+    await service.run({ ...req, workspaceId: null }, 'global-thread')
+
+    const toolNames = mocks.tools.map((tool) => tool.name)
+    expect(toolNames).toEqual([
+      'search_library',
+      'find_related_papers',
+      'read_paper_fulltext',
+      'get_paper_summary',
+      'get_paper_metadata',
+      'open_paper',
+      'request_summary'
+    ])
+    expect(repos.workspaceItems.list).not.toHaveBeenCalled()
+    const systemMessage = mocks.messages[0] as { content: string }
+    expect(systemMessage.content).toContain("user's local library")
+    expect(systemMessage.content).not.toContain('Workspace paper catalog')
+    expect(systemMessage.content).not.toContain('A workspace is selected')
   })
 
   describe('get_paper_metadata', () => {

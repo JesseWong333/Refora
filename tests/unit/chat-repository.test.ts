@@ -53,6 +53,13 @@ describe('ChatRepository', () => {
       const thread = repos.chat.createThread('ws-1', 'prov-1')
       expect(thread.title).toBeNull()
     })
+
+    it('creates a global thread without a workspace', () => {
+      const thread = repos.chat.createThread(null, 'prov-1')
+
+      expect(thread.workspaceId).toBeNull()
+      expect(repos.chat.getThread(thread.id)?.workspaceId).toBeNull()
+    })
   })
 
   describe('listThreads', () => {
@@ -73,9 +80,11 @@ describe('ChatRepository', () => {
     it('only returns threads for the specified workspace', () => {
       repos.chat.createThread('ws-1', 'p1')
       repos.chat.createThread('ws-2', 'p1')
+      repos.chat.createThread(null, 'p1')
       expect(repos.chat.listThreads('ws-1')).toHaveLength(1)
       expect(repos.chat.listThreads('ws-2')).toHaveLength(1)
       expect(repos.chat.listThreads('ws-3')).toHaveLength(0)
+      expect(repos.chat.listThreads(null)).toHaveLength(1)
     })
   })
 
@@ -225,6 +234,19 @@ describe('ChatRepository', () => {
         expect.objectContaining({ threadId: thread.id, snippet: 'Accuracy reached 100%' })
       ])
       expect(repos.chat.search('   ')).toEqual([])
+    })
+
+    it('includes global chat results without a workspace name', () => {
+      const thread = repos.chat.createThread(null, 'p1')
+      repos.chat.updateTitle(thread.id, 'Global transformer notes')
+
+      expect(repos.chat.search('transformer')).toEqual([
+        expect.objectContaining({
+          threadId: thread.id,
+          workspaceId: null,
+          workspaceName: null
+        })
+      ])
     })
   })
 
