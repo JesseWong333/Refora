@@ -237,7 +237,10 @@ export default function SidebarCategories() {
               ) : (
                 <SidebarItem
                   icon={isPending ? <CircleNotch className="h-4 w-4 animate-spin text-accent" /> : undefined}
-                  label={`${c.name} (${c.count ?? 0})`}
+                  label={c.name}
+                  trailing={
+                    <span className="shrink-0 text-[10px] tabular-nums text-muted">{c.count ?? 0}</span>
+                  }
                   active={listMode.mode === 'category' && listMode.categoryId === c.id}
                   onClick={() => handleCategoryClick(c)}
                   onContextMenu={(e) => handleItemContext(e, c)}

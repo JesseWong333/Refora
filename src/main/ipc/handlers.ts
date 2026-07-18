@@ -17,6 +17,7 @@ import type {
   ChatSendRequest,
   ChatThread,
   Document,
+  DocumentCounts,
   DocumentPatch,
   GlobalSearchResult,
   IdentifierImportResult,
@@ -257,6 +258,8 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
 
     [IpcChannel.DocumentsList]: (filter: ListFilter): Result<Document[]> =>
       wrap(() => repos().documents.list(filter)),
+    [IpcChannel.DocumentsCount]: (): Result<DocumentCounts> =>
+      wrap(() => repos().documents.counts()),
     [IpcChannel.DocumentsSearch]: (q: string): Result<SearchResult> =>
       wrap(() => repos().documents.search(q)),
     [IpcChannel.DocumentsGet]: (id: string): Result<Document | null> =>

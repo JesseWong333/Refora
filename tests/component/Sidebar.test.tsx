@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     focusedDocId: null as string | null,
     selectedIds: [] as string[],
     documents: [] as Document[],
+    documentCounts: { all: 0, recentlyRead: 0, recentlyAdded: 0, starred: 0 },
     importProgress: null as { current: number; total: number } | null,
     identifierImporting: 0 as number,
     setListMode,
@@ -79,6 +80,7 @@ describe('Sidebar', () => {
     mocks.state.listMode = { mode: 'all' }
     mocks.state.focusedDocId = null
     mocks.state.documents = []
+    mocks.state.documentCounts = { all: 0, recentlyRead: 0, recentlyAdded: 0, starred: 0 }
     mocks.state.importProgress = null
     mocks.state.identifierImporting = 0
   })
@@ -95,13 +97,17 @@ describe('Sidebar', () => {
     expect(screen.getByText('sidebar.starred')).toBeInTheDocument()
   })
 
-  it('shows the current document count on the active smart list item', () => {
-    mocks.state.documents = [{}, {}, {}] as Document[]
+  it('shows the per-mode document count on every smart list item', () => {
+    mocks.state.documentCounts = { all: 12, recentlyRead: 4, recentlyAdded: 2, starred: 1 }
     renderSidebar()
 
-    const allFilesItem = screen.getByText('sidebar.allFiles').closest('[class*="sidebar-item"]')
-    expect(allFilesItem).toHaveTextContent('3')
-    expect(screen.getByText('sidebar.recentlyRead').closest('[class*="sidebar-item"]')).not.toHaveTextContent('3')
+    const itemFor = (label: string) =>
+      screen.getByText(label).closest('[class*="sidebar-item"]') as HTMLElement
+
+    expect(itemFor('sidebar.allFiles').textContent).toContain('12')
+    expect(itemFor('sidebar.recentlyRead').textContent).toContain('4')
+    expect(itemFor('sidebar.recentlyAdded').textContent).toContain('2')
+    expect(itemFor('sidebar.starred').textContent).toContain('1')
   })
 
   it('does not render native titles for the top toolbar actions', () => {
@@ -133,16 +139,16 @@ describe('Sidebar', () => {
   it('renders categories section with names and counts', () => {
     renderSidebar()
     expect(screen.getByText('sidebar.categories')).toBeInTheDocument()
-    expect(screen.getByText('ML (5)')).toBeInTheDocument()
-    expect(screen.getByText('NLP (3)')).toBeInTheDocument()
-    expect(screen.getByText('Vision (7)')).toBeInTheDocument()
+    expect(screen.getByText('ML').closest('[class*="sidebar-item"]')).toHaveTextContent('5')
+    expect(screen.getByText('NLP').closest('[class*="sidebar-item"]')).toHaveTextContent('3')
+    expect(screen.getByText('Vision').closest('[class*="sidebar-item"]')).toHaveTextContent('7')
   })
 
   it('shows empty state placeholder when categories array is empty', () => {
     mocks.state.categories = []
     renderSidebar()
     expect(screen.getByText('sidebar.emptyCategories')).toBeInTheDocument()
-    expect(screen.queryByText('ML (5)')).not.toBeInTheDocument()
+    expect(screen.queryByText('ML')).not.toBeInTheDocument()
   })
 
   it('shows an inline input when the create-category button is clicked', async () => {
@@ -175,7 +181,7 @@ describe('Sidebar', () => {
   it('calls setListMode with category mode and correct categoryId on category click', async () => {
     const user = userEvent.setup()
     renderSidebar()
-    await user.click(screen.getByText('ML (5)'))
+    await user.click(screen.getByText('ML'))
     expect(mocks.setListMode).toHaveBeenCalledWith({ mode: 'category', categoryId: 'cat1' })
   })
 
@@ -194,10 +200,10 @@ describe('Sidebar', () => {
     mocks.state.listMode = { mode: 'category', categoryId: 'cat2' }
     renderSidebar()
 
-    const nlpItem = screen.getByText('NLP (3)').closest('[class*="sidebar-item"]')
+    const nlpItem = screen.getByText('NLP').closest('[class*="sidebar-item"]')
     expect(nlpItem).toHaveClass('sidebar-item-active')
 
-    const mlItem = screen.getByText('ML (5)').closest('[class*="sidebar-item"]')
+    const mlItem = screen.getByText('ML').closest('[class*="sidebar-item"]')
     expect(mlItem).not.toHaveClass('sidebar-item-active')
   })
 })

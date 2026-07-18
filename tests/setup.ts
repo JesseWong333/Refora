@@ -38,6 +38,7 @@ const noop = async () => undefined
 
   documents: {
     list: async () => [],
+    counts: async () => ({ all: 0, recentlyRead: 0, recentlyAdded: 0, starred: 0 }),
     search: async () => [],
     get: async () => null,
     update: noop,

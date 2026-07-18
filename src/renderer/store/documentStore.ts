@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   BibImportResult,
   Document,
+  DocumentCounts,
   DocumentPatch,
   ImportProgress,
   ListColumn,
@@ -38,6 +39,7 @@ function persistColumnState(state: ListColumnState): void {
 
 interface DocumentState {
   documents: Document[]
+  documentCounts: DocumentCounts
   listMode: ListFilter
   listColumnState: ListColumnState
   selectedIds: string[]
@@ -54,6 +56,7 @@ interface DocumentState {
   searchQuery: string
   searchResults: Document[]
   fetchDocuments: (filter?: ListFilter) => Promise<void>
+  fetchDocumentCounts: () => Promise<void>
   setListMode: (filter: ListFilter) => void
   setListColumnState: (state: ListColumnState) => void
   setSort: (field: SortField) => void
@@ -113,6 +116,7 @@ function findKnownDocument(state: DocumentState, docId: string): Document | unde
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   documents: [],
+  documentCounts: { all: 0, recentlyRead: 0, recentlyAdded: 0, starred: 0 },
   listMode: { mode: 'all' },
   listColumnState: defaultColumnState(),
   selectedIds: [],
@@ -148,6 +152,15 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       if (requestVersion === documentRequestVersion) {
         set({ isLoading: false })
       }
+    }
+  },
+
+  fetchDocumentCounts: async () => {
+    try {
+      const counts = await api.documents.counts()
+      set({ documentCounts: counts })
+    } catch {
+      void 0
     }
   },
 
@@ -212,6 +225,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     get().patchDocument(docId, { ...doc, starred: newValue ? 1 : 0 })
     try {
       await api.documents.setStarred(docId, newValue)
+      void get().fetchDocumentCounts()
     } catch {
       get().patchDocument(docId, doc)
       get().showToast('Failed to update star')
@@ -224,6 +238,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const updated = await api.documents.openPdf(docId)
       get().patchDocument(docId, updated)
+      void get().fetchDocumentCounts()
     } catch (e) {
       get().showToast(errorMessage(e, 'Failed to open PDF'))
     }
@@ -251,6 +266,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       await api.documents.delete(docId)
       get().showToast(i18n.t('common.movedToTrash', { count: 1 }))
       void get().fetchCategories()
+      void get().fetchDocumentCounts()
     } catch {
       set((s) => ({
         documents: before.documents.some((item) => item.id === docId)
@@ -287,6 +303,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       await api.documents.bulkDelete(ids)
       get().showToast(i18n.t('common.movedToTrash', { count: ids.length }))
       void get().fetchCategories()
+      void get().fetchDocumentCounts()
     } catch {
       set({ documents: before.documents, searchResults: before.searchResults })
       get().showToast(i18n.t('common.deleteFailed'))
@@ -370,6 +387,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       set({ importProgress: { current: payload.current, total: payload.total } })
       set({ isImporting: false, importProgress: null })
       void get().fetchDocuments()
+      void get().fetchDocumentCounts()
       return
     }
     set({ importProgress: { current: payload.current, total: payload.total } })
@@ -378,6 +396,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   endImport: () => {
     set({ isImporting: false, importProgress: null })
     void get().fetchDocuments()
+    void get().fetchDocumentCounts()
   },
 
   importFromZotero: async () => {
@@ -391,6 +410,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       )
       if (result.added > 0 || result.skipped > 0) {
         void get().fetchDocuments()
+        void get().fetchDocumentCounts()
       }
     } catch (e) {
       get().showToast(errorMessage(e, i18n.t('topbar.importFailed') as string))
@@ -408,6 +428,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       )
       if (result.added > 0 || result.skipped > 0) {
         void get().fetchDocuments()
+        void get().fetchDocumentCounts()
       }
     } catch (e) {
       get().showToast(errorMessage(e, i18n.t('topbar.importFailed') as string))
@@ -433,6 +454,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       } finally {
         set((s) => ({ identifierImporting: Math.max(0, s.identifierImporting - 1) }))
         void get().fetchDocuments()
+        void get().fetchDocumentCounts()
       }
     })()
   },
@@ -497,10 +519,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       })
       void get().fetchDocuments()
       void get().fetchCategories()
+      void get().fetchDocumentCounts()
     }
     api.events.onLibrarySwitched(librarySwitchedCb[0])
 
     void get().fetchDocuments()
+    void get().fetchDocumentCounts()
   },
 
   fetchCategories: async () => {

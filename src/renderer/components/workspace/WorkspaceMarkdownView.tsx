@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, BookOpen, PencilSimple } from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
@@ -24,6 +24,7 @@ interface WorkspaceMarkdownViewProps {
   fullscreen?: boolean
   onBack: () => void
   onUpdate?: (id: string, patch: { title: string; contentMd: string }) => Promise<boolean>
+  renderHeader?: (header: ReactNode, signature: string) => ReactNode
 }
 
 export default function WorkspaceMarkdownView({
@@ -35,7 +36,8 @@ export default function WorkspaceMarkdownView({
   initialMode = 'read',
   fullscreen = false,
   onBack,
-  onUpdate
+  onUpdate,
+  renderHeader
 }: WorkspaceMarkdownViewProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<WorkspaceMarkdownViewMode>(
@@ -124,61 +126,65 @@ export default function WorkspaceMarkdownView({
     onBack()
   }
 
+  const headerBar = (
+    <div className="drag-region relative flex h-8 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+      <IconTooltip label={t('workspace.markdownBackToBoard')} appearance="sidebar">
+        <button
+          type="button"
+          className="sidebar-header-btn no-drag shrink-0"
+          onClick={() => void handleBack()}
+          aria-label={t('workspace.markdownBackToBoard')}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+      </IconTooltip>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{draftTitle || savedDraft.title}</p>
+      </div>
+      {editable && (
+        <div
+          className="no-drag flex shrink-0 items-center gap-1"
+          role="group"
+          aria-label={t('workspace.markdownMode')}
+        >
+          <IconTooltip label={t('workspace.markdownRead')} appearance="sidebar">
+            <button
+              type="button"
+              className={[
+                'sidebar-header-btn',
+                mode === 'read' ? 'bg-active text-accent hover:bg-active' : ''
+              ].filter(Boolean).join(' ')}
+              aria-label={t('workspace.markdownRead')}
+              aria-pressed={mode === 'read'}
+              onClick={() => void changeMode('read')}
+            >
+              <BookOpen className="h-4 w-4" />
+            </button>
+          </IconTooltip>
+          <IconTooltip label={t('workspace.markdownEdit')} appearance="sidebar">
+            <button
+              type="button"
+              className={[
+                'sidebar-header-btn',
+                mode === 'edit' ? 'bg-active text-accent hover:bg-active' : ''
+              ].filter(Boolean).join(' ')}
+              aria-label={t('workspace.markdownEdit')}
+              aria-pressed={mode === 'edit'}
+              onClick={() => void changeMode('edit')}
+            >
+              <PencilSimple className="h-4 w-4" />
+            </button>
+          </IconTooltip>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background ${
       fullscreen ? 'workspace-fullscreen' : ''
     }`}>
-      <div className="drag-region relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3">
-        <IconTooltip label={t('workspace.markdownBackToBoard')} appearance="sidebar">
-          <button
-            type="button"
-            className="sidebar-header-btn no-drag shrink-0"
-            onClick={() => void handleBack()}
-            aria-label={t('workspace.markdownBackToBoard')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-        </IconTooltip>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{draftTitle || savedDraft.title}</p>
-        </div>
-        {editable && (
-          <div
-            className="no-drag flex shrink-0 items-center gap-1"
-            role="group"
-            aria-label={t('workspace.markdownMode')}
-          >
-            <IconTooltip label={t('workspace.markdownRead')} appearance="sidebar">
-              <button
-                type="button"
-                className={[
-                  'sidebar-header-btn',
-                  mode === 'read' ? 'bg-active text-accent hover:bg-active' : ''
-                ].filter(Boolean).join(' ')}
-                aria-label={t('workspace.markdownRead')}
-                aria-pressed={mode === 'read'}
-                onClick={() => void changeMode('read')}
-              >
-                <BookOpen className="h-4 w-4" />
-              </button>
-            </IconTooltip>
-            <IconTooltip label={t('workspace.markdownEdit')} appearance="sidebar">
-              <button
-                type="button"
-                className={[
-                  'sidebar-header-btn',
-                  mode === 'edit' ? 'bg-active text-accent hover:bg-active' : ''
-                ].filter(Boolean).join(' ')}
-                aria-label={t('workspace.markdownEdit')}
-                aria-pressed={mode === 'edit'}
-                onClick={() => void changeMode('edit')}
-              >
-                <PencilSimple className="h-4 w-4" />
-              </button>
-            </IconTooltip>
-          </div>
-        )}
-      </div>
+      {renderHeader ? renderHeader(headerBar, `${mode}|${draftTitle}|${savedDraft.title}|${editable ? 1 : 0}`) : headerBar}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-5 py-8 sm:px-10">

@@ -126,7 +126,7 @@ export default function ModelSelector({
 
   return (
     <>
-      <div className="relative" ref={menuRef}>
+      <div className="relative min-w-0" ref={menuRef}>
         <button
           type="button"
           className="inline-flex max-w-[200px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
@@ -243,7 +243,7 @@ export default function ModelSelector({
       </div>
 
       {activeProvider && (
-        <div className="relative" ref={reasoningMenuRef}>
+        <div className="relative min-w-0 shrink-0" ref={reasoningMenuRef}>
           <button
             type="button"
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
@@ -257,7 +257,7 @@ export default function ModelSelector({
               setReasoningMenuOpen((value) => !value)
             }}
           >
-            <span className="font-medium">{reasoningEffortValue}</span>
+            <span className="truncate font-medium">{reasoningEffortValue}</span>
             <CaretDown className="h-3 w-3 shrink-0 text-muted" />
           </button>
 

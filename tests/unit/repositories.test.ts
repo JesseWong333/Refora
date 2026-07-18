@@ -69,9 +69,17 @@ describe('documents repository', () => {
     expect(ids(repos.documents.list({ mode: 'recentlyRead' }))).toEqual(['d1', 'd3'])
   })
 
-  it('list(mode=recentlyAdded) orders by addedAt desc', () => {
-    seedListDocs()
+  it('list(mode=recentlyAdded) returns documents added in the last 7 days ordered by addedAt desc', () => {
+    const now = Date.now()
+    repos.documents.insert(makeDoc('d1', { addedAt: now - 6 * 24 * 60 * 60 * 1000, lastReadAt: null, starred: 0, title: 'Alpha' }))
+    repos.documents.insert(makeDoc('d2', { addedAt: now - 3 * 24 * 60 * 60 * 1000, lastReadAt: null, starred: 0, title: 'Beta' }))
+    repos.documents.insert(makeDoc('d3', { addedAt: now, lastReadAt: null, starred: 0, title: 'Gamma' }))
     expect(ids(repos.documents.list({ mode: 'recentlyAdded' }))).toEqual(['d3', 'd2', 'd1'])
+  })
+
+  it('list(mode=recentlyAdded) excludes documents older than 7 days', () => {
+    repos.documents.insert(makeDoc('old', { addedAt: 100, lastReadAt: null, starred: 0, title: 'Old' }))
+    expect(ids(repos.documents.list({ mode: 'recentlyAdded' }))).toEqual([])
   })
 
   it('list(mode=starred) returns starred=1', () => {
@@ -85,6 +93,18 @@ describe('documents repository', () => {
     repos.categories.assign('d1', cat.id)
     repos.categories.assign('d3', cat.id)
     expect(ids(repos.documents.list({ mode: 'category', categoryId: cat.id }))).toEqual(['d3', 'd1'])
+  })
+
+  it('counts returns totals per smart mode', () => {
+    seedListDocs()
+    repos.documents.insert(
+      makeDoc('recent', { addedAt: Date.now(), lastReadAt: null, starred: 0 })
+    )
+    const c = repos.documents.counts()
+    expect(c.all).toBe(4)
+    expect(c.recentlyRead).toBe(2)
+    expect(c.starred).toBe(2)
+    expect(c.recentlyAdded).toBe(1)
   })
 
   it('search uses FTS MATCH for >=3 chars and LIKE for 1-2 chars', () => {

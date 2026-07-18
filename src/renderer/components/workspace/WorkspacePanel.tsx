@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsOutSimple, ArrowsInSimple, CaretDown, Check, FilePlus, NotePencil, SquaresFour, Sticker, X } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
@@ -14,9 +14,8 @@ import ChatPanel from './ChatPanel'
 import WorkspaceMarkdownView from './WorkspaceMarkdownView'
 import { aiSummaryMarkdown } from '../../utils/workspaceCardMarkdown'
 
-const CHAT_MIN = 300
-const CHAT_MAX = 560
-const CHAT_DEFAULT = 380
+const CHAT_MIN = 380
+const CHAT_DEFAULT = 560
 
 type ActiveMarkdownCard = WorkspaceMarkdownCard & { mode: WorkspaceMarkdownCardMode }
 
@@ -37,14 +36,30 @@ export default function WorkspacePanel() {
   const [chatWidth, setChatWidth] = useState(CHAT_DEFAULT)
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
   const [activeMarkdownCard, setActiveMarkdownCard] = useState<ActiveMarkdownCard | null>(null)
+  const [markdownHeader, setMarkdownHeader] = useState<ReactNode>(null)
+  const headerSignatureRef = useRef<string>('')
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null)
   const boardRef = useRef<BoardHandle | null>(null)
+
+  useEffect(() => {
+    if (!activeMarkdownCard) {
+      headerSignatureRef.current = ''
+      setMarkdownHeader(null)
+    }
+  }, [activeMarkdownCard])
+
+  const hoistMarkdownHeader = useCallback((header: ReactNode, signature: string) => {
+    if (headerSignatureRef.current !== signature) {
+      headerSignatureRef.current = signature
+      setMarkdownHeader(header)
+    }
+  }, [])
 
   useClickOutside(workspaceMenuRef, () => setWorkspaceMenuOpen(false), workspaceMenuOpen)
 
   useEffect(() => {
     void api.settings.get<number>('workspaceChatWidth', CHAT_DEFAULT).then((width) => {
-      setChatWidth(Math.max(CHAT_MIN, Math.min(CHAT_MAX, width)))
+      setChatWidth(Math.max(CHAT_MIN, width))
     })
   }, [])
 
@@ -60,7 +75,7 @@ export default function WorkspacePanel() {
   }, [activeWorkspaceId])
 
   const handleChatResize = useCallback((delta: number) => {
-    setChatWidth((width) => Math.max(CHAT_MIN, Math.min(CHAT_MAX, width - delta)))
+    setChatWidth((width) => Math.max(CHAT_MIN, width - delta))
   }, [])
 
   const handleOpenMarkdownCard = useCallback((
@@ -83,8 +98,13 @@ export default function WorkspacePanel() {
     ? activeMarkdownCard
     : null
 
+  let markdownView: ReactNode = null
+  const renderHeader = (header: ReactNode, signature: string) => {
+    hoistMarkdownHeader(header, signature)
+    return null
+  }
   if (activeNote) {
-    return (
+    markdownView = (
       <WorkspaceMarkdownView
         key={`note:${activeNote.id}`}
         kind="note"
@@ -96,12 +116,11 @@ export default function WorkspacePanel() {
         fullscreen={fullscreen}
         onBack={() => setActiveMarkdownCard(null)}
         onUpdate={updateNote}
+        renderHeader={renderHeader}
       />
     )
-  }
-
-  if (activeReport) {
-    return (
+  } else if (activeReport) {
+    markdownView = (
       <WorkspaceMarkdownView
         key={`report:${activeReport.id}`}
         kind="report"
@@ -113,12 +132,11 @@ export default function WorkspacePanel() {
         fullscreen={fullscreen}
         onBack={() => setActiveMarkdownCard(null)}
         onUpdate={updateReport}
+        renderHeader={renderHeader}
       />
     )
-  }
-
-  if (activeSummary) {
-    return (
+  } else if (activeSummary) {
+    markdownView = (
       <WorkspaceMarkdownView
         key={'summary:' + activeSummary.doc.id + ':' + activeSummary.summary.updatedAt}
         kind="summary"
@@ -128,6 +146,7 @@ export default function WorkspacePanel() {
         timestamp={activeSummary.summary.updatedAt}
         fullscreen={fullscreen}
         onBack={() => setActiveMarkdownCard(null)}
+        renderHeader={renderHeader}
       />
     )
   }
@@ -138,9 +157,12 @@ export default function WorkspacePanel() {
         fullscreen ? 'workspace-fullscreen' : ''
       }`}
     >
-      <div
-        className="drag-region relative z-30 flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3"
-      >
+      {markdownView ? (
+        markdownHeader
+      ) : (
+        <div
+          className="drag-region relative z-30 flex h-8 shrink-0 items-center gap-2 border-b border-border/60 px-3"
+        >
         <div ref={workspaceMenuRef} className="relative flex min-w-0 flex-1 items-center gap-1">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {name}
@@ -253,13 +275,14 @@ export default function WorkspacePanel() {
           )}
         </div>
       </div>
+      )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-          <Board ref={boardRef} onOpenMarkdownCard={handleOpenMarkdownCard} />
+          {markdownView ?? <Board ref={boardRef} onOpenMarkdownCard={handleOpenMarkdownCard} />}
         </div>
         <ResizeDivider onResize={handleChatResize} orientation="vertical" variant="line" />
         <div
-          style={{ width: `min(${chatWidth}px, 48%)` }}
+          style={{ width: `min(${chatWidth}px, 95%)` }}
           className="min-h-0 min-w-0 shrink-0 overflow-hidden bg-background"
         >
           <ChatPanel />
