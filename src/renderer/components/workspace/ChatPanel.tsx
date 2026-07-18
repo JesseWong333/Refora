@@ -10,7 +10,7 @@ import type {
 } from '../../../shared/ipc-types'
 import { composeModelId, parseModelId } from '../../../shared/modelVariant'
 import { useWorkspaceStore } from '../../store/workspaceStore'
-import { Button as UiButton } from '../ui'
+import { Button as UiButton, PanelTabHeader } from '../ui'
 import { useChatStream } from '../../hooks/useChatStream'
 import { AI_PROVIDERS_CHANGED_EVENT } from '../../utils/aiProviderEvents'
 import ChatMessages from './ChatMessages'
@@ -60,7 +60,11 @@ function providerAllowsModel(provider: AiProvider, model: string): boolean {
   })
 }
 
-export default function ChatPanel() {
+interface ChatPanelProps {
+  onClose?: () => void
+}
+
+export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
   const { t } = useTranslation()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const activeThreadId = useWorkspaceStore((s) => s.activeThreadId)
@@ -91,32 +95,6 @@ export default function ChatPanel() {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const inputAreaRef = useRef<HTMLDivElement | null>(null)
-  const headerRef = useRef<HTMLDivElement | null>(null)
-  const leftRef = useRef<HTMLDivElement | null>(null)
-  const rightRef = useRef<HTMLDivElement | null>(null)
-
-  const [titleMaxWidth, setTitleMaxWidth] = useState<number | undefined>(undefined)
-
-  useEffect(() => {
-    const el = headerRef.current
-    const left = leftRef.current
-    const right = rightRef.current
-    if (!el) return
-    const update = () => {
-      const lw = left?.offsetWidth ?? 0
-      const rw = right?.offsetWidth ?? 0
-      const side = Math.max(lw, rw)
-      const gap = 24
-      const available = el.clientWidth - side * 2 - gap * 2
-      setTitleMaxWidth(available > 0 ? available : 0)
-    }
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    if (left) ro.observe(left)
-    if (right) ro.observe(right)
-    return () => ro.disconnect()
-  }, [providers.length, Object.keys(providerModels).length])
 
   const activeProvider = providers.find((p) => p.id === activeProviderId) ?? null
   const deepThinking =
@@ -355,39 +333,35 @@ export default function ChatPanel() {
 
   return (
     <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background" style={{ containerType: 'inline-size' }}>
-      <div ref={headerRef} className="relative flex shrink-0 items-center justify-between gap-2 px-3 py-1.5">
-        <div ref={leftRef} className="shrink-0">
-          <ThreadHistory
-            streaming={chat.streaming}
-            onExportThread={exportThread}
-            menuOpen={threadMenuOpen}
-            onMenuOpenChange={setThreadMenuOpen}
-          />
-        </div>
-        <button
-          type="button"
-          className="absolute left-1/2 top-1/2 max-w-[40%] -translate-x-1/2 -translate-y-1/2 truncate text-center text-xs font-medium text-foreground transition-colors duration-150 hover:text-accent disabled:opacity-40"
-          style={{ maxWidth: titleMaxWidth != null ? `${titleMaxWidth}px` : undefined }}
-          onClick={() => !chat.streaming && setThreadMenuOpen((v) => !v)}
-          disabled={chat.streaming}
-          title={activeThreadTitle}
-        >
-          {activeThreadTitle}
-        </button>
-        <div ref={rightRef} className="flex shrink-0 items-center gap-1">
-          <UiButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={startNewChat}
-            title={t('workspace.chat.newChat', 'New chat')}
-            aria-label={t('workspace.chat.newChat', 'New chat')}
-            disabled={chat.streaming}
-          >
-            <Plus className="h-4 w-4" />
-          </UiButton>
-        </div>
-      </div>
+      <PanelTabHeader
+        title={activeThreadTitle}
+        onClose={onClose}
+        closeLabel={t('workspace.chat.closePanel')}
+        closeDisabled={chat.streaming}
+        onTitleClick={() => setThreadMenuOpen((open) => !open)}
+        titleDisabled={chat.streaming}
+        actions={
+          <>
+            <ThreadHistory
+              streaming={chat.streaming}
+              onExportThread={exportThread}
+              menuOpen={threadMenuOpen}
+              onMenuOpenChange={setThreadMenuOpen}
+            />
+            <UiButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={startNewChat}
+              title={t('workspace.chat.newChat', 'New chat')}
+              aria-label={t('workspace.chat.newChat', 'New chat')}
+              disabled={chat.streaming}
+            >
+              <Plus className="h-4 w-4" />
+            </UiButton>
+          </>
+        }
+      />
 
       <ChatMessages
         messages={chat.messages}

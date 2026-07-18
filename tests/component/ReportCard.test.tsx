@@ -141,6 +141,7 @@ beforeEach(() => {
   mockWorkspacePanelState.reports = []
   mockWorkspacePanelState.notes = []
   mockWorkspacePanelState.setActiveWorkspace.mockReset()
+  mockWorkspacePanelState.closePanel.mockReset()
   mockWorkspacePanelState.updateNote.mockReset().mockResolvedValue(true)
   mockWorkspacePanelState.updateReport.mockReset().mockResolvedValue(true)
 })
@@ -385,28 +386,25 @@ describe('Workspace card types', () => {
   })
 })
 
-describe('WorkspacePanel workspace switcher', () => {
-  it('places the board and AI chat side by side with a vertical divider', () => {
+describe('WorkspacePanel tab header', () => {
+  it('keeps the board content inside the workspace panel without the AI chat bar', () => {
     render(<WorkspacePanel />)
 
-    const board = screen.getByText('Board')
-    const chat = screen.getByText('Chat panel')
-    const divider = screen.getByTestId('resize-divider')
-
-    expect(board.parentElement?.parentElement).toBe(chat.parentElement?.parentElement)
-    expect(chat.parentElement?.parentElement).toHaveClass('flex-row')
-    expect(divider).toHaveAttribute('data-orientation', 'vertical')
+    expect(screen.getByText('Board')).toBeInTheDocument()
+    expect(screen.queryByText('Chat panel')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('resize-divider')).not.toBeInTheDocument()
   })
 
   it('keeps the workspace toolbar draggable while preserving interactive controls', () => {
     render(<WorkspacePanel />)
 
-    const toolbar = screen.getByText('Research').closest('.h-8')
+    const toolbar = screen.getByText('Research').closest('[data-testid="panel-tab-header"]')
     expect(toolbar).toHaveClass('drag-region')
-    expect(screen.getByRole('button', { name: 'workspace.switchWorkspace' })).toHaveClass('no-drag')
+    expect(screen.getByText('Research').closest('[data-testid="panel-tab"]')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'workspace.switchWorkspace' })).not.toBeInTheDocument()
   })
 
-  it('replaces the board with a Markdown reader while keeping the chat panel when an editable card opens', () => {
+  it('replaces the board with a Markdown reader without mounting the app-level chat panel', () => {
     mockWorkspacePanelState.reports = [makeReport({ id: 'report-1' })]
     render(<WorkspacePanel />)
 
@@ -414,40 +412,62 @@ describe('WorkspacePanel workspace switcher', () => {
 
     expect(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'workspace.markdownRead' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText('Chat panel')).toBeInTheDocument()
+    expect(
+      screen.getAllByText('Test Report').some((title) => title.closest('[data-testid="panel-tab"]'))
+    ).toBe(true)
+    expect(screen.getByRole('button', { name: 'workspace.close' })).toBeInTheDocument()
+    expect(screen.queryByText('Chat panel')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' }))
 
     expect(screen.getByText('Board')).toBeInTheDocument()
   })
 
-  it('shows all workspaces and marks the active workspace', () => {
+  it('saves Markdown body edits before closing the workspace tab', async () => {
+    mockWorkspacePanelState.reports = [makeReport({ id: 'report-1' })]
     render(<WorkspacePanel />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'workspace.switchWorkspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open report card' }))
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.markdownEdit' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'workspace.reportContentLabel' }), {
+      target: { value: 'Updated immediately before close' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.close' }))
 
-    const listbox = screen.getByRole('listbox', { name: 'workspace.switchWorkspace' })
-    expect(listbox).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Research' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('option', { name: 'Reading notes' })).toHaveAttribute('aria-selected', 'false')
+    await waitFor(() => {
+      expect(mockWorkspacePanelState.updateReport).toHaveBeenCalledWith('report-1', {
+        title: 'Test Report',
+        contentMd: 'Updated immediately before close'
+      })
+      expect(mockWorkspacePanelState.closePanel).toHaveBeenCalledTimes(1)
+    })
   })
 
-  it('switches to another workspace and closes the menu', () => {
+  it('removes workspace switching from the header', () => {
     render(<WorkspacePanel />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'workspace.switchWorkspace' }))
-    fireEvent.click(screen.getByRole('option', { name: 'Reading notes' }))
-
-    expect(mockWorkspacePanelState.setActiveWorkspace).toHaveBeenCalledWith('ws-2')
+    expect(screen.getByText('Research')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'workspace.switchWorkspace' })).not.toBeInTheDocument()
     expect(screen.queryByRole('listbox', { name: 'workspace.switchWorkspace' })).not.toBeInTheDocument()
   })
 
-  it('disables workspace switching while chat is streaming', () => {
+  it('closes the workspace from the tab', () => {
+    render(<WorkspacePanel />)
+
+    const close = screen.getByRole('button', { name: 'workspace.close' })
+    expect(screen.getByTestId('panel-tab')).toContainElement(close)
+    fireEvent.click(close)
+
+    expect(mockWorkspacePanelState.closePanel).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the workspace close tab available while chat is streaming', () => {
     mockWorkspacePanelState.chatStreaming = true
 
     render(<WorkspacePanel />)
 
-    expect(screen.getByRole('button', { name: 'workspace.switchWorkspace' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'workspace.switchWorkspace' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.close' })).toBeEnabled()
   })
 
   it('creates Markdown notes and sticky notes from the title bar', () => {
@@ -458,6 +478,9 @@ describe('WorkspacePanel workspace switcher', () => {
 
     expect(mockBoardCreateNote).toHaveBeenNthCalledWith(1, 'markdown')
     expect(mockBoardCreateNote).toHaveBeenNthCalledWith(2, 'plain')
+    expect(screen.getByTestId('panel-tab-actions')).toContainElement(
+      screen.getByRole('button', { name: 'workspace.createNote' })
+    )
   })
 })
 

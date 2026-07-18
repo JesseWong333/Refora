@@ -34,8 +34,26 @@ describe('WorkspaceMarkdownView', () => {
     renderView({ fullscreen: true })
 
     const backButton = screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })
-    expect(backButton.closest('.h-8')).toHaveClass('drag-region')
-    expect(backButton).toHaveClass('no-drag')
+    expect(backButton.closest('[data-testid="panel-tab-header"]')).toHaveClass('drag-region')
+    expect(backButton.closest('[data-testid="panel-tab-actions"]')).toHaveClass('no-drag')
+  })
+
+  it('saves a changed draft before closing the workspace tab', async () => {
+    const onClose = vi.fn()
+    const { onUpdate } = renderView({ initialMode: 'edit', onClose })
+    fireEvent.change(screen.getByRole('textbox', { name: 'workspace.noteContentLabel' }), {
+      target: { value: 'Saved before close' }
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.close' }))
+
+    await waitFor(() => {
+      expect(onUpdate).toHaveBeenCalledWith('note-1', {
+        title: 'Research notes',
+        contentMd: 'Saved before close'
+      })
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('opens in reading mode and exposes a reading/editing switch', () => {

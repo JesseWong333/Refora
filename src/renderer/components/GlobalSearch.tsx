@@ -48,7 +48,11 @@ function highlightMatch(text: string, query: string): ReactNode {
   )
 }
 
-export default function GlobalSearch() {
+interface GlobalSearchProps {
+  onOpenChat?: () => void
+}
+
+export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<GlobalSearchResult>(EMPTY_RESULTS)
@@ -150,9 +154,10 @@ export default function GlobalSearch() {
         store.openPanel()
       }
       useWorkspaceStore.getState().setActiveThreadId(selection.value.threadId)
+      onOpenChat?.()
     }
     setExpanded(false)
-  }, [query, results.documents, t])
+  }, [onOpenChat, query, results.documents, t])
 
   const clear = useCallback(() => {
     requestVersionRef.current += 1

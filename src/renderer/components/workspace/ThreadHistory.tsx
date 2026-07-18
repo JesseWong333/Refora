@@ -54,7 +54,7 @@ export default function ThreadHistory({
           <ClockCounterClockwise className="h-4 w-4" />
         </UiButton>
         {menuOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
+          <div className="absolute right-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
             {threads.length === 0 ? (
               <p className="px-3 py-2 text-label text-muted">
                 {t('workspace.chat.noThreads', 'No conversations yet')}

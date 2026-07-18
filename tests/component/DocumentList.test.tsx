@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import DocumentList from '@renderer/components/DocumentList'
 import type { Document } from '@shared/ipc-types'
@@ -256,21 +256,27 @@ describe('DocumentList', () => {
     expect(sortIndicator).toBeInTheDocument()
   })
 
-  it('renders the compact two-line paper list without a document header', () => {
+  it('renders the compact two-line paper list under a closeable tab header', () => {
+    const onClose = vi.fn()
     mockState.documents = [
       makeDoc({ id: 'doc-1', title: 'Compact Paper', authors: 'Compact Author' })
     ]
 
-    render(<DocumentList compact />)
+    render(<DocumentList compact onClose={onClose} />)
 
     expect(screen.getByText('Compact Paper')).toHaveClass('text-xs')
     expect(screen.getByText('Compact Author')).toBeInTheDocument()
+    expect(screen.getByText('sidebar.allFiles')).toBeInTheDocument()
+    expect(screen.getByText('sidebar.allFiles').closest('[data-testid="panel-tab"]')).not.toBeNull()
     expect(screen.queryByText('list.title')).not.toBeInTheDocument()
     expect(screen.getByText('Compact Paper').closest('[style*="height: 52px"]')).not.toBeNull()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'detail.open' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'sidebar.starred' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'list.expand' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'list.close' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('leaves global search and file counts outside the document list', () => {

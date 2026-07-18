@@ -581,9 +581,13 @@ describe('WorkspaceStore', () => {
       })
 
       useWorkspaceStore.getState().closePanel()
-      expect(useWorkspaceStore.getState().panelOpen).toBe(true)
+      expect(useWorkspaceStore.getState()).toMatchObject({
+        panelOpen: false,
+        fullscreen: false
+      })
 
       useWorkspaceStore.getState().setChatStreaming(false)
+      useWorkspaceStore.getState().openPanel()
       useWorkspaceStore.getState().closePanel()
       expect(useWorkspaceStore.getState().panelOpen).toBe(false)
     })

@@ -278,8 +278,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   closePanel: () => {
-    if (get().chatStreaming) return
-    set({ panelOpen: false })
+    set({ panelOpen: false, fullscreen: false })
   },
 
   toggleFullscreen: () => {

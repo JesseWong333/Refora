@@ -188,6 +188,30 @@ describe('parseReforaDocLink', () => {
   })
 })
 
+describe('ChatPanel tab header', () => {
+  it('keeps the close control in the tab and the chat actions on the right', () => {
+    const onClose = vi.fn()
+    setupApi([])
+
+    render(<ChatPanel onClose={onClose} />)
+
+    const tab = screen.getByTestId('panel-tab')
+    const actions = screen.getByTestId('panel-tab-actions')
+    const close = screen.getByRole('button', { name: 'workspace.chat.closePanel' })
+    expect(tab).toContainElement(screen.getByText('workspace.chat.newConversation'))
+    expect(tab).toContainElement(close)
+    expect(actions).toContainElement(
+      screen.getByRole('button', { name: 'workspace.chat.threadHistory' })
+    )
+    expect(actions).toContainElement(
+      screen.getByRole('button', { name: 'workspace.chat.newChat' })
+    )
+
+    fireEvent.click(close)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('ChatPanel citation links', () => {
   it('renders refora://doc/ link as a clickable button', async () => {
     setupApi([makeMessage('See [Test Paper](refora://doc/doc-123) for details.')])
@@ -495,6 +519,32 @@ describe('ChatMessages presentation', () => {
 })
 
 describe('ChatInput attachment loading', () => {
+  it('keeps toolbar controls inside the available input width', () => {
+    const props = {
+      input: '',
+      onInputChange: vi.fn(),
+      streaming: false,
+      selectedAttachments: [],
+      onSelectedAttachmentsChange: vi.fn(),
+      attachMenuOpen: false,
+      onAttachMenuOpenChange: vi.fn(),
+      activeWorkspaceId: 'ws-1',
+      providers: [TEST_PROVIDER],
+      canSend: false,
+      onSend: vi.fn(),
+      onCancel: vi.fn(),
+      textareaRef: { current: null },
+      inputAreaRef: { current: null },
+      toolbar: <div>Toolbar</div>
+    }
+
+    render(<ChatInput {...props} />)
+
+    const controls = screen.getByTestId('chat-input-controls')
+    expect(controls).toHaveClass('min-w-0', 'flex-1', 'justify-end')
+    expect(controls.parentElement).toHaveClass('min-w-0')
+  })
+
   it('ignores documents returned for a workspace that is no longer active', async () => {
     let resolveFirst!: (value: Array<{ kind: string; docId: string }>) => void
     const w = window as unknown as { api: Record<string, Record<string, unknown>> }

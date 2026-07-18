@@ -7,7 +7,7 @@ import type { ContextMenuItem } from '@lobehub/ui'
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
 import { formatDate, formatFilePath } from '../utils/format'
-import { Button as UiButton, EmptyState } from './ui'
+import { Button as UiButton, EmptyState, PanelTabHeader } from './ui'
 import type { Document, ColumnId, SortField, ListColumn, Category } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 
@@ -168,16 +168,19 @@ function visibleColumns(cols: ListColumn[]): ListColumn[] {
 
 interface DocumentListProps {
   compact?: boolean
+  onClose?: () => void
 }
 
 export default function DocumentList({
-  compact = false
+  compact = false,
+  onClose
 }: DocumentListProps = {}) {
   const { t } = useTranslation()
   const documents = useDocumentStore((s) => s.documents)
   const isLoading = useDocumentStore((s) => s.isLoading)
   const listColumnState = useDocumentStore((s) => s.listColumnState)
   const selectedIds = useDocumentStore((s) => s.selectedIds)
+  const listMode = useDocumentStore((s) => s.listMode)
   const setSort = useDocumentStore((s) => s.setSort)
   const setColumns = useDocumentStore((s) => s.setColumns)
   const toggleSelect = useDocumentStore((s) => s.toggleSelect)
@@ -414,6 +417,9 @@ export default function DocumentList({
   )
 
   const sortedColumns = [...listColumnState.columns].sort((a, b) => a.order - b.order)
+  const compactTitle = listMode.mode === 'category'
+    ? categories.find((category) => category.id === listMode.categoryId)?.name ?? t('sidebar.categories')
+    : t(`sidebar.${listMode.mode === 'all' ? 'allFiles' : listMode.mode}`)
 
   const handleColContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -461,6 +467,13 @@ export default function DocumentList({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {compact ? (
+        <PanelTabHeader
+          title={compactTitle}
+          onClose={onClose}
+          closeLabel={t('list.close')}
+        />
+      ) : null}
       {colHeaderBar}
 
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">

@@ -104,8 +104,9 @@ describe('ThreadHistory', () => {
 
   it('renders the empty state when there are no threads', () => {
     mocks.state.threads = []
-    renderHistory()
+    const { container } = renderHistory()
     expect(screen.getByText('No conversations yet')).toBeInTheDocument()
+    expect(container.querySelector('.right-0.top-full')).toBeInTheDocument()
   })
 
   it('selects and exports the active thread', async () => {

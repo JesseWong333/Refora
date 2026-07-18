@@ -244,7 +244,7 @@ export default function ChatInput({
           )}
         </div>
 
-        <div className="flex items-center gap-1 px-2 pb-2 pt-1">
+        <div className="flex min-w-0 items-center gap-1 px-2 pb-2 pt-1">
           <div className="relative shrink-0" ref={attachMenuRef}>
             <UiButton
               variant="ghost"
@@ -304,7 +304,10 @@ export default function ChatInput({
               </div>
             )}
           </div>
-          <div className="ml-auto flex min-w-0 items-center gap-1">
+          <div
+            className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1"
+            data-testid="chat-input-controls"
+          >
             {toolbar}
             {streaming ? (
               <UiButton

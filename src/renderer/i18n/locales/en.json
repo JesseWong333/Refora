@@ -77,6 +77,7 @@
   "list": {
     "compact": "Compact paper list",
     "expand": "Expand paper list",
+    "close": "Close document list",
     "title": "Title",
     "authors": "Authors",
     "year": "Year",
@@ -408,6 +409,8 @@
       "reasoningCollapse": "Hide reasoning",
       "noProvider": "No AI provider configured. Add one in Settings.",
       "inputPlaceholder": "Send a message… (Enter to send, Shift+Enter for newline)",
+      "openPanel": "Open AI chat",
+      "closePanel": "Close AI chat",
       "newChat": "New chat",
       "model": "Model",
       "modelConfig": "Model settings",

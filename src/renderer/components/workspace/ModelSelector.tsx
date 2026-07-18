@@ -126,10 +126,10 @@ export default function ModelSelector({
 
   return (
     <>
-      <div className="relative min-w-0" ref={menuRef}>
+      <div className="relative flex min-w-0 flex-1 justify-end" ref={menuRef}>
         <button
           type="button"
-          className="inline-flex max-w-[200px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
+          className="inline-flex w-full min-w-0 max-w-[200px] items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
           onClick={() => {
             setReasoningMenuOpen(false)
             setModelMenuOpen((value) => !value)
@@ -139,7 +139,7 @@ export default function ModelSelector({
           aria-expanded={modelMenuOpen}
           aria-haspopup="listbox"
         >
-          <span className="truncate font-medium">{displayModelLabel}</span>
+          <span className="min-w-0 flex-1 truncate font-medium">{displayModelLabel}</span>
           <CaretDown className="h-3 w-3 shrink-0 text-muted" />
         </button>
 
@@ -243,10 +243,10 @@ export default function ModelSelector({
       </div>
 
       {activeProvider && (
-        <div className="relative min-w-0 shrink-0" ref={reasoningMenuRef}>
+        <div className="relative min-w-0 max-w-[112px] shrink-0" ref={reasoningMenuRef}>
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
+            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg px-2 py-1 text-label text-foreground transition-colors duration-150 hover:bg-hover disabled:opacity-40"
             aria-label={reasoningEffortLabel}
             aria-expanded={reasoningMenuOpen}
             aria-haspopup="listbox"
@@ -257,7 +257,7 @@ export default function ModelSelector({
               setReasoningMenuOpen((value) => !value)
             }}
           >
-            <span className="truncate font-medium">{reasoningEffortValue}</span>
+            <span className="min-w-0 flex-1 truncate font-medium">{reasoningEffortValue}</span>
             <CaretDown className="h-3 w-3 shrink-0 text-muted" />
           </button>
 

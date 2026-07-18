@@ -162,7 +162,8 @@ describe('GlobalSearch', () => {
   })
 
   it('navigates workspace-file and chat results to their owning workspaces', async () => {
-    render(<GlobalSearch />)
+    const onOpenChat = vi.fn()
+    render(<GlobalSearch onOpenChat={onOpenChat} />)
     const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
     fireEvent.change(input, { target: { value: 'transformer' } })
     const fileOption = await screen.findByRole('option', { name: 'globalSearch.openWorkspaceFile: transformer-data.csv' })
@@ -177,6 +178,7 @@ describe('GlobalSearch', () => {
 
     expect(mocks.setActiveWorkspace).toHaveBeenCalledWith('ws-chat')
     expect(mocks.setActiveThreadId).toHaveBeenCalledWith('thread-1')
+    expect(onOpenChat).toHaveBeenCalledOnce()
   })
 
   it('supports keyboard selection and clears document search state', async () => {
