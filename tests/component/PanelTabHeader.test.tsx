@@ -17,6 +17,7 @@ describe('PanelTabHeader', () => {
         title="Research"
         onClose={onClose}
         closeLabel="Close workspace"
+        leading={<button type="button">Go back</button>}
         actions={<button type="button">Add file</button>}
       />
     )
@@ -24,6 +25,7 @@ describe('PanelTabHeader', () => {
     const header = screen.getByTestId('panel-tab-header')
     const tab = screen.getByTestId('panel-tab')
     const actions = screen.getByTestId('panel-tab-actions')
+    const leading = screen.getByTestId('panel-tab-leading')
     const close = screen.getByRole('button', { name: 'Close workspace' })
 
     expect(header).toHaveClass('h-8', 'border-b', 'drag-region')
@@ -31,6 +33,9 @@ describe('PanelTabHeader', () => {
     expect(tab).not.toHaveClass('no-drag')
     expect(tab).not.toHaveClass('ml-3', 'rounded-t-xl')
     expect(tab).toContainElement(screen.getByText('Research'))
+    expect(tab).toContainElement(leading)
+    expect(leading).toHaveClass('no-drag')
+    expect(leading).toContainElement(screen.getByRole('button', { name: 'Go back' }))
     expect(tab).toContainElement(close)
     expect(close).toHaveClass('no-drag')
     expect(actions).toContainElement(screen.getByRole('button', { name: 'Add file' }))

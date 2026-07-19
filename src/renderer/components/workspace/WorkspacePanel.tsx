@@ -9,6 +9,7 @@ import Board, {
   type WorkspaceMarkdownCardMode
 } from './Board'
 import WorkspaceMarkdownView from './WorkspaceMarkdownView'
+import WorkspaceNavigationControls from './WorkspaceNavigationControls'
 import { aiSummaryMarkdown } from '../../utils/workspaceCardMarkdown'
 
 type ActiveMarkdownCard = WorkspaceMarkdownCard & { mode: WorkspaceMarkdownCardMode }
@@ -28,15 +29,18 @@ export default function WorkspacePanel() {
   const updateReport = useWorkspaceStore((s) => s.updateReport)
 
   const [activeMarkdownCard, setActiveMarkdownCard] = useState<ActiveMarkdownCard | null>(null)
+  const [forwardMarkdownCard, setForwardMarkdownCard] = useState<ActiveMarkdownCard | null>(null)
   const boardRef = useRef<BoardHandle | null>(null)
 
   useEffect(() => {
     setActiveMarkdownCard(null)
+    setForwardMarkdownCard(null)
   }, [activeWorkspaceId])
 
   useEffect(() => {
     if (!markdownCardRequest) return
     setActiveMarkdownCard({ ...markdownCardRequest, mode: 'read' })
+    setForwardMarkdownCard(null)
     clearMarkdownCardRequest()
   }, [clearMarkdownCardRequest, markdownCardRequest])
 
@@ -45,7 +49,20 @@ export default function WorkspacePanel() {
     mode: WorkspaceMarkdownCardMode = 'read'
   ) => {
     setActiveMarkdownCard({ ...card, mode })
+    setForwardMarkdownCard(null)
   }, [])
+
+  const handleBackToBoard = useCallback(() => {
+    if (!activeMarkdownCard) return
+    setForwardMarkdownCard(activeMarkdownCard)
+    setActiveMarkdownCard(null)
+  }, [activeMarkdownCard])
+
+  const handleForwardToReader = useCallback(() => {
+    if (!forwardMarkdownCard) return
+    setActiveMarkdownCard(forwardMarkdownCard)
+    setForwardMarkdownCard(null)
+  }, [forwardMarkdownCard])
 
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
   const name = active?.name ?? t('workspace.untitled')
@@ -71,7 +88,7 @@ export default function WorkspacePanel() {
         timestamp={activeNote.updatedAt}
         initialMode={activeMarkdownCard?.mode}
         fullscreen={fullscreen}
-        onBack={() => setActiveMarkdownCard(null)}
+        onBack={handleBackToBoard}
         onClose={closePanel}
         onUpdate={updateNote}
       />
@@ -87,7 +104,7 @@ export default function WorkspacePanel() {
         timestamp={activeReport.createdAt}
         initialMode={activeMarkdownCard?.mode}
         fullscreen={fullscreen}
-        onBack={() => setActiveMarkdownCard(null)}
+        onBack={handleBackToBoard}
         onClose={closePanel}
         onUpdate={updateReport}
       />
@@ -102,7 +119,7 @@ export default function WorkspacePanel() {
         contentMd={aiSummaryMarkdown(activeSummary.summary)}
         timestamp={activeSummary.summary.updatedAt}
         fullscreen={fullscreen}
-        onBack={() => setActiveMarkdownCard(null)}
+        onBack={handleBackToBoard}
         onClose={closePanel}
       />
     )
@@ -119,6 +136,11 @@ export default function WorkspacePanel() {
           title={name}
           onClose={closePanel}
           closeLabel={t('workspace.close')}
+          leading={
+            <WorkspaceNavigationControls
+              onForward={forwardMarkdownCard ? handleForwardToReader : undefined}
+            />
+          }
           actions={
             <>
               <button

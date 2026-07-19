@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, BookOpen, PencilSimple } from '@phosphor-icons/react'
+import { BookOpen, PencilSimple } from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
 import { formatDate } from '../../utils/format'
 import { IconTooltip, Input, PanelTabHeader, Textarea } from '../ui'
+import WorkspaceNavigationControls from './WorkspaceNavigationControls'
 
 export type WorkspaceMarkdownViewKind = 'note' | 'report' | 'summary'
 export type WorkspaceMarkdownViewMode = 'read' | 'edit'
@@ -140,56 +141,43 @@ export default function WorkspaceMarkdownView({
       title={draftTitle || savedDraft.title}
       onClose={onClose ? () => void handleClose() : undefined}
       closeLabel={t('workspace.close')}
-      actions={
-        <>
-          <IconTooltip label={t('workspace.markdownBackToBoard')} appearance="sidebar">
+      leading={<WorkspaceNavigationControls onBack={() => void handleBack()} />}
+      actions={editable ? (
+        <div
+          className="flex shrink-0 items-center gap-1"
+          role="group"
+          aria-label={t('workspace.markdownMode')}
+        >
+          <IconTooltip label={t('workspace.markdownRead')} appearance="sidebar">
             <button
               type="button"
-              className="sidebar-header-btn shrink-0"
-              onClick={() => void handleBack()}
-              aria-label={t('workspace.markdownBackToBoard')}
+              className={[
+                'sidebar-header-btn',
+                mode === 'read' ? 'bg-active text-accent hover:bg-active' : ''
+              ].filter(Boolean).join(' ')}
+              aria-label={t('workspace.markdownRead')}
+              aria-pressed={mode === 'read'}
+              onClick={() => void changeMode('read')}
             >
-              <ArrowLeft className="h-4 w-4" />
+              <BookOpen className="h-4 w-4" />
             </button>
           </IconTooltip>
-          {editable && (
-            <div
-              className="flex shrink-0 items-center gap-1"
-              role="group"
-              aria-label={t('workspace.markdownMode')}
+          <IconTooltip label={t('workspace.markdownEdit')} appearance="sidebar">
+            <button
+              type="button"
+              className={[
+                'sidebar-header-btn',
+                mode === 'edit' ? 'bg-active text-accent hover:bg-active' : ''
+              ].filter(Boolean).join(' ')}
+              aria-label={t('workspace.markdownEdit')}
+              aria-pressed={mode === 'edit'}
+              onClick={() => void changeMode('edit')}
             >
-              <IconTooltip label={t('workspace.markdownRead')} appearance="sidebar">
-                <button
-                  type="button"
-                  className={[
-                    'sidebar-header-btn',
-                    mode === 'read' ? 'bg-active text-accent hover:bg-active' : ''
-                  ].filter(Boolean).join(' ')}
-                  aria-label={t('workspace.markdownRead')}
-                  aria-pressed={mode === 'read'}
-                  onClick={() => void changeMode('read')}
-                >
-                  <BookOpen className="h-4 w-4" />
-                </button>
-              </IconTooltip>
-              <IconTooltip label={t('workspace.markdownEdit')} appearance="sidebar">
-                <button
-                  type="button"
-                  className={[
-                    'sidebar-header-btn',
-                    mode === 'edit' ? 'bg-active text-accent hover:bg-active' : ''
-                  ].filter(Boolean).join(' ')}
-                  aria-label={t('workspace.markdownEdit')}
-                  aria-pressed={mode === 'edit'}
-                  onClick={() => void changeMode('edit')}
-                >
-                  <PencilSimple className="h-4 w-4" />
-                </button>
-              </IconTooltip>
-            </div>
-          )}
-        </>
-      }
+              <PencilSimple className="h-4 w-4" />
+            </button>
+          </IconTooltip>
+        </div>
+      ) : undefined}
     />
   )
 

@@ -378,6 +378,8 @@
     "notePreviewEmpty": "Markdown 预览会显示在这里。",
     "titleRequired": "标题不能为空。",
     "saving": "正在保存…",
+    "navigateBack": "后退",
+    "navigateForward": "前进",
     "markdownBackToBoard": "返回画板",
     "markdownMode": "Markdown 模式",
     "markdownRead": "阅读",

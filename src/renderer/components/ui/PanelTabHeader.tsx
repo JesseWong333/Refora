@@ -7,6 +7,7 @@ export interface PanelTabHeaderProps {
   onClose?: () => void
   closeLabel?: string
   closeDisabled?: boolean
+  leading?: ReactNode
   actions?: ReactNode
   onTitleClick?: () => void
   titleDisabled?: boolean
@@ -17,6 +18,7 @@ export function PanelTabHeader({
   onClose,
   closeLabel,
   closeDisabled = false,
+  leading,
   actions,
   onTitleClick,
   titleDisabled = false
@@ -34,6 +36,11 @@ export function PanelTabHeader({
         className="-mb-px flex h-8 w-[min(320px,65%)] min-w-0 items-center gap-2 rounded-tr-xl border border-l-0 border-t-0 border-border border-b-background bg-background pl-4 pr-2"
         data-testid="panel-tab"
       >
+        {leading ? (
+          <div className="no-drag flex shrink-0 items-center gap-0.5" data-testid="panel-tab-leading">
+            {leading}
+          </div>
+        ) : null}
         {onTitleClick ? (
           <button
             type="button"

@@ -378,6 +378,8 @@
     "notePreviewEmpty": "Markdown preview will appear here.",
     "titleRequired": "A title is required.",
     "saving": "Saving…",
+    "navigateBack": "Back",
+    "navigateForward": "Forward",
     "markdownBackToBoard": "Back to board",
     "markdownMode": "Markdown mode",
     "markdownRead": "Read",

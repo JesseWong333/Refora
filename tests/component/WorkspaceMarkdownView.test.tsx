@@ -33,9 +33,11 @@ describe('WorkspaceMarkdownView', () => {
   it('keeps the fullscreen toolbar draggable while preserving interactive controls', () => {
     renderView({ fullscreen: true })
 
-    const backButton = screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })
+    const backButton = screen.getByRole('button', { name: 'workspace.navigateBack' })
     expect(backButton.closest('[data-testid="panel-tab-header"]')).toHaveClass('drag-region')
-    expect(backButton.closest('[data-testid="panel-tab-actions"]')).toHaveClass('no-drag')
+    expect(backButton.closest('[data-testid="panel-tab-leading"]')).toHaveClass('no-drag')
+    expect(backButton.closest('[data-testid="panel-tab-actions"]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'workspace.navigateForward' })).toBeDisabled()
   })
 
   it('saves a changed draft before closing the workspace tab', async () => {
@@ -53,6 +55,23 @@ describe('WorkspaceMarkdownView', () => {
         contentMd: 'Saved before close'
       })
       expect(onClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('saves a changed draft before navigating back to the board', async () => {
+    const { onBack, onUpdate } = renderView({ initialMode: 'edit' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'workspace.noteContentLabel' }), {
+      target: { value: 'Saved before navigating back' }
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.navigateBack' }))
+
+    await waitFor(() => {
+      expect(onUpdate).toHaveBeenCalledWith('note-1', {
+        title: 'Research notes',
+        contentMd: 'Saved before navigating back'
+      })
+      expect(onBack).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -184,7 +203,8 @@ describe('WorkspaceMarkdownView', () => {
 
     expect(screen.getByText('Core summary')).toBeInTheDocument()
     expect(screen.getByText('Point one')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.navigateBack' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'workspace.markdownEdit' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('panel-tab-actions')).not.toBeInTheDocument()
   })
 })

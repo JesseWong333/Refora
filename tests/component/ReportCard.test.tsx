@@ -414,7 +414,8 @@ describe('WorkspacePanel tab header', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open report card' }))
 
-    expect(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.navigateBack' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'workspace.navigateForward' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'workspace.markdownRead' })).toHaveAttribute('aria-pressed', 'true')
     expect(
       screen.getAllByText('Test Report').some((title) => title.closest('[data-testid="panel-tab"]'))
@@ -422,9 +423,15 @@ describe('WorkspacePanel tab header', () => {
     expect(screen.getByRole('button', { name: 'workspace.close' })).toBeInTheDocument()
     expect(screen.queryByText('Chat panel')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' }))
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.navigateBack' }))
 
     expect(screen.getByText('Board')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.navigateBack' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'workspace.navigateForward' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.navigateForward' }))
+
+    expect(screen.getByRole('button', { name: 'workspace.markdownRead' })).toBeInTheDocument()
   })
 
   it('opens a Markdown card requested by global search', () => {
@@ -433,7 +440,7 @@ describe('WorkspacePanel tab header', () => {
 
     render(<WorkspacePanel />)
 
-    expect(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.navigateBack' })).toBeInTheDocument()
     expect(mockWorkspacePanelState.clearMarkdownCardRequest).toHaveBeenCalledOnce()
   })
 
