@@ -43,6 +43,63 @@ describe('ResizeDivider', () => {
     fireEvent.mouseUp(document)
   })
 
+  it('reports the start and end of a resize gesture', () => {
+    const onResizeStart = vi.fn()
+    const onResizeEnd = vi.fn()
+    const { container } = render(
+      <ResizeDivider
+        onResize={vi.fn()}
+        onResizeStart={onResizeStart}
+        onResizeEnd={onResizeEnd}
+      />
+    )
+    const divider = container.firstElementChild as HTMLElement
+
+    fireEvent.mouseDown(divider, { clientX: 10 })
+    expect(onResizeStart).toHaveBeenCalledOnce()
+    expect(onResizeEnd).not.toHaveBeenCalled()
+
+    fireEvent.mouseUp(document)
+    expect(onResizeEnd).toHaveBeenCalledOnce()
+  })
+
+  it('finishes an active resize when the window loses focus', () => {
+    const onResizeEnd = vi.fn()
+    const { container } = render(
+      <ResizeDivider onResize={vi.fn()} onResizeEnd={onResizeEnd} />
+    )
+    const divider = container.firstElementChild as HTMLElement
+
+    fireEvent.mouseDown(divider, { clientX: 10 })
+    fireEvent(window, new Event('blur'))
+
+    expect(onResizeEnd).toHaveBeenCalledOnce()
+    expect(document.body.style.cursor).toBe('')
+    expect(document.body.style.userSelect).toBe('')
+
+    fireEvent.mouseUp(document)
+    expect(onResizeEnd).toHaveBeenCalledOnce()
+  })
+
+  it('finishes an active resize when the divider unmounts', () => {
+    const onResize = vi.fn()
+    const onResizeEnd = vi.fn()
+    const { container, unmount } = render(
+      <ResizeDivider onResize={onResize} onResizeEnd={onResizeEnd} />
+    )
+    const divider = container.firstElementChild as HTMLElement
+
+    fireEvent.mouseDown(divider, { clientX: 10 })
+    unmount()
+
+    expect(onResizeEnd).toHaveBeenCalledOnce()
+    expect(document.body.style.cursor).toBe('')
+    expect(document.body.style.userSelect).toBe('')
+
+    fireEvent.mouseMove(document, { clientX: 20 })
+    expect(onResize).not.toHaveBeenCalled()
+  })
+
   it('renders accessible soft dividers in both orientations', () => {
     const { rerender } = render(<ResizeDivider variant="soft" onResize={vi.fn()} />)
     expect(screen.getByRole('separator')).toHaveAttribute('aria-orientation', 'vertical')

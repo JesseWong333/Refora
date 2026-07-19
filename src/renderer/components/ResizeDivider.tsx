@@ -1,23 +1,34 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 
 interface ResizeDividerProps {
   onResize: (delta: number) => void
+  onResizeStart?: () => void
+  onResizeEnd?: () => void
   orientation?: 'vertical' | 'horizontal'
   variant?: 'gap' | 'line' | 'soft'
 }
 
 export default function ResizeDivider({
   onResize,
+  onResizeStart,
+  onResizeEnd,
   orientation = 'vertical',
   variant = 'line'
 }: ResizeDividerProps) {
   const startRef = useRef({ pos: 0 })
+  const finishResizeRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => {
+    finishResizeRef.current?.()
+  }, [])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      finishResizeRef.current?.()
       e.preventDefault()
       e.stopPropagation()
       startRef.current = { pos: orientation === 'vertical' ? e.clientX : e.clientY }
+      onResizeStart?.()
 
       const onMouseMove = (ev: MouseEvent) => {
         const current = orientation === 'vertical' ? ev.clientX : ev.clientY
@@ -26,19 +37,25 @@ export default function ResizeDivider({
         onResize(delta)
       }
 
-      const onMouseUp = () => {
+      const finishResize = () => {
+        if (finishResizeRef.current !== finishResize) return
+        finishResizeRef.current = null
         document.removeEventListener('mousemove', onMouseMove)
-        document.removeEventListener('mouseup', onMouseUp)
+        document.removeEventListener('mouseup', finishResize)
+        window.removeEventListener('blur', finishResize)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
+        onResizeEnd?.()
       }
 
+      finishResizeRef.current = finishResize
       document.addEventListener('mousemove', onMouseMove)
-      document.addEventListener('mouseup', onMouseUp)
+      document.addEventListener('mouseup', finishResize)
+      window.addEventListener('blur', finishResize)
       document.body.style.cursor = orientation === 'vertical' ? 'col-resize' : 'row-resize'
       document.body.style.userSelect = 'none'
     },
-    [onResize, orientation]
+    [onResize, onResizeEnd, onResizeStart, orientation]
   )
 
   const isGap = variant === 'gap'
