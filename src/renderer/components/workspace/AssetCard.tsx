@@ -208,12 +208,20 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
             className="workspace-asset-media h-full w-full bg-black object-cover"
             src={previewUrl}
             controls={mediaHovered}
+            draggable={false}
             preload={mediaNearViewport || mediaHovered ? 'metadata' : 'none'}
+          />
+        )}
+        {asset.previewKind === 'video' && (
+          <div
+            data-card-video-drag-surface
+            className="workspace-asset-video-drag-surface absolute inset-x-0 bottom-14 top-0 z-20"
+            aria-hidden
           />
         )}
         <div
           data-asset-media-overlay
-          className="workspace-asset-media-overlay pointer-events-none absolute inset-x-0 top-0 z-10 p-3"
+          className="workspace-asset-media-overlay pointer-events-none absolute inset-x-0 top-0 z-30 p-3"
         >
           {renderHeader(true)}
         </div>

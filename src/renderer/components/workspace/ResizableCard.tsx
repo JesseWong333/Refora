@@ -340,7 +340,7 @@ export default function ResizableCard({
         touchAction: 'none'
       }}
     >
-      <div className="h-full w-full">{children}</div>
+      <div className="resizable-card-content h-full w-full">{children}</div>
       {onConnectionStart && (['top', 'right', 'bottom', 'left'] as const).map((anchor) => (
         <button
           key={anchor}

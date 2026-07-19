@@ -482,7 +482,8 @@ describe('Board workspace assets', () => {
     expect(card.querySelector('[data-asset-media-overlay]')).toHaveClass(
       'workspace-asset-media-overlay',
       'inset-x-0',
-      'top-0'
+      'top-0',
+      'z-30'
     )
     const media = card.querySelector(elementName) as HTMLImageElement | HTMLVideoElement
     expect(media).toHaveClass('workspace-asset-media', 'object-cover')
@@ -501,6 +502,8 @@ describe('Board workspace assets', () => {
     expect(mockCopyWorkspaceAsset).toHaveBeenCalledWith(asset.id)
 
     if (media instanceof HTMLVideoElement) {
+      expect(media).toHaveAttribute('draggable', 'false')
+      expect(card.querySelector('[data-card-video-drag-surface]')).toHaveClass('top-0', 'bottom-14', 'z-20')
       expect(media).toHaveAttribute('preload', 'metadata')
       expect(media).not.toHaveAttribute('controls')
       fireEvent.mouseEnter(card)
@@ -508,6 +511,49 @@ describe('Board workspace assets', () => {
       fireEvent.mouseLeave(card)
       expect(media).not.toHaveAttribute('controls')
     }
+  })
+
+  it('drags a video card from its top area without taking over the native control bar', () => {
+    const asset: WorkspaceAsset = {
+      id: 'asset-video-drag',
+      workspaceId: 'ws-1',
+      fileName: 'demo.mp4',
+      filePath: 'refora-assets/asset-video-drag/demo.mp4',
+      sourcePath: '/tmp/demo.mp4',
+      mimeType: 'video/mp4',
+      previewKind: 'video',
+      fileSize: 2048,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 0,
+      updatedAt: 0
+    }
+    mockAssets = [asset]
+    mockItems = [{
+      ...makeItem('item-video-drag', '', 0),
+      kind: 'asset',
+      docId: null,
+      assetId: asset.id
+    }]
+
+    const { container } = render(<Board />)
+    const mediaCard = container.querySelector('[data-card-kind="asset"]') as HTMLElement
+    const video = mediaCard.querySelector('video') as HTMLVideoElement
+    const dragSurface = mediaCard.querySelector('[data-card-video-drag-surface]') as HTMLElement
+    fireEvent.mouseEnter(mediaCard)
+
+    fireEvent.pointerDown(dragSurface, { pointerId: 21, button: 0, clientX: 20, clientY: 16 })
+    fireEvent.pointerMove(document, { pointerId: 21, clientX: 80, clientY: 51 })
+    fireEvent.pointerUp(document, { pointerId: 21 })
+
+    expect(mockMoveItem).toHaveBeenCalledWith('item-video-drag', 60, 35, 1)
+
+    mockMoveItem.mockClear()
+    fireEvent.pointerDown(video, { pointerId: 22, button: 0, clientX: 20, clientY: 180 })
+    fireEvent.pointerMove(document, { pointerId: 22, clientX: 80, clientY: 190 })
+    fireEvent.pointerUp(document, { pointerId: 22 })
+
+    expect(mockMoveItem).not.toHaveBeenCalled()
   })
 
   it('loads video metadata only when the media card approaches the viewport', () => {
@@ -709,9 +755,11 @@ describe('Board canvas controls and connections', () => {
     const sourceHandle = container.querySelector(
       '[data-workspace-card-id="item-1"] [data-connection-handle="right"]'
     ) as HTMLButtonElement
-    expect(sourceHandle.closest('[data-workspace-card]')).toHaveClass(
+    const sourceCard = sourceHandle.closest('[data-workspace-card]') as HTMLElement
+    expect(sourceCard).toHaveClass(
       'workspace-connection-accent--document'
     )
+    expect(sourceCard.querySelector('.resizable-card-content')?.contains(sourceHandle)).toBe(false)
     const targetCard = container.querySelector('[data-workspace-card-id="item-2"]') as HTMLElement
     const originalElementsFromPoint = document.elementsFromPoint
     Object.defineProperty(document, 'elementsFromPoint', {
