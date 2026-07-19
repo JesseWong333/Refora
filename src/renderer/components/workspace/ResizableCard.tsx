@@ -136,11 +136,13 @@ export default function ResizableCard({
 
   const startPointerDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
+    suppressClickUntilRef.current = 0
     const target = e.target as HTMLElement
     if (target.closest('button, a, input, textarea, select, audio, video, [contenteditable="true"], [role="button"], [role="link"], [data-card-resize]')) return
     interactionCleanupRef.current?.()
-    e.currentTarget.setPointerCapture?.(e.pointerId)
     const pointerId = e.pointerId
+    const pointerTarget = target.closest<HTMLElement>('[data-card-kind]') ?? e.currentTarget
+    pointerTarget.setPointerCapture?.(pointerId)
     moveStartRef.current = {
       x: e.clientX,
       y: e.clientY,
@@ -149,6 +151,7 @@ export default function ResizableCard({
       zIndex: frontZIndex
     }
     let activated = false
+    let previewed = false
 
     const cleanup = () => {
       document.removeEventListener('pointermove', onMove)
@@ -159,10 +162,6 @@ export default function ResizableCard({
 
     const activate = () => {
       activated = true
-      const initial = { x: position.x, y: position.y, zIndex: frontZIndex }
-      latestPositionRef.current = initial
-      positionDirtyRef.current = true
-      scheduleVisuals()
       movingRef.current = true
       setMoving(true)
       window.getSelection()?.removeAllRanges()
@@ -172,17 +171,18 @@ export default function ResizableCard({
 
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return
-      if (!activated) {
-        if (Math.hypot(ev.clientX - moveStartRef.current.x, ev.clientY - moveStartRef.current.y) < DRAG_START_DISTANCE) return
-        activate()
-      }
+      const dx = ev.clientX - moveStartRef.current.x
+      const dy = ev.clientY - moveStartRef.current.y
+      if (dx === 0 && dy === 0) return
+      if (!activated && Math.hypot(dx, dy) >= DRAG_START_DISTANCE) activate()
       ev.preventDefault()
       const scale = getScale()
       const next = {
-        x: Math.round(moveStartRef.current.cardX + (ev.clientX - moveStartRef.current.x) / scale),
-        y: Math.round(moveStartRef.current.cardY + (ev.clientY - moveStartRef.current.y) / scale),
-        zIndex: moveStartRef.current.zIndex
+        x: Math.round(moveStartRef.current.cardX + dx / scale),
+        y: Math.round(moveStartRef.current.cardY + dy / scale),
+        zIndex: activated ? moveStartRef.current.zIndex : position.zIndex
       }
+      previewed = true
       latestPositionRef.current = next
       positionDirtyRef.current = true
       scheduleVisuals()
@@ -191,7 +191,17 @@ export default function ResizableCard({
     const finish = (commit: boolean) => {
       const shouldCommit = activated
       cleanup()
-      if (!shouldCommit) return
+      if (!shouldCommit) {
+        if (previewed) {
+          flushVisuals()
+          latestPositionRef.current = position
+          if (cardRef.current) {
+            cardRef.current.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`
+          }
+          onPositionCancel?.(sizeKey)
+        }
+        return
+      }
       flushVisuals()
       document.body.style.cursor = ''
       document.body.style.userSelect = ''

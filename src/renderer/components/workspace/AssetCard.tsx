@@ -143,7 +143,12 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
     <div className="flex shrink-0 items-start gap-2">
       <div className="workspace-card-heading min-w-0 flex-1">
         <span className="workspace-card-type-label">{t('workspace.cardTypeAsset')}</span>
-        <h3 className="workspace-card-title truncate text-sm font-semibold text-foreground" title={asset.fileName}>
+        <h3
+          className={mediaOverlay
+            ? 'workspace-card-title truncate text-sm font-medium'
+            : 'workspace-card-title truncate text-sm font-semibold text-foreground'}
+          title={asset.fileName}
+        >
           {asset.fileName}
         </h3>
         <p className={mediaOverlay ? 'workspace-asset-media-metadata mt-0.5 truncate text-xs' : 'mt-0.5 truncate text-xs text-muted'}>

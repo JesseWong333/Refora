@@ -255,12 +255,17 @@
   .workspace-asset-media-overlay::before {
     position: absolute;
     z-index: -1;
-    inset: 0;
-    background: color-mix(in srgb, var(--color-panel) 52%, transparent);
-    backdrop-filter: blur(8px) saturate(180%);
-    -webkit-backdrop-filter: blur(8px) saturate(180%);
-    mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.82) 35%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.82) 35%, transparent 100%);
+    inset: 0 0 -1.25rem;
+    background: linear-gradient(
+      to bottom,
+      rgba(10, 16, 26, 0.46) 0%,
+      rgba(10, 16, 26, 0.28) 52%,
+      rgba(10, 16, 26, 0) 100%
+    );
+    backdrop-filter: blur(12px) saturate(115%);
+    -webkit-backdrop-filter: blur(12px) saturate(115%);
+    mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.94) 52%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.94) 52%, transparent 100%);
     pointer-events: none;
     content: '';
   }
@@ -272,30 +277,35 @@
   }
 
   .workspace-content-card--media .workspace-card-heading::before {
-    background: color-mix(in srgb, var(--color-foreground) 58%, transparent);
+    background: rgba(255, 255, 255, 0.58);
+  }
+
+  .workspace-content-card--media .workspace-card-heading {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
   }
 
   .workspace-content-card--media .workspace-card-type-label {
-    color: color-mix(in srgb, var(--color-foreground) 64%, transparent);
+    color: rgba(255, 255, 255, 0.62);
   }
 
   .workspace-content-card--media .workspace-card-title {
-    color: var(--color-foreground);
+    color: rgba(255, 255, 255, 0.86);
+    font-weight: 500;
   }
 
   .workspace-asset-media-metadata {
-    color: color-mix(in srgb, var(--color-foreground) 64%, transparent);
+    color: rgba(255, 255, 255, 0.64);
   }
 
   .workspace-asset-media-action {
     border: 0;
     background: transparent;
-    color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
+    color: rgba(255, 255, 255, 0.78);
     transition: color 0.15s ease;
   }
 
   .workspace-asset-media-action:hover {
-    color: var(--color-foreground);
+    color: rgba(255, 255, 255, 1);
   }
 
   .workspace-asset-media-action--delete:hover {

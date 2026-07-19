@@ -681,9 +681,10 @@ describe('ResizableCard', () => {
     expect(onSizeCommit).toHaveBeenCalledWith('item-1', { width: 340, height: 225 })
   })
 
-  it('starts moving after the pointer crosses the drag threshold and converts through canvas scale', () => {
+  it('previews movement immediately and commits after crossing the drag threshold', async () => {
     const onPositionChange = vi.fn()
     const onPositionCommit = vi.fn()
+    const onOpen = vi.fn()
     render(
       <ResizableCard
         sizeKey="item-1"
@@ -697,19 +698,32 @@ describe('ResizableCard', () => {
         onPositionCommit={onPositionCommit}
         moveLabel="Move card"
       >
-        <div>Content</div>
+        <div data-card-kind="note" onClick={onOpen}>Content</div>
       </ResizableCard>
     )
 
     const content = screen.getByText('Content')
+    const setPointerCapture = vi.fn()
+    content.setPointerCapture = setPointerCapture
     fireEvent.pointerDown(content, { pointerId: 2, button: 0, clientX: 100, clientY: 100 })
+    expect(setPointerCapture).toHaveBeenCalledWith(2)
     fireEvent.pointerMove(document, { pointerId: 2, clientX: 103, clientY: 102 })
-    expect(onPositionChange).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(onPositionChange).toHaveBeenLastCalledWith('item-1', { x: -14, y: 44, zIndex: 1 })
+    })
     fireEvent.pointerMove(document, { pointerId: 2, clientX: 130, clientY: 80 })
     fireEvent.pointerUp(document, { pointerId: 2 })
+    fireEvent.click(content)
 
     expect(onPositionChange).toHaveBeenLastCalledWith('item-1', { x: 40, y: 0, zIndex: 8 })
     expect(onPositionCommit).toHaveBeenCalledWith('item-1', { x: 40, y: 0, zIndex: 8 })
+    expect(onOpen).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(content, { pointerId: 5, button: 0, clientX: 130, clientY: 80 })
+    fireEvent.pointerUp(document, { pointerId: 5 })
+    fireEvent.click(content)
+
+    expect(onOpen).toHaveBeenCalledOnce()
   })
 
   it('coalesces pointer movement into one visual update per animation frame', () => {
@@ -802,9 +816,11 @@ describe('ResizableCard', () => {
     expect(onSizeCommit).not.toHaveBeenCalled()
   })
 
-  it('keeps a normal click from becoming a drag when movement stays below the threshold', () => {
+  it('previews small movement immediately, then rolls back and opens on click', () => {
     const onPositionChange = vi.fn()
     const onPositionCommit = vi.fn()
+    const onPositionCancel = vi.fn()
+    const onOpen = vi.fn()
     render(
       <ResizableCard
         sizeKey="item-1"
@@ -816,18 +832,29 @@ describe('ResizableCard', () => {
         onSizeCommit={() => {}}
         onPositionChange={onPositionChange}
         onPositionCommit={onPositionCommit}
+        onPositionCancel={onPositionCancel}
         moveLabel="Move card"
       >
-        <div>Content</div>
+        <div data-card-kind="note" onClick={onOpen}>Content</div>
       </ResizableCard>
     )
 
-    fireEvent.pointerDown(screen.getByText('Content'), { pointerId: 3, button: 0, clientX: 10, clientY: 10 })
+    const card = screen.getByRole('group', { name: 'Move card' })
+    const content = screen.getByText('Content')
+    const captureContentPointer = vi.fn()
+    content.setPointerCapture = captureContentPointer
+
+    fireEvent.pointerDown(content, { pointerId: 3, button: 0, clientX: 10, clientY: 10 })
     fireEvent.pointerMove(document, { pointerId: 3, clientX: 14, clientY: 10 })
     fireEvent.pointerUp(document, { pointerId: 3 })
+    fireEvent.click(content)
 
-    expect(onPositionChange).not.toHaveBeenCalled()
+    expect(captureContentPointer).toHaveBeenCalledWith(3)
+    expect(onPositionChange).toHaveBeenCalledWith('item-1', { x: 4, y: 0, zIndex: 0 })
     expect(onPositionCommit).not.toHaveBeenCalled()
+    expect(onPositionCancel).toHaveBeenCalledWith('item-1')
+    expect(card.style.transform).toBe('translate3d(0px, 0px, 0)')
+    expect(onOpen).toHaveBeenCalledOnce()
   })
 
   it('does not start a drag from an interactive control', () => {

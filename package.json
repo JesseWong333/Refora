@@ -16,6 +16,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --passWithNoTests",
+    "test:e2e:workspace-card": "electron-vite build && playwright test tests/e2e/workspace-card-pointer.spec.ts --workers=1",
     "package": "electron-vite build && electron-builder --mac",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
