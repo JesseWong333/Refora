@@ -6,6 +6,7 @@ import {
   File,
   FileText,
   MagnifyingGlass,
+  NotePencil,
   X
 } from '@phosphor-icons/react'
 import { api } from '../ipc'
@@ -17,6 +18,7 @@ import type {
   ChatSearchResult,
   Document,
   GlobalSearchResult,
+  WorkspaceContentSearchResult,
   WorkspaceFileSearchResult
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
@@ -24,12 +26,14 @@ import { errorMessage } from '../../shared/ipc-types'
 const EMPTY_RESULTS: GlobalSearchResult = {
   documents: [],
   workspaceFiles: [],
+  workspaceContents: [],
   chats: []
 }
 
 type SearchSelection =
   | { kind: 'document'; value: Document }
   | { kind: 'workspaceFile'; value: WorkspaceFileSearchResult }
+  | { kind: 'workspaceContent'; value: WorkspaceContentSearchResult }
   | { kind: 'chat'; value: ChatSearchResult }
 
 function highlightMatch(text: string, query: string): ReactNode {
@@ -49,49 +53,60 @@ function highlightMatch(text: string, query: string): ReactNode {
 }
 
 interface GlobalSearchProps {
+  documentListOpen?: boolean
   onOpenChat?: () => void
 }
 
-export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
+export default function GlobalSearch({ documentListOpen = false, onOpenChat }: GlobalSearchProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<GlobalSearchResult>(EMPTY_RESULTS)
+  const [resolvedQuery, setResolvedQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const requestVersionRef = useRef(0)
+  const documentSearchSyncedRef = useRef(false)
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
   const chatStreaming = useWorkspaceStore((state) => state.chatStreaming)
 
   const selections = useMemo<SearchSelection[]>(() => [
     ...results.documents.map((value) => ({ kind: 'document' as const, value })),
     ...results.workspaceFiles.map((value) => ({ kind: 'workspaceFile' as const, value })),
+    ...results.workspaceContents.map((value) => ({ kind: 'workspaceContent' as const, value })),
     ...results.chats.map((value) => ({ kind: 'chat' as const, value }))
   ], [results])
 
   const close = useCallback(() => setExpanded(false), [])
   useClickOutside(rootRef, close, expanded)
 
+  const resetLocalSearch = useCallback(() => {
+    requestVersionRef.current += 1
+    setQuery('')
+    setResults(EMPTY_RESULTS)
+    setResolvedQuery('')
+    setLoading(false)
+    setExpanded(false)
+    setActiveIndex(0)
+  }, [])
+
   useEffect(() => {
     const handleLibrarySwitched = () => {
-      requestVersionRef.current += 1
-      setQuery('')
-      setResults(EMPTY_RESULTS)
-      setLoading(false)
-      setExpanded(false)
-      setActiveIndex(0)
+      documentSearchSyncedRef.current = false
+      resetLocalSearch()
     }
     api.events.onLibrarySwitched(handleLibrarySwitched)
     return () => api.events.off('library:switched', handleLibrarySwitched)
-  }, [])
+  }, [resetLocalSearch])
 
   useEffect(() => {
     const trimmed = query.trim()
     const requestVersion = ++requestVersionRef.current
     if (!trimmed) {
       setResults(EMPTY_RESULTS)
+      setResolvedQuery('')
       setLoading(false)
       setExpanded(false)
       setActiveIndex(0)
@@ -104,11 +119,13 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
         .then((nextResults) => {
           if (requestVersionRef.current !== requestVersion) return
           setResults(nextResults)
+          setResolvedQuery(trimmed)
           setActiveIndex(0)
         })
         .catch(() => {
           if (requestVersionRef.current !== requestVersion) return
           setResults(EMPTY_RESULTS)
+          setResolvedQuery(trimmed)
           setActiveIndex(0)
         })
         .finally(() => {
@@ -118,6 +135,44 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
     return () => window.clearTimeout(timer)
   }, [query])
 
+  useEffect(() => {
+    if (!documentListOpen) {
+      documentSearchSyncedRef.current = false
+      return
+    }
+    const unsubscribe = useDocumentStore.subscribe((state, previousState) => {
+      if (
+        documentSearchSyncedRef.current &&
+        previousState.isSearching &&
+        !state.isSearching
+      ) {
+        documentSearchSyncedRef.current = false
+        resetLocalSearch()
+      }
+    })
+    return () => {
+      documentSearchSyncedRef.current = false
+      unsubscribe()
+    }
+  }, [documentListOpen, resetLocalSearch])
+
+  useEffect(() => {
+    if (!documentListOpen) return
+    const trimmed = query.trim()
+    if (!trimmed) {
+      documentSearchSyncedRef.current = false
+      useDocumentStore.getState().clearSearch()
+      return
+    }
+    if (resolvedQuery !== trimmed) return
+    useDocumentStore.setState({
+      isSearching: true,
+      searchQuery: query,
+      searchResults: results.documents
+    })
+    documentSearchSyncedRef.current = true
+  }, [documentListOpen, query, resolvedQuery, results.documents])
+
   const selectResult = useCallback((selection: SearchSelection) => {
     if (selection.kind === 'document') {
       useDocumentStore.setState({
@@ -126,12 +181,6 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
         searchQuery: query,
         searchResults: results.documents
       })
-      const store = useDocumentStore.getState()
-      if (selection.value.fileMissing) {
-        store.showToast(t('globalSearch.paperFileMissing'))
-      } else {
-        void store.openPdf(selection.value.id)
-      }
     } else if (selection.kind === 'workspaceFile') {
       const store = useWorkspaceStore.getState()
       if (store.activeWorkspaceId !== selection.value.workspaceId) {
@@ -145,6 +194,15 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
           errorMessage(error, t('workspace.assetOpenFailed'))
         )
       })
+    } else if (selection.kind === 'workspaceContent') {
+      const store = useWorkspaceStore.getState()
+      if (store.activeWorkspaceId !== selection.value.workspaceId) {
+        if (store.chatStreaming) return
+        store.setActiveWorkspace(selection.value.workspaceId)
+      } else {
+        store.openPanel()
+      }
+      useWorkspaceStore.getState().openMarkdownCard(selection.value.kind, selection.value.id)
     } else {
       const store = useWorkspaceStore.getState()
       if (store.chatStreaming) return
@@ -160,13 +218,10 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
   }, [onOpenChat, query, results.documents, t])
 
   const clear = useCallback(() => {
-    requestVersionRef.current += 1
-    setQuery('')
-    setResults(EMPTY_RESULTS)
-    setLoading(false)
-    setExpanded(false)
+    documentSearchSyncedRef.current = false
+    resetLocalSearch()
     useDocumentStore.getState().clearSearch()
-  }, [])
+  }, [resetLocalSearch])
 
   const total = selections.length
   const showResults = expanded && query.trim().length > 0
@@ -344,6 +399,32 @@ export default function GlobalSearch({ onOpenChat }: GlobalSearchProps) {
                     </span>
                   </>,
                   `${t('globalSearch.openWorkspaceFile')}: ${workspaceFile.fileName}`
+                ))}
+              </section>
+            )}
+
+            {results.workspaceContents.length > 0 && (
+              <section aria-labelledby="global-search-workspace-contents">
+                <h2 id="global-search-workspace-contents" className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  {t('globalSearch.workspaceContents')} · {results.workspaceContents.length}
+                </h2>
+                {results.workspaceContents.map((workspaceContent) => resultButton(
+                  { kind: 'workspaceContent', value: workspaceContent },
+                  <>
+                    {workspaceContent.kind === 'report'
+                      ? <FileText className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                      : <NotePencil className="mt-0.5 h-4 w-4 shrink-0 text-accent" />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium text-foreground">
+                        {highlightMatch(workspaceContent.title, query)}
+                      </span>
+                      <span className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted">
+                        {workspaceContent.workspaceName} · {t(`globalSearch.workspaceContentKind.${workspaceContent.kind}`)}
+                        {' · '}{highlightMatch(workspaceContent.snippet, query)}
+                      </span>
+                    </span>
+                  </>,
+                  `${t('globalSearch.openWorkspaceContent')}: ${workspaceContent.title}`
                 ))}
               </section>
             )}

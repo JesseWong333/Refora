@@ -121,6 +121,7 @@ function resetStoreState(): void {
     notes: [],
     assets: [],
     threads: [],
+    markdownCardRequest: null,
     initialized: false
   })
 }
@@ -240,6 +241,21 @@ afterEach(() => {
 })
 
 describe('WorkspaceStore', () => {
+  describe('openMarkdownCard', () => {
+    it('opens the workspace panel and exposes a consumable Markdown-card request', () => {
+      useWorkspaceStore.setState({ panelOpen: false })
+
+      useWorkspaceStore.getState().openMarkdownCard('note', 'note-1')
+
+      expect(useWorkspaceStore.getState()).toMatchObject({
+        panelOpen: true,
+        markdownCardRequest: { kind: 'note', id: 'note-1' }
+      })
+      useWorkspaceStore.getState().clearMarkdownCardRequest()
+      expect(useWorkspaceStore.getState().markdownCardRequest).toBeNull()
+    })
+  })
+
   describe('deleteReport', () => {
     it('optimistically removes the report from state', async () => {
       const r1 = makeReport({ id: 'r1' })

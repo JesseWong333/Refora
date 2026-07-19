@@ -20,8 +20,10 @@ export default function WorkspacePanel() {
   const fullscreen = useWorkspaceStore((s) => s.fullscreen)
   const reports = useWorkspaceStore((s) => s.reports)
   const notes = useWorkspaceStore((s) => s.notes)
+  const markdownCardRequest = useWorkspaceStore((s) => s.markdownCardRequest)
   const toggleFullscreen = useWorkspaceStore((s) => s.toggleFullscreen)
   const closePanel = useWorkspaceStore((s) => s.closePanel)
+  const clearMarkdownCardRequest = useWorkspaceStore((s) => s.clearMarkdownCardRequest)
   const updateNote = useWorkspaceStore((s) => s.updateNote)
   const updateReport = useWorkspaceStore((s) => s.updateReport)
 
@@ -31,6 +33,12 @@ export default function WorkspacePanel() {
   useEffect(() => {
     setActiveMarkdownCard(null)
   }, [activeWorkspaceId])
+
+  useEffect(() => {
+    if (!markdownCardRequest) return
+    setActiveMarkdownCard({ ...markdownCardRequest, mode: 'read' })
+    clearMarkdownCardRequest()
+  }, [clearMarkdownCardRequest, markdownCardRequest])
 
   const handleOpenMarkdownCard = useCallback((
     card: WorkspaceMarkdownCard,

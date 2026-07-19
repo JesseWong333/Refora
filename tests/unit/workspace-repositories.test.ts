@@ -308,6 +308,45 @@ describe('workspace repositories', () => {
     expect(repos.workspaceNotes.list(workspaceId).map((note) => note.id)).toEqual([first.id])
   })
 
+  it('searches report and note titles and full content across workspaces', () => {
+    const otherWorkspace = repos.workspaces.create('Experiments')
+    const report = repos.aiReports.create({
+      workspaceId,
+      title: 'Architecture review',
+      contentMd: '# Findings\n\nThe latent representation preserves topology.',
+      sourceDocIds: [],
+      model: null
+    })
+    const note = repos.workspaceNotes.create(
+      otherWorkspace.id,
+      'Decoder follow-up',
+      'Beam search_100% improves the result.',
+      'markdown'
+    )
+
+    expect(repos.workspaces.searchContent('latent representation')).toEqual([
+      expect.objectContaining({
+        id: report.id,
+        workspaceName: 'Research',
+        kind: 'report',
+        title: 'Architecture review',
+        snippet: expect.stringContaining('latent representation')
+      })
+    ])
+    expect(repos.workspaces.searchContent('search_100%')).toEqual([
+      expect.objectContaining({
+        id: note.id,
+        workspaceName: 'Experiments',
+        kind: 'note',
+        snippet: expect.stringContaining('search_100%')
+      })
+    ])
+    expect(repos.workspaces.searchContent('Architecture')).toEqual([
+      expect.objectContaining({ id: report.id })
+    ])
+    expect(repos.workspaces.searchContent('   ')).toEqual([])
+  })
+
   it('rejects invalid and missing workspace notes', () => {
     expectRepoError(() => repos.workspaceNotes.create(workspaceId, '   ', '', 'markdown'), 'invalid_title')
     expectRepoError(() => repos.workspaceNotes.create('missing', 'Title', '', 'markdown'), 'not_found')

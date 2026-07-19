@@ -337,13 +337,14 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.GlobalSearch]: (q: string): Result<GlobalSearchResult> =>
       wrap(() => {
         if (typeof q !== 'string' || !q.trim()) {
-          return { documents: [], workspaceFiles: [], chats: [] }
+          return { documents: [], workspaceFiles: [], workspaceContents: [], chats: [] }
         }
         const r = repos()
         const query = q.trim().slice(0, 500)
         return {
           documents: r.documents.search(query, 10),
           workspaceFiles: r.workspaceAssets.search(query, 10),
+          workspaceContents: r.workspaces.searchContent(query, 10),
           chats: r.chat.search(query, 10)
         }
       }),

@@ -21,9 +21,11 @@ const mockWorkspacePanelState = vi.hoisted(() => ({
   chatStreaming: false,
   reports: [] as AiReport[],
   notes: [] as WorkspaceNote[],
+  markdownCardRequest: null as { kind: 'report' | 'note'; id: string } | null,
   setActiveWorkspace: vi.fn(),
   toggleFullscreen: vi.fn(),
   closePanel: vi.fn(),
+  clearMarkdownCardRequest: vi.fn(),
   updateNote: vi.fn(),
   updateReport: vi.fn()
 }))
@@ -140,8 +142,10 @@ beforeEach(() => {
   mockWorkspacePanelState.chatStreaming = false
   mockWorkspacePanelState.reports = []
   mockWorkspacePanelState.notes = []
+  mockWorkspacePanelState.markdownCardRequest = null
   mockWorkspacePanelState.setActiveWorkspace.mockReset()
   mockWorkspacePanelState.closePanel.mockReset()
+  mockWorkspacePanelState.clearMarkdownCardRequest.mockReset()
   mockWorkspacePanelState.updateNote.mockReset().mockResolvedValue(true)
   mockWorkspacePanelState.updateReport.mockReset().mockResolvedValue(true)
 })
@@ -421,6 +425,16 @@ describe('WorkspacePanel tab header', () => {
     fireEvent.click(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' }))
 
     expect(screen.getByText('Board')).toBeInTheDocument()
+  })
+
+  it('opens a Markdown card requested by global search', () => {
+    mockWorkspacePanelState.reports = [makeReport({ id: 'report-1' })]
+    mockWorkspacePanelState.markdownCardRequest = { kind: 'report', id: 'report-1' }
+
+    render(<WorkspacePanel />)
+
+    expect(screen.getByRole('button', { name: 'workspace.markdownBackToBoard' })).toBeInTheDocument()
+    expect(mockWorkspacePanelState.clearMarkdownCardRequest).toHaveBeenCalledOnce()
   })
 
   it('saves Markdown body edits before closing the workspace tab', async () => {

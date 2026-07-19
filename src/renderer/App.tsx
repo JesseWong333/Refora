@@ -315,7 +315,10 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
               {!workspaceFullscreen && sidebarCollapsed && (
                 <Sidebar collapsed onToggleCollapse={handleToggleSidebar} />
               )}
-              <GlobalSearch onOpenChat={() => setChatOpen(true)} />
+              <GlobalSearch
+                documentListOpen={documentListOpen}
+                onOpenChat={() => setChatOpen(true)}
+              />
               <div className="no-drag absolute right-3 top-2.5 z-[60] flex items-center">
                 <button
                   type="button"

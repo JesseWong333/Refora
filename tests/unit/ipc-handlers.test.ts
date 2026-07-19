@@ -174,7 +174,7 @@ describe('IPC handlers (data layer)', () => {
     expect(electronMocks.showItemInFolder).toHaveBeenCalledWith('/abs/d1.pdf')
   })
 
-  it('searches papers, workspace files, and chat history through one IPC result', () => {
+  it('searches papers, workspace content, workspace files, and chat history through one IPC result', () => {
     repos.documents.insert(makeDoc('d1', { title: 'Searchable paper' }))
     const documentSearch = vi.spyOn(repos.documents, 'search')
     const workspace = repos.workspaces.create('Research')
@@ -192,6 +192,19 @@ describe('IPC handlers (data layer)', () => {
       createdAt: 1,
       updatedAt: 1
     })
+    const report = repos.aiReports.create({
+      workspaceId: workspace.id,
+      title: 'Research report',
+      contentMd: 'searchable report conclusion',
+      sourceDocIds: [],
+      model: null
+    })
+    const note = repos.workspaceNotes.create(
+      workspace.id,
+      'Research note',
+      'searchable note body',
+      'markdown'
+    )
     const thread = repos.chat.createThread(workspace.id, 'provider')
     repos.chat.addMessage(thread.id, 'user', 'searchable chat question')
 
@@ -200,13 +213,17 @@ describe('IPC handlers (data layer)', () => {
       data: {
         documents: [expect.objectContaining({ id: 'd1' })],
         workspaceFiles: [expect.objectContaining({ id: 'asset-1', workspaceName: 'Research' })],
+        workspaceContents: expect.arrayContaining([
+          expect.objectContaining({ id: report.id, kind: 'report', workspaceName: 'Research' }),
+          expect.objectContaining({ id: note.id, kind: 'note', workspaceName: 'Research' })
+        ]),
         chats: [expect.objectContaining({ threadId: thread.id, workspaceName: 'Research' })]
       }
     })
     expect(documentSearch).toHaveBeenCalledWith('searchable', 10)
     expect(handlers[IpcChannel.GlobalSearch]('   ')).toEqual({
       ok: true,
-      data: { documents: [], workspaceFiles: [], chats: [] }
+      data: { documents: [], workspaceFiles: [], workspaceContents: [], chats: [] }
     })
   })
 

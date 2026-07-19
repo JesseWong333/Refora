@@ -9,7 +9,13 @@ const mocks = vi.hoisted(() => ({
   showToast: vi.fn(),
   setActiveWorkspace: vi.fn(),
   openPanel: vi.fn(),
+  openMarkdownCard: vi.fn(),
   setActiveThreadId: vi.fn(),
+  documentStoreSubscriber: null as null | ((
+    state: { isSearching: boolean },
+    previousState: { isSearching: boolean }
+  ) => void),
+  documentStoreSubscribe: vi.fn(),
   workspaceState: {
     activeWorkspaceId: 'ws-current',
     chatStreaming: false
@@ -25,6 +31,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('@renderer/store/documentStore', () => ({
   useDocumentStore: {
     setState: mocks.documentSetState,
+    subscribe: mocks.documentStoreSubscribe,
     getState: () => ({
       clearSearch: mocks.clearSearch,
       openPdf: mocks.openPdf,
@@ -39,6 +46,7 @@ vi.mock('@renderer/store/workspaceStore', () => {
     chatStreaming: mocks.workspaceState.chatStreaming,
     setActiveWorkspace: mocks.setActiveWorkspace,
     openPanel: mocks.openPanel,
+    openMarkdownCard: mocks.openMarkdownCard,
     setActiveThreadId: mocks.setActiveThreadId
   })
   return {
@@ -72,6 +80,15 @@ const results: GlobalSearchResult = {
     fileMissing: 0,
     updatedAt: 10
   }],
+  workspaceContents: [{
+    id: 'report-1',
+    workspaceId: 'ws-content',
+    workspaceName: 'Synthesis',
+    kind: 'report',
+    title: 'Transformer synthesis',
+    snippet: 'Sparse transformer attention improves scaling.',
+    matchedAt: 15
+  }],
   chats: [{
     threadId: 'thread-1',
     workspaceId: 'ws-chat',
@@ -95,6 +112,11 @@ describe('GlobalSearch', () => {
     vi.clearAllMocks()
     mocks.workspaceState.activeWorkspaceId = 'ws-current'
     mocks.workspaceState.chatStreaming = false
+    mocks.documentStoreSubscriber = null
+    mocks.documentStoreSubscribe.mockImplementation((callback) => {
+      mocks.documentStoreSubscriber = callback
+      return vi.fn()
+    })
     librarySwitchedCallback = null
     api.search.global = vi.fn().mockResolvedValue(results)
     api.workspaceAssets.open = vi.fn().mockResolvedValue(undefined)
@@ -112,7 +134,7 @@ describe('GlobalSearch', () => {
     api.events.off = originalEventsOff
   })
 
-  it('renders above every panel and groups all three result types', async () => {
+  it('renders above every panel and groups every result type', async () => {
     const { container } = render(<GlobalSearch />)
     const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
 
@@ -138,13 +160,15 @@ describe('GlobalSearch', () => {
     expect(screen.getByRole('listbox')).toHaveClass('bg-panel')
     expect(screen.getByRole('listbox')).not.toHaveClass('bg-panel/95', 'backdrop-blur-xl')
     expect(screen.getByText('globalSearch.workspaceFiles · 1')).toBeInTheDocument()
+    expect(screen.getByText('globalSearch.workspaceContents · 1')).toBeInTheDocument()
     expect(screen.getByText('globalSearch.chats · 1')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'globalSearch.openPaper: Transformer Research' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'globalSearch.openWorkspaceFile: transformer-data.csv' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'globalSearch.openWorkspaceContent: Transformer synthesis' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'globalSearch.openChat: Transformer discussion' })).toBeInTheDocument()
   })
 
-  it('opens papers and preserves the full paper result set in the document list', async () => {
+  it('focuses papers without opening PDFs and synchronizes the document list search state', async () => {
     render(<GlobalSearch />)
     const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
     fireEvent.change(input, { target: { value: 'transformer' } })
@@ -158,10 +182,55 @@ describe('GlobalSearch', () => {
       searchQuery: 'transformer',
       searchResults: [paper]
     })
-    expect(mocks.openPdf).toHaveBeenCalledWith('paper-1')
+    expect(mocks.openPdf).not.toHaveBeenCalled()
   })
 
-  it('navigates workspace-file and chat results to their owning workspaces', async () => {
+  it('synchronizes paper results as soon as they resolve while the document list is open', async () => {
+    render(<GlobalSearch documentListOpen />)
+    const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
+
+    fireEvent.change(input, { target: { value: 'Junjie' } })
+
+    await waitFor(() => expect(mocks.documentSetState).toHaveBeenCalledWith({
+      isSearching: true,
+      searchQuery: 'Junjie',
+      searchResults: [paper]
+    }))
+    expect(mocks.openPdf).not.toHaveBeenCalled()
+  })
+
+  it('does not replace the hidden document list while global results resolve', async () => {
+    render(<GlobalSearch />)
+    const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
+
+    fireEvent.change(input, { target: { value: 'Junjie' } })
+
+    await screen.findByText('globalSearch.papers · 1')
+    expect(mocks.documentSetState).not.toHaveBeenCalled()
+  })
+
+  it('clears the global query when the synchronized document list clears its search', async () => {
+    render(<GlobalSearch documentListOpen />)
+    const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
+    fireEvent.change(input, { target: { value: 'Junjie' } })
+    await waitFor(() => expect(mocks.documentSetState).toHaveBeenCalledWith({
+      isSearching: true,
+      searchQuery: 'Junjie',
+      searchResults: [paper]
+    }))
+
+    act(() => {
+      mocks.documentStoreSubscriber?.(
+        { isSearching: false },
+        { isSearching: true }
+      )
+    })
+
+    expect(input).toHaveValue('')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('navigates workspace file, workspace content, and chat results to their owning workspaces', async () => {
     const onOpenChat = vi.fn()
     render(<GlobalSearch onOpenChat={onOpenChat} />)
     const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
@@ -171,6 +240,15 @@ describe('GlobalSearch', () => {
     fireEvent.click(fileOption)
     expect(mocks.setActiveWorkspace).toHaveBeenCalledWith('ws-files')
     expect(api.workspaceAssets.open).toHaveBeenCalledWith('asset-1')
+
+    fireEvent.focus(input)
+    const contentOption = await screen.findByRole('option', {
+      name: 'globalSearch.openWorkspaceContent: Transformer synthesis'
+    })
+    fireEvent.click(contentOption)
+
+    expect(mocks.setActiveWorkspace).toHaveBeenCalledWith('ws-content')
+    expect(mocks.openMarkdownCard).toHaveBeenCalledWith('report', 'report-1')
 
     fireEvent.focus(input)
     const chatOption = await screen.findByRole('option', { name: 'globalSearch.openChat: Transformer discussion' })
@@ -217,7 +295,10 @@ describe('GlobalSearch', () => {
     await screen.findByRole('option', { name: 'globalSearch.openPaper: Transformer Research' })
 
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(mocks.openPdf).toHaveBeenCalledWith('paper-1')
+    expect(mocks.documentSetState).toHaveBeenCalledWith(expect.objectContaining({
+      focusedDocId: 'paper-1'
+    }))
+    expect(mocks.openPdf).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'globalSearch.clear' }))
     expect(input).toHaveValue('')
@@ -257,7 +338,7 @@ describe('GlobalSearch', () => {
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith('Cannot open asset'))
   })
 
-  it('focuses missing papers and explains why they cannot be opened', async () => {
+  it('focuses missing papers without trying to open the file', async () => {
     api.search.global = vi.fn().mockResolvedValue({
       ...results,
       documents: [{ ...paper, fileMissing: 1 }]
@@ -271,7 +352,7 @@ describe('GlobalSearch', () => {
 
     expect(mocks.documentSetState).toHaveBeenCalled()
     expect(mocks.openPdf).not.toHaveBeenCalled()
-    expect(mocks.showToast).toHaveBeenCalledWith('globalSearch.paperFileMissing')
+    expect(mocks.showToast).not.toHaveBeenCalled()
   })
 
   it('disables context switches while AI chat is streaming', async () => {
@@ -280,15 +361,21 @@ describe('GlobalSearch', () => {
     const input = screen.getByRole('combobox', { name: 'globalSearch.label' })
     fireEvent.change(input, { target: { value: 'transformer' } })
     const fileOption = await screen.findByRole('option', { name: 'globalSearch.openWorkspaceFile: transformer-data.csv' })
+    const contentOption = screen.getByRole('option', {
+      name: 'globalSearch.openWorkspaceContent: Transformer synthesis'
+    })
     const chatOption = screen.getByRole('option', { name: 'globalSearch.openChat: Transformer discussion' })
 
     expect(fileOption).toBeDisabled()
+    expect(contentOption).toBeDisabled()
     expect(chatOption).toBeDisabled()
     expect(fileOption).toHaveAttribute('title', 'globalSearch.unavailableWhileStreaming')
     fireEvent.click(fileOption)
+    fireEvent.click(contentOption)
     fireEvent.click(chatOption)
     expect(mocks.setActiveWorkspace).not.toHaveBeenCalled()
     expect(mocks.setActiveThreadId).not.toHaveBeenCalled()
+    expect(mocks.openMarkdownCard).not.toHaveBeenCalled()
     expect(api.workspaceAssets.open).not.toHaveBeenCalled()
   })
 })

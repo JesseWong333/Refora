@@ -9,7 +9,8 @@ import type {
   WorkspaceNoteType,
   ChatThread,
   WorkspaceItemsChangedEvent,
-  WorkspaceAsset
+  WorkspaceAsset,
+  WorkspaceContentKind
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
 import { api } from '../ipc'
@@ -27,6 +28,7 @@ interface WorkspaceState {
   notes: WorkspaceNote[]
   assets: WorkspaceAsset[]
   threads: ChatThread[]
+  markdownCardRequest: { kind: WorkspaceContentKind; id: string } | null
   initialized: boolean
   init: () => void
   destroy: () => void
@@ -44,6 +46,8 @@ interface WorkspaceState {
   openPanel: () => void
   closePanel: () => void
   toggleFullscreen: () => void
+  openMarkdownCard: (kind: WorkspaceContentKind, id: string) => void
+  clearMarkdownCardRequest: () => void
   fetchItems: () => Promise<void>
   fetchAssets: () => Promise<void>
   addAssets: (paths: string[], placement?: WorkspaceItemPlacement) => Promise<void>
@@ -83,6 +87,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   notes: [],
   assets: [],
   threads: [],
+  markdownCardRequest: null,
   initialized: false,
 
   init: () => {
@@ -179,7 +184,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 reports: [],
                 notes: [],
                 assets: [],
-                threads: []
+                threads: [],
+                markdownCardRequest: null
               }
             : {})
         }
@@ -199,7 +205,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       reports: [],
       notes: [],
       assets: [],
-      threads: []
+      threads: [],
+      markdownCardRequest: null
     })
     if (id) {
       void get().fetchItems()
@@ -281,6 +288,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   toggleFullscreen: () => {
     set((s) => ({ fullscreen: !s.fullscreen }))
+  },
+
+  openMarkdownCard: (kind: WorkspaceContentKind, id: string) => {
+    set({ markdownCardRequest: { kind, id }, panelOpen: true })
+  },
+
+  clearMarkdownCardRequest: () => {
+    set({ markdownCardRequest: null })
   },
 
   fetchItems: async () => {

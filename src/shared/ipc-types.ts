@@ -127,6 +127,18 @@ export interface WorkspaceFileSearchResult {
   updatedAt: number
 }
 
+export type WorkspaceContentKind = 'report' | 'note'
+
+export interface WorkspaceContentSearchResult {
+  id: string
+  workspaceId: string
+  workspaceName: string
+  kind: WorkspaceContentKind
+  title: string
+  snippet: string
+  matchedAt: number
+}
+
 export interface ChatSearchResult {
   threadId: string
   workspaceId: string | null
@@ -140,6 +152,7 @@ export interface ChatSearchResult {
 export interface GlobalSearchResult {
   documents: Document[]
   workspaceFiles: WorkspaceFileSearchResult[]
+  workspaceContents: WorkspaceContentSearchResult[]
   chats: ChatSearchResult[]
 }
 

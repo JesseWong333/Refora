@@ -37,22 +37,27 @@
   },
   "globalSearch": {
     "label": "Global search",
-    "placeholder": "Search papers, workspace files, and chats…",
+    "placeholder": "Search papers, workspace content, files, and chats…",
     "loading": "Searching",
     "clear": "Clear search",
     "results": "Search results",
-    "noResults": "No papers, workspace files, or chats match your search.",
+    "noResults": "No papers, workspace content, files, or chats match your search.",
     "papers": "Papers",
     "workspaceFiles": "Workspace files",
+    "workspaceContents": "Workspace content",
     "chats": "AI chats",
     "openPaper": "Open paper",
     "openWorkspaceFile": "Open workspace file",
+    "openWorkspaceContent": "Open workspace content",
     "openChat": "Open AI chat",
-    "paperFileMissing": "This paper file is missing. Relocate it from the paper details first.",
     "unavailableWhileStreaming": "Wait for the current AI response to finish before switching context.",
     "untitledChat": "Untitled conversation",
     "globalChat": "Global chat",
     "hint": "↑↓ Navigate · Enter Open · Esc Close",
+    "workspaceContentKind": {
+      "report": "Markdown report",
+      "note": "Note"
+    },
     "role": {
       "user": "You",
       "assistant": "AI"

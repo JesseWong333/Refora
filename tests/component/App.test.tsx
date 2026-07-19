@@ -87,7 +87,12 @@ vi.mock('@renderer/ipc', () => ({
 }))
 
 vi.mock('@renderer/components/GlobalSearch', () => ({
-  default: () => <div data-testid="global-search" />
+  default: ({ documentListOpen }: { documentListOpen?: boolean }) => (
+    <div
+      data-testid="global-search"
+      data-document-list-open={documentListOpen ? 'true' : 'false'}
+    />
+  )
 }))
 vi.mock('@renderer/components/Sidebar', () => ({
   default: ({ collapsed }: { collapsed: boolean }) => (
@@ -179,6 +184,7 @@ describe('App root layout', () => {
     })
     expect(panelLayer).toHaveClass('min-h-0', 'flex-1', 'overflow-hidden')
     expect(within(topBar).getByTestId('global-search')).toBeInTheDocument()
+    expect(within(topBar).getByTestId('global-search')).toHaveAttribute('data-document-list-open', 'true')
     expect(within(topBar).getByRole('button', { name: 'workspace.chat.closePanel' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('app-sidebar-layer')).toContainElement(screen.getByTestId('sidebar'))
     expect(within(mainLayer).queryByTestId('sidebar')).not.toBeInTheDocument()
@@ -260,12 +266,15 @@ describe('App root layout', () => {
     const view = render(<App listColumnState={null} sidebarCollapsed={false} firstRun={false} />)
 
     await waitFor(() => expect(screen.getByTestId('document-list')).toHaveAttribute('data-compact', 'true'))
+    expect(screen.getByTestId('global-search')).toHaveAttribute('data-document-list-open', 'true')
     fireEvent.click(screen.getByRole('button', { name: 'document-tab-close' }))
     expect(screen.queryByTestId('app-document-list-panel')).not.toBeInTheDocument()
+    expect(screen.getByTestId('global-search')).toHaveAttribute('data-document-list-open', 'false')
 
     mocks.documentState.listMode = { mode: 'starred' }
     view.rerender(<App listColumnState={null} sidebarCollapsed={false} firstRun={false} />)
     await waitFor(() => expect(screen.getByTestId('app-document-list-panel')).toBeInTheDocument())
+    expect(screen.getByTestId('global-search')).toHaveAttribute('data-document-list-open', 'true')
   })
 
   it('switches the document list between compact and expanded states at resize thresholds', async () => {
