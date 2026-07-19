@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal, Button } from '@lobehub/ui'
 import { showContextMenu } from '@lobehub/ui'
@@ -8,6 +8,7 @@ import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
 import { formatDate } from '../../utils/format'
+import { boardCardPreview } from '../../utils/workspaceCardMarkdown'
 import { Input as UiInput, Textarea as UiTextarea, cardClassName } from '../ui'
 import type { AiReport, Document } from '../../../shared/ipc-types'
 
@@ -40,6 +41,7 @@ export default function ReportCard({
   const [editContent, setEditContent] = useState(report.contentMd)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const boardPreview = useMemo(() => boardCardPreview(report.contentMd), [report.contentMd])
 
   const handleExportMarkdown = () => {
     const header = `# ${report.title}\n\n`
@@ -196,7 +198,7 @@ export default function ReportCard({
           onWheel={(event) => event.stopPropagation()}
         >
           <div>
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{report.contentMd}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{boardPreview}</ReactMarkdown>
           </div>
         </div>
       </motion.div>

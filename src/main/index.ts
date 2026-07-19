@@ -29,6 +29,15 @@ import { createExclusiveTask } from './services/exclusiveTask'
 import { runMenuAction } from './services/menuAction'
 import { prepareReplacement } from './services/resourceReplacement'
 import { requireWorkspaceAssetFile } from './services/workspaceAssets'
+import { isInsideLibrary } from './services/paths'
+import {
+  activeDuplicateFiles,
+  duplicateFileFingerprint,
+  libraryDocumentSignature,
+  normalizedLibraryFileKey,
+  sameDuplicateFingerprint,
+  type LibraryDuplicateFileCache
+} from './services/libraryDuplicateCache'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -39,6 +48,7 @@ protocol.registerSchemesAsPrivileged([
 
 let isDev = false
 const IS_MAC = process.platform === 'darwin'
+const LIBRARY_DUPLICATE_CACHE_KEY = 'libraryDuplicateFileCache'
 
 type DbConnection = ReturnType<typeof openDatabase>
 interface Runtime extends RuntimeRef {
@@ -388,7 +398,44 @@ function buildRuntime(dbPath: string): Runtime {
     const aiAgentService = createAiAgentService(repos, () => win, aiProvidersService, pdfTextService, aiSummaryService)
     const watcher = createWatcher({
       importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
-      getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', '')
+      getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', ''),
+      findUntrackedLibraryFiles: async (folder) => {
+        const documents = repos.documents.list({ mode: 'all' })
+        const knownPaths = new Set(
+          documents.map((document) => normalizedLibraryFileKey(document.filePath))
+        )
+        const documentSignature = libraryDocumentSignature(documents)
+        const duplicateCache = repos.settings.get<LibraryDuplicateFileCache | null>(
+          LIBRARY_DUPLICATE_CACHE_KEY,
+          null
+        )
+        const cachedFiles = activeDuplicateFiles(duplicateCache, documentSignature)
+        const pdfs = await findPdfsRecursively(folder)
+        return pdfs.filter((filePath) => {
+          const key = normalizedLibraryFileKey(filePath)
+          if (knownPaths.has(key)) return false
+          return !sameDuplicateFingerprint(cachedFiles[key], duplicateFileFingerprint(filePath))
+        })
+      },
+      recordSkippedLibraryFiles: (paths) => {
+        const folder = repos.settings.get<string>('libraryFolderPath', '')
+        const skipped = paths.filter((filePath) => isInsideLibrary(filePath, folder))
+        if (skipped.length === 0) return
+        const documents = repos.documents.list({ mode: 'all' })
+        const documentSignature = libraryDocumentSignature(documents)
+        const previous = repos.settings.get<LibraryDuplicateFileCache | null>(
+          LIBRARY_DUPLICATE_CACHE_KEY,
+          null
+        )
+        const files = previous?.documentSignature === documentSignature
+          ? { ...previous.files }
+          : {}
+        for (const filePath of skipped) {
+          const fingerprint = duplicateFileFingerprint(filePath)
+          if (fingerprint) files[normalizedLibraryFileKey(filePath)] = fingerprint
+        }
+        repos.settings.set(LIBRARY_DUPLICATE_CACHE_KEY, { documentSignature, files })
+      }
     })
 
     importer.onComplete((result) => {

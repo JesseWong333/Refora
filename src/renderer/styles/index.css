@@ -21,8 +21,6 @@
     --workspace-card-border: rgba(255, 255, 255, 0.1);
     --workspace-card-shadow: 0 2px 4px rgba(0, 0, 0, 0.38), 0 10px 24px rgba(0, 0, 0, 0.28), 0 24px 40px rgba(0, 0, 0, 0.18);
     --workspace-card-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.44), 0 12px 28px rgba(0, 0, 0, 0.34), 0 28px 44px rgba(0, 0, 0, 0.22);
-    --workspace-card-filter-shadow: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.22)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.14)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.08));
-    --workspace-card-filter-shadow-hover: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.18)) drop-shadow(0 10px 16px rgba(0, 0, 0, 0.1));
     --workspace-card-document: #92adbc;
     --workspace-card-report: #aaaabd;
     --workspace-card-note: #a6b798;
@@ -45,8 +43,6 @@
     --workspace-card-border: #dfddda;
     --workspace-card-shadow: 0 2px 3px rgba(45, 39, 32, 0.13), 0 10px 22px rgba(45, 39, 32, 0.14), 0 24px 44px rgba(45, 39, 32, 0.13);
     --workspace-card-shadow-hover: 0 2px 3px rgba(45, 39, 32, 0.16), 0 12px 26px rgba(45, 39, 32, 0.17), 0 28px 48px rgba(45, 39, 32, 0.16);
-    --workspace-card-filter-shadow: drop-shadow(0 1px 2px rgba(45, 39, 32, 0.08)) drop-shadow(0 3px 8px rgba(45, 39, 32, 0.07)) drop-shadow(0 8px 14px rgba(45, 39, 32, 0.05));
-    --workspace-card-filter-shadow-hover: drop-shadow(0 1px 2px rgba(45, 39, 32, 0.1)) drop-shadow(0 4px 10px rgba(45, 39, 32, 0.09)) drop-shadow(0 10px 16px rgba(45, 39, 32, 0.07));
     --workspace-card-document: #52738a;
     --workspace-card-report: #6d6d80;
     --workspace-card-note: #5d7452;
@@ -67,8 +63,6 @@
       --workspace-card-border: #dfddda;
       --workspace-card-shadow: 0 2px 3px rgba(45, 39, 32, 0.13), 0 10px 22px rgba(45, 39, 32, 0.14), 0 24px 44px rgba(45, 39, 32, 0.13);
       --workspace-card-shadow-hover: 0 2px 3px rgba(45, 39, 32, 0.16), 0 12px 26px rgba(45, 39, 32, 0.17), 0 28px 48px rgba(45, 39, 32, 0.16);
-      --workspace-card-filter-shadow: drop-shadow(0 1px 2px rgba(45, 39, 32, 0.08)) drop-shadow(0 3px 8px rgba(45, 39, 32, 0.07)) drop-shadow(0 8px 14px rgba(45, 39, 32, 0.05));
-      --workspace-card-filter-shadow-hover: drop-shadow(0 1px 2px rgba(45, 39, 32, 0.1)) drop-shadow(0 4px 10px rgba(45, 39, 32, 0.09)) drop-shadow(0 10px 16px rgba(45, 39, 32, 0.07));
       --workspace-card-document: #52738a;
       --workspace-card-report: #6d6d80;
       --workspace-card-note: #5d7452;
@@ -1044,12 +1038,28 @@
       var(--color-background);
   }
 
+  .board-surface.is-panning {
+    cursor: grabbing;
+  }
+
+  .workspace-canvas-grid {
+    inset: -96px;
+    will-change: transform;
+  }
+
+  .workspace-canvas-world {
+    will-change: transform;
+  }
+
   .resizable-card {
     --workspace-connection-accent: var(--workspace-card-document);
     flex: 0 0 auto;
     border-radius: var(--workspace-card-radius);
-    filter: var(--workspace-card-filter-shadow);
-    transition: filter 0.18s ease;
+    box-shadow: var(--workspace-card-shadow);
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: 300px 200px;
+    transition: box-shadow 0.18s ease;
   }
 
   .workspace-connection-accent--document {
@@ -1072,8 +1082,23 @@
     --workspace-connection-accent: var(--workspace-card-asset);
   }
 
-  .resizable-card:has(.workspace-content-card:hover) {
-    filter: var(--workspace-card-filter-shadow-hover);
+  .resizable-card:hover {
+    box-shadow: var(--workspace-card-shadow-hover);
+  }
+
+  .resizable-card.is-moving {
+    box-shadow: var(--shadow-md);
+    transition: none;
+    will-change: transform;
+  }
+
+  .resizable-card.is-resizing {
+    transition: none;
+  }
+
+  .resizable-card:is(.is-moving, .is-resizing) .workspace-asset-media-overlay::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .workspace-connection-handle {

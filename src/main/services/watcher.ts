@@ -4,11 +4,13 @@ import { logger } from './logger'
 import { isInsideLibrary } from './paths'
 import { WORKSPACE_ASSET_DIRECTORY } from '../../shared/ipc-types'
 import { join } from 'node:path'
-import type { WatchFolder } from '../../shared/ipc-types'
+import type { PdfImportResult, WatchFolder } from '../../shared/ipc-types'
 
 export interface WatcherDeps {
-  importFiles: (paths: string[], isWatch: boolean) => Promise<unknown>
+  importFiles: (paths: string[], isWatch: boolean) => Promise<PdfImportResult>
   getLibraryFolder: () => string
+  findUntrackedLibraryFiles?: (folder: string) => Promise<string[]>
+  recordSkippedLibraryFiles?: (paths: string[]) => void
 }
 
 function watcherErrorMessage(error: unknown): string {
@@ -16,7 +18,7 @@ function watcherErrorMessage(error: unknown): string {
 }
 
 function createDebouncedImporter(deps: WatcherDeps) {
-  let pending: string[] = []
+  let pending = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | null = null
   const DEBOUNCE_MS = 500
 
@@ -25,17 +27,19 @@ function createDebouncedImporter(deps: WatcherDeps) {
       clearTimeout(timer)
       timer = null
     }
-    if (pending.length === 0) return
-    const batch = pending
-    pending = []
-    deps.importFiles(batch, true).catch((e) => {
+    if (pending.size === 0) return
+    const batch = [...pending]
+    pending = new Set()
+    deps.importFiles(batch, true).then((result) => {
+      if (result.skipped.length > 0) deps.recordSkippedLibraryFiles?.(result.skipped)
+    }).catch((e) => {
       logger.error(`watch:import-failed: ${e instanceof Error ? e.message : String(e)}`)
     })
   }
 
   return {
     push(filePath: string): void {
-      pending.push(filePath)
+      pending.add(filePath)
       if (timer) clearTimeout(timer)
       timer = setTimeout(flush, DEBOUNCE_MS)
     },
@@ -44,7 +48,7 @@ function createDebouncedImporter(deps: WatcherDeps) {
         clearTimeout(timer)
         timer = null
       }
-      pending = []
+      pending = new Set()
     }
   }
 }
@@ -53,6 +57,7 @@ export function createWatcher(deps: WatcherDeps) {
   const watchers = new Map<string, FSWatcher>()
   let libraryWatcher: FSWatcher | null = null
   let libraryWatchPath = ''
+  let libraryGeneration = 0
   const debouncedImport = createDebouncedImporter(deps)
 
   function start(wf: WatchFolder): void {
@@ -110,6 +115,7 @@ export function createWatcher(deps: WatcherDeps) {
   }
 
   function stopLibraryWatcher(): void {
+    libraryGeneration += 1
     if (libraryWatcher) {
       void libraryWatcher.close()
       libraryWatcher = null
@@ -129,6 +135,7 @@ export function createWatcher(deps: WatcherDeps) {
     const assetFolder = join(folder, WORKSPACE_ASSET_DIRECTORY)
     const inst = watch(folder, {
       depth: 20,
+      ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 },
       ignored: (testPath: string) => {
         if (testPath === folder) return false
@@ -150,7 +157,21 @@ export function createWatcher(deps: WatcherDeps) {
 
     libraryWatcher = inst
     libraryWatchPath = folder
+    const generation = libraryGeneration
     logger.info(`watch:library:started ${folder}`)
+    const findUntrackedLibraryFiles = deps.findUntrackedLibraryFiles
+    if (findUntrackedLibraryFiles) inst.once('ready', () => {
+      if (generation !== libraryGeneration || libraryWatchPath !== folder) return
+      void findUntrackedLibraryFiles(folder).then((paths) => {
+        if (generation !== libraryGeneration || libraryWatchPath !== folder) return
+        logger.info(`watch:library:reconcile ${paths.length} untracked PDFs`)
+        for (const filePath of paths) debouncedImport.push(filePath)
+      }).catch((error) => {
+        if (generation === libraryGeneration && libraryWatchPath === folder) {
+          logger.error(`watch:library:reconcile-failed ${watcherErrorMessage(error)}`)
+        }
+      })
+    })
   }
 
   function destroy(): void {

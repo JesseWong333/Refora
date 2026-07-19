@@ -632,7 +632,7 @@ describe('ResizableCard', () => {
         sizeKey="item-1"
         size={{ width: 300, height: 200 }}
         position={{ x: 100, y: 200, zIndex: 2 }}
-        scale={1}
+        getScale={() => 1}
         frontZIndex={5}
         onSizeChange={() => {}}
         onSizeCommit={() => {}}
@@ -661,7 +661,7 @@ describe('ResizableCard', () => {
         sizeKey="item-1"
         size={{ width: 300, height: 200 }}
         position={{ x: 0, y: 0, zIndex: 0 }}
-        scale={2}
+        getScale={() => 2}
         frontZIndex={1}
         onSizeChange={onSizeChange}
         onSizeCommit={onSizeCommit}
@@ -673,9 +673,9 @@ describe('ResizableCard', () => {
     )
     const corner = container.querySelector('.cursor-nwse-resize') as HTMLElement
 
-    fireEvent.mouseDown(corner, { clientX: 100, clientY: 100 })
-    fireEvent.mouseMove(document, { clientX: 180, clientY: 150 })
-    fireEvent.mouseUp(document)
+    fireEvent.pointerDown(corner, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(document, { pointerId: 1, clientX: 180, clientY: 150 })
+    fireEvent.pointerUp(document, { pointerId: 1 })
 
     expect(onSizeChange).toHaveBeenLastCalledWith('item-1', { width: 340, height: 225 })
     expect(onSizeCommit).toHaveBeenCalledWith('item-1', { width: 340, height: 225 })
@@ -689,7 +689,7 @@ describe('ResizableCard', () => {
         sizeKey="item-1"
         size={{ width: 300, height: 200 }}
         position={{ x: -20, y: 40, zIndex: 1 }}
-        scale={0.5}
+        getScale={() => 0.5}
         frontZIndex={8}
         onSizeChange={() => {}}
         onSizeCommit={() => {}}
@@ -702,14 +702,104 @@ describe('ResizableCard', () => {
     )
 
     const content = screen.getByText('Content')
-    fireEvent.mouseDown(content, { button: 0, clientX: 100, clientY: 100 })
-    fireEvent.mouseMove(document, { clientX: 103, clientY: 102 })
+    fireEvent.pointerDown(content, { pointerId: 2, button: 0, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(document, { pointerId: 2, clientX: 103, clientY: 102 })
     expect(onPositionChange).not.toHaveBeenCalled()
-    fireEvent.mouseMove(document, { clientX: 130, clientY: 80 })
-    fireEvent.mouseUp(document)
+    fireEvent.pointerMove(document, { pointerId: 2, clientX: 130, clientY: 80 })
+    fireEvent.pointerUp(document, { pointerId: 2 })
 
     expect(onPositionChange).toHaveBeenLastCalledWith('item-1', { x: 40, y: 0, zIndex: 8 })
     expect(onPositionCommit).toHaveBeenCalledWith('item-1', { x: 40, y: 0, zIndex: 8 })
+  })
+
+  it('coalesces pointer movement into one visual update per animation frame', () => {
+    const onPositionChange = vi.fn()
+    const onPositionCommit = vi.fn()
+    let frame: FrameRequestCallback | null = null
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frame = callback
+      return 42
+    })
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 0, y: 0, zIndex: 1 }}
+        getScale={() => 1}
+        frontZIndex={5}
+        onSizeChange={() => {}}
+        onSizeCommit={() => {}}
+        onPositionChange={onPositionChange}
+        onPositionCommit={onPositionCommit}
+      >
+        <div>Frame content</div>
+      </ResizableCard>
+    )
+
+    fireEvent.pointerDown(screen.getByText('Frame content'), { pointerId: 8, button: 0, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(document, { pointerId: 8, clientX: 20, clientY: 10 })
+    fireEvent.pointerMove(document, { pointerId: 8, clientX: 40, clientY: 25 })
+    fireEvent.pointerMove(document, { pointerId: 8, clientX: 60, clientY: 35 })
+
+    expect(requestFrame).toHaveBeenCalledTimes(1)
+    expect(onPositionChange).not.toHaveBeenCalled()
+    act(() => frame?.(16))
+    expect(onPositionChange).toHaveBeenCalledTimes(1)
+    expect(onPositionChange).toHaveBeenCalledWith('item-1', { x: 60, y: 35, zIndex: 5 })
+
+    fireEvent.pointerUp(document, { pointerId: 8 })
+    expect(onPositionCommit).toHaveBeenCalledWith('item-1', { x: 60, y: 35, zIndex: 5 })
+    requestFrame.mockRestore()
+    cancelFrame.mockRestore()
+  })
+
+  it('reports cancelled drag and resize interactions without committing them', () => {
+    const onPositionCancel = vi.fn()
+    const onPositionCommit = vi.fn()
+    const onSizeCancel = vi.fn()
+    const onSizeCommit = vi.fn()
+    const { container } = render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 20, y: 30, zIndex: 1 }}
+        getScale={() => 1}
+        frontZIndex={5}
+        onSizeChange={() => {}}
+        onSizeCommit={onSizeCommit}
+        onSizeCancel={onSizeCancel}
+        onPositionChange={() => {}}
+        onPositionCommit={onPositionCommit}
+        onPositionCancel={onPositionCancel}
+      >
+        <div>Cancelable content</div>
+      </ResizableCard>
+    )
+    const card = container.querySelector('[data-workspace-card]') as HTMLElement
+
+    fireEvent.pointerDown(screen.getByText('Cancelable content'), {
+      pointerId: 12,
+      button: 0,
+      clientX: 20,
+      clientY: 20
+    })
+    fireEvent.pointerMove(document, { pointerId: 12, clientX: 80, clientY: 60 })
+    fireEvent.pointerCancel(document, { pointerId: 12 })
+
+    expect(card.style.transform).toBe('translate3d(20px, 30px, 0)')
+    expect(onPositionCancel).toHaveBeenCalledWith('item-1')
+    expect(onPositionCommit).not.toHaveBeenCalled()
+
+    const corner = container.querySelector('.cursor-nwse-resize') as HTMLElement
+    fireEvent.pointerDown(corner, { pointerId: 13, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(document, { pointerId: 13, clientX: 150, clientY: 140 })
+    fireEvent.pointerCancel(document, { pointerId: 13 })
+
+    expect(card.style.width).toBe('300px')
+    expect(card.style.height).toBe('200px')
+    expect(onSizeCancel).toHaveBeenCalledWith('item-1')
+    expect(onSizeCommit).not.toHaveBeenCalled()
   })
 
   it('keeps a normal click from becoming a drag when movement stays below the threshold', () => {
@@ -720,7 +810,7 @@ describe('ResizableCard', () => {
         sizeKey="item-1"
         size={{ width: 300, height: 200 }}
         position={{ x: 0, y: 0, zIndex: 0 }}
-        scale={1}
+        getScale={() => 1}
         frontZIndex={1}
         onSizeChange={() => {}}
         onSizeCommit={() => {}}
@@ -732,9 +822,9 @@ describe('ResizableCard', () => {
       </ResizableCard>
     )
 
-    fireEvent.mouseDown(screen.getByText('Content'), { button: 0, clientX: 10, clientY: 10 })
-    fireEvent.mouseMove(document, { clientX: 14, clientY: 10 })
-    fireEvent.mouseUp(document)
+    fireEvent.pointerDown(screen.getByText('Content'), { pointerId: 3, button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(document, { pointerId: 3, clientX: 14, clientY: 10 })
+    fireEvent.pointerUp(document, { pointerId: 3 })
 
     expect(onPositionChange).not.toHaveBeenCalled()
     expect(onPositionCommit).not.toHaveBeenCalled()
@@ -747,7 +837,7 @@ describe('ResizableCard', () => {
         sizeKey="item-1"
         size={{ width: 300, height: 200 }}
         position={{ x: 0, y: 0, zIndex: 0 }}
-        scale={1}
+        getScale={() => 1}
         frontZIndex={1}
         onSizeChange={() => {}}
         onSizeCommit={() => {}}
@@ -759,9 +849,9 @@ describe('ResizableCard', () => {
       </ResizableCard>
     )
 
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Open' }), { button: 0, clientX: 10, clientY: 10 })
-    fireEvent.mouseMove(document, { clientX: 50, clientY: 50 })
-    fireEvent.mouseUp(document)
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Open' }), { pointerId: 4, button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(document, { pointerId: 4, clientX: 50, clientY: 50 })
+    fireEvent.pointerUp(document, { pointerId: 4 })
 
     expect(onPositionChange).not.toHaveBeenCalled()
   })

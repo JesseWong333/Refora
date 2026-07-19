@@ -1,5 +1,29 @@
 import type { AiSummary, Document } from '../../shared/ipc-types'
 
+const BOARD_PREVIEW_MAX_CHARS = 1800
+const BOARD_PREVIEW_MAX_LINES = 28
+
+export function boardCardPreview(content: string): string {
+  const lines = content.split(/\r?\n/)
+  if (content.length <= BOARD_PREVIEW_MAX_CHARS && lines.length <= BOARD_PREVIEW_MAX_LINES) {
+    return content
+  }
+  const selected: string[] = []
+  let chars = 0
+  for (const line of lines) {
+    if (selected.length >= BOARD_PREVIEW_MAX_LINES) break
+    const remaining = BOARD_PREVIEW_MAX_CHARS - chars
+    if (remaining <= 0) break
+    if (line.length > remaining) {
+      selected.push(line.slice(0, remaining))
+      break
+    }
+    selected.push(line)
+    chars += line.length + 1
+  }
+  return `${selected.join('\n').trimEnd()}\n\n…`
+}
+
 export function markdownCardContent(title: string, content: string): string {
   const body = content.trim()
   return body ? `# ${title}\n\n${body}\n` : `# ${title}\n`

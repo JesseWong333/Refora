@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal, Button, showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
@@ -7,6 +7,7 @@ import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
 import { formatDate } from '../../utils/format'
+import { boardCardPreview } from '../../utils/workspaceCardMarkdown'
 import { Input as UiInput, Textarea as UiTextarea, cardClassName } from '../ui'
 import type { WorkspaceNote } from '../../../shared/ipc-types'
 
@@ -39,6 +40,7 @@ export default function NoteCard({
   const [editContent, setEditContent] = useState(note.contentMd)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const boardPreview = useMemo(() => boardCardPreview(note.contentMd), [note.contentMd])
 
   const enterEditMode = () => {
     setEditTitle(note.title)
@@ -206,7 +208,7 @@ export default function NoteCard({
             {note.contentMd ? (
               <div>
                 <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>
-                  {note.contentMd}
+                  {boardPreview}
                 </ReactMarkdown>
               </div>
             ) : (

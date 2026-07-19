@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { showContextMenu } from '@lobehub/ui'
 import type { ContextMenuItem } from '@lobehub/ui'
@@ -18,6 +18,7 @@ import ReactMarkdown from 'react-markdown'
 import type { WorkspaceAsset, WorkspaceAssetTextPreview } from '../../../shared/ipc-types'
 import { api } from '../../ipc'
 import { createMarkdownComponents, REHYPE_PLUGINS, REMARK_PLUGINS } from '../../utils/markdown'
+import { boardCardPreview } from '../../utils/workspaceCardMarkdown'
 import { cardClassName } from '../ui'
 
 interface AssetCardProps {
@@ -56,6 +57,8 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
   const [textPreview, setTextPreview] = useState<WorkspaceAssetTextPreview | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [mediaHovered, setMediaHovered] = useState(false)
+  const [mediaNearViewport, setMediaNearViewport] = useState(false)
+  const mediaCardRef = useRef<HTMLDivElement>(null)
   const previewUrl = useMemo(() => api.workspaceAssets.previewUrl(asset.id), [asset.id])
 
   useEffect(() => {
@@ -113,8 +116,28 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
   }
 
   const textContent = textPreview ? formatTextPreview(asset, textPreview) : ''
+  const boardPreview = useMemo(() => boardCardPreview(textContent), [textContent])
+  const boardPreviewTruncated = Boolean(textPreview?.truncated) || boardPreview !== textContent
   const isMarkdown = asset.mimeType === 'text/markdown'
   const isVisualPreview = !asset.fileMissing && (asset.previewKind === 'image' || asset.previewKind === 'video')
+  const isVideoPreview = !asset.fileMissing && asset.previewKind === 'video'
+
+  useEffect(() => {
+    setMediaNearViewport(false)
+    if (!isVideoPreview) return
+    const element = mediaCardRef.current
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      setMediaNearViewport(true)
+      return
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return
+      setMediaNearViewport(true)
+      observer.disconnect()
+    }, { rootMargin: '240px' })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [asset.id, isVideoPreview])
 
   const renderHeader = (mediaOverlay = false) => (
     <div className="flex shrink-0 items-start gap-2">
@@ -162,6 +185,7 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
   if (isVisualPreview) {
     return (
       <div
+        ref={mediaCardRef}
         data-card-kind="asset"
         data-asset-preview-kind={asset.previewKind}
         className={cardClassName('default', false, 'workspace-content-card workspace-content-card--asset workspace-content-card--media group/card relative h-full w-full cursor-pointer overflow-hidden p-0')}
@@ -176,13 +200,15 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
             src={previewUrl}
             alt={asset.fileName}
             draggable={false}
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <video
             className="workspace-asset-media h-full w-full bg-black object-cover"
             src={previewUrl}
             controls={mediaHovered}
-            preload="metadata"
+            preload={mediaNearViewport || mediaHovered ? 'metadata' : 'none'}
           />
         )}
         <div
@@ -215,7 +241,7 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
             <span>{t('workspace.assetMissing')}</span>
           </div>
         ) : asset.previewKind === 'image' ? (
-          <img className="h-full w-full object-contain" src={previewUrl} alt={asset.fileName} />
+          <img className="h-full w-full object-contain" src={previewUrl} alt={asset.fileName} loading="lazy" decoding="async" />
         ) : asset.previewKind === 'audio' ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-4 text-muted">
             <MusicNote className="h-10 w-10" />
@@ -237,14 +263,14 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
                 rehypePlugins={REHYPE_PLUGINS}
                 components={createMarkdownComponents()}
               >
-                {textContent}
+                {boardPreview}
               </ReactMarkdown>
-              {textPreview.truncated && <p className="mt-2 text-muted">{t('workspace.assetPreviewTruncated')}</p>}
+              {boardPreviewTruncated && <p className="mt-2 text-muted">{t('workspace.assetPreviewTruncated')}</p>}
             </div>
           ) : (
             <pre className="select-text whitespace-pre-wrap break-words p-3 font-mono text-xs text-foreground">
-              {textContent}
-              {textPreview.truncated ? `\n\n${t('workspace.assetPreviewTruncated')}` : ''}
+              {boardPreview}
+              {boardPreviewTruncated ? `\n\n${t('workspace.assetPreviewTruncated')}` : ''}
             </pre>
           )
         ) : (

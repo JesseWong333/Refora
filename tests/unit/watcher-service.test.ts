@@ -54,18 +54,27 @@ let createWatcher: typeof import('../../src/main/services/watcher').createWatche
 describe('createWatcher', () => {
   let importFiles: ReturnType<typeof vi.fn>
   let getLibraryFolder: ReturnType<typeof vi.fn>
+  let findUntrackedLibraryFiles: ReturnType<typeof vi.fn>
+  let recordSkippedLibraryFiles: ReturnType<typeof vi.fn>
   let w: ReturnType<typeof createWatcher>
 
   beforeEach(async () => {
     vi.clearAllMocks()
     fakeWatcher.removeAllListeners()
     _existsValue = true
-    importFiles = vi.fn().mockResolvedValue(undefined)
+    importFiles = vi.fn().mockResolvedValue({ added: [], skipped: [], errors: [] })
     getLibraryFolder = vi.fn().mockReturnValue('/lib')
+    findUntrackedLibraryFiles = vi.fn().mockResolvedValue([])
+    recordSkippedLibraryFiles = vi.fn()
 
     const mod = await import('../../src/main/services/watcher')
     createWatcher = mod.createWatcher
-    w = createWatcher({ importFiles, getLibraryFolder })
+    w = createWatcher({
+      importFiles,
+      getLibraryFolder,
+      findUntrackedLibraryFiles,
+      recordSkippedLibraryFiles
+    })
   })
 
   afterEach(() => {
@@ -155,6 +164,17 @@ describe('createWatcher', () => {
         '/watch/dir/b.pdf',
         '/watch/dir/c.pdf'
       ], true)
+    })
+
+    it('deduplicates repeated add events in the same batch', () => {
+      vi.useFakeTimers()
+      w.start(makeFolder())
+
+      fakeWatcher.emit('add', '/watch/dir/same.pdf')
+      fakeWatcher.emit('add', '/watch/dir/same.pdf')
+      vi.advanceTimersByTime(500)
+
+      expect(importFiles).toHaveBeenCalledWith(['/watch/dir/same.pdf'], true)
     })
 
     it('resets debounce timer on each new add', () => {
@@ -262,6 +282,35 @@ describe('createWatcher', () => {
       expect(importFiles).toHaveBeenCalledWith(['/lib/new.pdf'], true)
     })
 
+    it('skips chokidar initial add events and reconciles only untracked PDFs', async () => {
+      vi.useFakeTimers()
+      findUntrackedLibraryFiles.mockResolvedValue(['/lib/offline.pdf'])
+
+      w.startLibraryWatcher('/lib')
+
+      expect(watchMockFn).toHaveBeenCalledWith('/lib', expect.objectContaining({ ignoreInitial: true }))
+      expect(findUntrackedLibraryFiles).not.toHaveBeenCalled()
+      fakeWatcher.emit('ready')
+      await vi.waitFor(() => expect(findUntrackedLibraryFiles).toHaveBeenCalledWith('/lib'))
+      await vi.advanceTimersByTimeAsync(500)
+      expect(importFiles).toHaveBeenCalledWith(['/lib/offline.pdf'], true)
+    })
+
+    it('records skipped paths after a watched import finishes', async () => {
+      vi.useFakeTimers()
+      importFiles.mockResolvedValue({
+        added: [],
+        skipped: ['/lib/duplicate.pdf'],
+        errors: []
+      })
+      w.startLibraryWatcher('/lib')
+
+      fakeWatcher.emit('add', '/lib/duplicate.pdf')
+      await vi.advanceTimersByTimeAsync(500)
+
+      expect(recordSkippedLibraryFiles).toHaveBeenCalledWith(['/lib/duplicate.pdf'])
+    })
+
     it('excludes managed workspace assets from PDF auto-import', () => {
       w.startLibraryWatcher('/lib')
 
@@ -297,6 +346,15 @@ describe('createWatcher', () => {
       w.stopLibraryWatcher()
 
       expect(fakeWatcher.close).toHaveBeenCalled()
+    })
+
+    it('does not reconcile a library stopped before chokidar is ready', () => {
+      w.startLibraryWatcher('/lib')
+      w.stopLibraryWatcher()
+
+      fakeWatcher.emit('ready')
+
+      expect(findUntrackedLibraryFiles).not.toHaveBeenCalled()
     })
 
     it('destroy stops the library watcher too', () => {

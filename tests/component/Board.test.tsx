@@ -138,6 +138,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
 })
 
 function makeItem(id: string, docId: string, x: number): WorkspaceItem {
@@ -500,12 +501,64 @@ describe('Board workspace assets', () => {
     expect(mockCopyWorkspaceAsset).toHaveBeenCalledWith(asset.id)
 
     if (media instanceof HTMLVideoElement) {
+      expect(media).toHaveAttribute('preload', 'metadata')
       expect(media).not.toHaveAttribute('controls')
       fireEvent.mouseEnter(card)
       expect(media).toHaveAttribute('controls')
       fireEvent.mouseLeave(card)
       expect(media).not.toHaveAttribute('controls')
     }
+  })
+
+  it('loads video metadata only when the media card approaches the viewport', () => {
+    let observerCallback: IntersectionObserverCallback = () => {}
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    class MockIntersectionObserver {
+      constructor(callback: IntersectionObserverCallback) {
+        observerCallback = callback
+      }
+
+      observe = observe
+      disconnect = disconnect
+    }
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
+    const asset: WorkspaceAsset = {
+      id: 'asset-video-lazy',
+      workspaceId: 'ws-1',
+      fileName: 'lazy.mp4',
+      filePath: 'refora-assets/asset-video-lazy/lazy.mp4',
+      sourcePath: '/tmp/lazy.mp4',
+      mimeType: 'video/mp4',
+      previewKind: 'video',
+      fileSize: 2048,
+      fileHash: 'hash',
+      fileMissing: 0,
+      createdAt: 0,
+      updatedAt: 0
+    }
+    mockAssets = [asset]
+    mockItems = [{
+      ...makeItem('item-video-lazy', '', 0),
+      kind: 'asset',
+      docId: null,
+      assetId: asset.id
+    }]
+
+    const { container } = render(<Board />)
+    const video = container.querySelector('video') as HTMLVideoElement
+    expect(observe).toHaveBeenCalled()
+    expect(video).toHaveAttribute('preload', 'none')
+
+    act(() => {
+      observerCallback(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    })
+
+    expect(video).toHaveAttribute('preload', 'metadata')
+    expect(disconnect).toHaveBeenCalled()
   })
 
   it('renders a managed text file preview on an asset card', async () => {
@@ -578,6 +631,67 @@ describe('Board canvas controls and connections', () => {
     fireEvent.click(screen.getByRole('button', { name: 'workspace.canvasZoomIn' }))
 
     expect(screen.getByRole('button', { name: 'workspace.canvasReset' })).toHaveTextContent('Reset')
+  })
+
+  it('moves a card through a transient transform and persists only on pointer release', () => {
+    mockItems = [makeItem('item-1', 'doc-1', 0)]
+    const { container } = render(<Board />)
+    const card = container.querySelector('[data-workspace-card-id="item-1"]') as HTMLElement
+
+    fireEvent.pointerDown(card, { pointerId: 10, button: 0, clientX: 20, clientY: 20 })
+    fireEvent.pointerMove(document, { pointerId: 10, clientX: 80, clientY: 55 })
+
+    expect(mockMoveItem).not.toHaveBeenCalled()
+    fireEvent.pointerUp(document, { pointerId: 10 })
+
+    expect(card.style.left).toBe('0px')
+    expect(card.style.top).toBe('0px')
+    expect(card.style.transform).toBe('translate3d(60px, 35px, 0)')
+    expect(mockMoveItem).toHaveBeenCalledOnce()
+    expect(mockMoveItem).toHaveBeenCalledWith('item-1', 60, 35, 1)
+  })
+
+  it('restores connection geometry when a card drag is cancelled', async () => {
+    mockItems = [makeItem('item-1', 'doc-1', 0), makeItem('item-2', 'doc-2', 400)]
+    mockConnectionsList.mockResolvedValue([{
+      id: 'connection-1',
+      workspaceId: 'ws-1',
+      sourceItemId: 'item-1',
+      targetItemId: 'item-2',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      createdAt: 1
+    }])
+    const { container } = render(<Board />)
+    const connection = await waitFor(() => {
+      const path = container.querySelector('svg g path[stroke="transparent"]') as SVGPathElement | null
+      expect(path).not.toBeNull()
+      return path as SVGPathElement
+    })
+    const initialPath = connection.getAttribute('d')
+    const card = container.querySelector('[data-workspace-card-id="item-1"]') as HTMLElement
+
+    fireEvent.pointerDown(card, { pointerId: 14, button: 0, clientX: 20, clientY: 20 })
+    fireEvent.pointerMove(document, { pointerId: 14, clientX: 80, clientY: 55 })
+    await waitFor(() => expect(connection.getAttribute('d')).not.toBe(initialPath))
+
+    fireEvent.pointerCancel(document, { pointerId: 14 })
+
+    expect(card.style.transform).toBe('translate3d(0px, 0px, 0)')
+    expect(connection.getAttribute('d')).toBe(initialPath)
+    expect(mockMoveItem).not.toHaveBeenCalled()
+  })
+
+  it('pans the world layer without rendering viewport state for each pointer event', () => {
+    const { container } = render(<Board />)
+    const board = container.firstElementChild as HTMLElement
+    const world = container.querySelector('.workspace-canvas-world') as HTMLElement
+
+    fireEvent.pointerDown(board, { pointerId: 11, button: 0, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(document, { pointerId: 11, clientX: 140, clientY: 130 })
+    fireEvent.pointerUp(document, { pointerId: 11 })
+
+    expect(world.style.transform).toBe('translate3d(40px, 30px, 0) scale(1)')
   })
 
   it('creates a persisted arrow connection by dragging a card-edge handle to another card', async () => {
