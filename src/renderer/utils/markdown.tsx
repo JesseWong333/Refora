@@ -1,14 +1,79 @@
 import { useState, useRef, type ComponentPropsWithoutRef } from 'react'
 import { Check, Copy } from '@phosphor-icons/react'
-import type { Components } from 'react-markdown'
+import type { Components, Options } from 'react-markdown'
 import { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 
+interface MarkdownAstNode {
+  type: string
+  tagName?: string
+  value?: string
+  properties?: Record<string, unknown>
+  children?: MarkdownAstNode[]
+}
+
+function inlineMathNodes(value: string): MarkdownAstNode[] {
+  const nodes: MarkdownAstNode[] = []
+  const pattern = /(?<!\\)\$(?!\$)([^$\n]+?)(?<!\\)\$/g
+  let cursor = 0
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > cursor) nodes.push({ type: 'text', value: value.slice(cursor, match.index) })
+    nodes.push({
+      type: 'element',
+      tagName: 'code',
+      properties: { className: ['language-math', 'math-inline'] },
+      children: [{ type: 'text', value: match[1] }]
+    })
+    cursor = match.index + match[0].length
+  }
+  if (cursor === 0) return [{ type: 'text', value }]
+  if (cursor < value.length) nodes.push({ type: 'text', value: value.slice(cursor) })
+  return nodes
+}
+
+function replaceTableMath(node: MarkdownAstNode, insideTable = false): void {
+  if (!node.children) return
+  const tableContent = insideTable || (node.type === 'element' && node.tagName === 'table')
+  node.children = node.children.flatMap((child) => {
+    if (tableContent && child.type === 'text' && typeof child.value === 'string') {
+      return inlineMathNodes(child.value)
+    }
+    replaceTableMath(child, tableContent)
+    return child
+  })
+}
+
+function rehypeTableMath() {
+  return (tree: unknown) => replaceTableMath(tree as MarkdownAstNode)
+}
+
 export const REMARK_PLUGINS = [remarkGfm, remarkMath]
-export const REHYPE_PLUGINS = [rehypeKatex]
+export const REHYPE_PLUGINS: NonNullable<Options['rehypePlugins']> = [
+  rehypeRaw,
+  [rehypeSanitize, {
+    ...defaultSchema,
+    attributes: {
+      ...defaultSchema.attributes,
+      code: [
+        ...(defaultSchema.attributes?.code ?? []),
+        ['className', 'math-inline', 'math-display']
+      ]
+    },
+    protocols: {
+      ...defaultSchema.protocols,
+      href: [...(defaultSchema.protocols?.href ?? []), 'refora'],
+      src: [...(defaultSchema.protocols?.src ?? []), 'refora-document']
+    }
+  }],
+  rehypeTableMath,
+  rehypeKatex
+]
 
 export function urlTransform(url: string): string {
   if (url.startsWith('refora://')) return url

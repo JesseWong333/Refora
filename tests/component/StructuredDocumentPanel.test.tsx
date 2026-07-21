@@ -39,4 +39,19 @@ describe('StructuredDocumentPanel', () => {
       'https://example.com/images/page'
     )
   })
+
+  it('renders sanitized HTML tables and superscripts from MinerU Markdown', async () => {
+    api.ocr.readMarkdown = vi.fn().mockResolvedValue(
+      'kHWC<sup>2</sup>\n\n<table><tbody><tr><th>Metric</th><th colspan="2">$v \\leq 5\\,m/s$</th></tr><tr><td>LRCP</td><td>78.7</td><td>78.2</td></tr></tbody></table><iframe title="unsafe"></iframe><script>window.hacked = true</script>'
+    )
+
+    const { container } = render(<StructuredDocumentPanel />)
+
+    expect(await screen.findByRole('table')).toBeInTheDocument()
+    expect(screen.getByText('2').tagName).toBe('SUP')
+    expect(container.querySelector('th[colspan="2"]')).not.toBeNull()
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(container.querySelector('script')).toBeNull()
+  })
 })

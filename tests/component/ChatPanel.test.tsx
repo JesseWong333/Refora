@@ -400,6 +400,23 @@ function renderMessages(overrides: Partial<Parameters<typeof ChatMessages>[0]> =
 }
 
 describe('ChatMessages presentation', () => {
+  it('renders sanitized HTML in assistant answers', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'a1',
+        threadId: 't1',
+        role: 'assistant',
+        content: '<p>Area m<sup>2</sup></p><script>window.hacked = true</script>',
+        createdAt: 1
+      }
+    ]
+
+    const { container } = renderMessages({ messages, streaming: false })
+
+    expect(screen.getByText('2').tagName).toBe('SUP')
+    expect(container.querySelector('script')).toBeNull()
+  })
+
   it('renders live reasoning in a collapsible activity panel', () => {
     renderMessages({ streamingReasoning: 'Comparing the cited methods.' })
 

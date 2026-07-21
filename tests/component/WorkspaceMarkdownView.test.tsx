@@ -30,6 +30,17 @@ afterEach(() => {
 })
 
 describe('WorkspaceMarkdownView', () => {
+  it.each(['note', 'report'] as const)('renders sanitized HTML in a %s', (kind) => {
+    const { container } = renderView({
+      kind,
+      contentMd: '<table><tbody><tr><td>m<sup>2</sup></td></tr></tbody></table><iframe></iframe>'
+    })
+
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getByText('2').tagName).toBe('SUP')
+    expect(container.querySelector('iframe')).toBeNull()
+  })
+
   it('keeps the fullscreen toolbar draggable while preserving interactive controls', () => {
     renderView({ fullscreen: true })
 
