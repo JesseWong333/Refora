@@ -4,6 +4,7 @@ import { XMLParser } from 'fast-xml-parser'
 import type { Repositories } from '../db/repositories'
 import type { Document, DocumentPatch, EditableField, MetadataSource, RemoteValues } from '../../shared/ipc-types'
 import { newId } from '../db/repositories/documents'
+import { RepoError } from '../db/repositories/errors'
 import { emitDocumentUpdated } from '../ipc/events'
 import { logger } from './logger'
 import { normalizeVenue } from './venue-map'
@@ -42,7 +43,9 @@ function isNetworkError(e: unknown): boolean {
 
 const REFERENCE_HEADINGS = /references|bibliography|参考文献|参考资料|references\s*$/i
 const DOI_REGEX = /10\.\d{4,9}\/[-._;()/:a-zA-Z0-9+]+/g
-const ARXIV_ID_REGEX = /(?:arxiv\s*:?\s*|arxiv\.org\/abs\/)(\d{4}\.\d{4,5}(?:v\d+)?)/i
+const ARXIV_ID_REGEX = /(?:arxiv\s*:?\s*|arxiv\.org\/(?:abs|pdf)\/)((?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[a-z]{2})?\/\d{7})(?:v\d+)?)/i
+const ARXIV_MODERN_ID = /^\d{4}\.\d{4,5}(?:v\d+)?$/i
+const ARXIV_LEGACY_ID = /^[a-z-]+(?:\.[a-z]{2})?\/\d{7}(?:v\d+)?$/i
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
@@ -84,11 +87,26 @@ export function extractDoiFromInfo(info: Record<string, unknown>): string | null
 
 export function extractArxivFromText(text: string): string | null {
   const match = text.match(ARXIV_ID_REGEX)
-  return match ? match[1] : null
+  return match ? normalizeArxivId(match[1]) : null
+}
+
+export function normalizeArxivId(input: string): string | null {
+  let value = input.trim()
+  value = value.replace(/^arxiv\s*:\s*/i, '')
+  value = value.replace(/^https?:\/\/(?:export\.)?arxiv\.org\/(?:abs|pdf)\//i, '')
+  value = value.split(/[?#]/, 1)[0] ?? ''
+  value = value.replace(/\.pdf$/i, '')
+  if (!ARXIV_MODERN_ID.test(value) && !ARXIV_LEGACY_ID.test(value)) return null
+  return value.replace(/v(\d+)$/i, 'v$1')
+}
+
+function baseArxivId(arxivId: string): string {
+  return arxivId.replace(/v\d+$/i, '')
 }
 
 export function deriveDoiFromArxivId(arxivId: string): string {
-  const bareId = arxivId.replace(/v\d+$/, '')
+  const normalizedId = normalizeArxivId(arxivId) ?? arxivId
+  const bareId = baseArxivId(normalizedId)
   return `10.48550/arXiv.${bareId}`
 }
 
@@ -518,7 +536,7 @@ export function mergeMetadata(
 ): { patch: DocumentPatch; remoteValues: RemoteValues } {
   const editableFields: EditableField[] = [
     'title', 'authors', 'year', 'venue', 'volume', 'issue', 'pages',
-    'abstract', 'keywords', 'url', 'doi', 'note', 'affiliations'
+    'abstract', 'keywords', 'url', 'doi', 'arxivId', 'note', 'affiliations'
   ]
   const patch: DocumentPatch = {}
   const remoteValues: RemoteValues = {}
@@ -680,6 +698,8 @@ export interface ParsedArxivEntry {
   year: string | null
   abstract: string | null
   id: string | null
+  arxivId: string
+  doi: string | null
 }
 
 function asArray<T>(value: T | T[] | undefined): T[] {
@@ -687,39 +707,46 @@ function asArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value]
 }
 
-export function parseArxivEntry(xml: string): ParsedArxivEntry | null {
+export function parseArxivEntries(xml: string): ParsedArxivEntry[] {
   try {
     const parsed = arxivXmlParser.parse(xml) as Record<string, unknown>
     const feed = parsed?.feed
-    if (!feed || typeof feed !== 'object') return null
+    if (!feed || typeof feed !== 'object') return []
     const feedObj = feed as Record<string, unknown>
     const entries = asArray(feedObj.entry as Record<string, unknown> | Record<string, unknown>[] | undefined)
-    if (entries.length === 0) return null
-    const e = entries[0]
+    const result: ParsedArxivEntry[] = []
+    for (const e of entries) {
+      const title = typeof e.title === 'string' ? e.title.replace(/\s+/g, ' ').trim() : null
+      const idValue = typeof e.id === 'string' ? e.id.trim() : null
+      const arxivId = idValue ? normalizeArxivId(idValue) : null
+      if (!title || !arxivId) continue
 
-    const title = typeof e.title === 'string' ? e.title.replace(/\s+/g, ' ').trim() : null
-    if (!title) return null
-
-    const rawAuthors = asArray(e.author as Record<string, unknown> | Record<string, unknown>[] | undefined)
-    const authors = rawAuthors
-      .map((a) => (typeof a.name === 'string' ? a.name.trim() : ''))
-      .filter(Boolean)
-      .join('; ') || null
-
-    const published = typeof e.published === 'string' ? e.published : null
-    const year = published ? published.slice(0, 4) : null
-
-    const abstract = typeof e.summary === 'string' ? e.summary.replace(/\s+/g, ' ').trim() : null
-
-    const idValue = typeof e.id === 'string' ? e.id.trim() : null
-
-    return { title, authors, year, abstract, id: idValue }
+      const rawAuthors = asArray(e.author as Record<string, unknown> | Record<string, unknown>[] | undefined)
+      const authors = rawAuthors
+        .map((a) => (typeof a.name === 'string' ? a.name.trim() : ''))
+        .filter(Boolean)
+        .join('; ') || null
+      const published = typeof e.published === 'string' ? e.published : null
+      const year = published ? published.slice(0, 4) : null
+      const abstract = typeof e.summary === 'string' ? e.summary.replace(/\s+/g, ' ').trim() : null
+      const doi = nonEmptyString(e['arxiv:doi'])
+      result.push({ title, authors, year, abstract, id: idValue, arxivId, doi })
+    }
+    return result
   } catch {
-    return null
+    return []
   }
 }
 
-async function fetchArxiv(id: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
+export function parseArxivEntry(xml: string): ParsedArxivEntry | null {
+  return parseArxivEntries(xml)[0] ?? null
+}
+
+async function fetchArxiv(id: string): Promise<{
+  data: Partial<Document>
+  confidence: number
+  entry: ParsedArxivEntry
+} | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
@@ -736,7 +763,8 @@ async function fetchArxiv(id: string): Promise<{ data: Partial<Document>; confid
   }
 
   const entry = parseArxivEntry(text)
-  if (!entry) return null
+  const requestedId = normalizeArxivId(id)
+  if (!entry || !requestedId || baseArxivId(entry.arxivId) !== baseArxivId(requestedId)) return null
 
   const arxivUrl = entry.id ?? `https://arxiv.org/abs/${id}`
 
@@ -747,9 +775,11 @@ async function fetchArxiv(id: string): Promise<{ data: Partial<Document>; confid
       year: entry.year,
       abstract: entry.abstract,
       url: arxivUrl,
+      doi: entry.doi ?? undefined,
       metadataSource: 'arxiv' as MetadataSource
     },
-    confidence: 1
+    confidence: 1,
+    entry
   }
 }
 
@@ -789,6 +819,69 @@ export function titleSimilarity(a: string, b: string): number {
 
 const TITLE_SIMILARITY_THRESHOLD = 0.6
 const TITLE_USE_THRESHOLD = 0.75
+
+function normalizeDoi(value: string | null | undefined): string | null {
+  if (!value) return null
+  const normalized = value
+    .trim()
+    .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '')
+    .replace(/^doi\s*:\s*/i, '')
+    .toLowerCase()
+  return normalized || null
+}
+
+function authorKeys(value: string | null | undefined): string[] {
+  if (!value) return []
+  return value
+    .split(';')
+    .map((author) => {
+      const trimmed = author.trim().toLowerCase()
+      const family = trimmed.includes(',')
+        ? trimmed.slice(0, trimmed.indexOf(','))
+        : trimmed.split(/\s+/).at(-1) ?? ''
+      return family.replace(/[^a-z0-9]/g, '')
+    })
+    .filter(Boolean)
+}
+
+function authorsMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = authorKeys(a)
+  const right = authorKeys(b)
+  if (left.length === 0 || right.length === 0) return false
+  const rightSet = new Set(right)
+  const overlap = left.filter((author) => rightSet.has(author)).length
+  return overlap > 0 && (left[0] === right[0] || overlap / Math.min(left.length, right.length) >= 0.5)
+}
+
+export function isArxivCandidateVerified(
+  reference: Pick<Partial<Document>, 'title' | 'authors' | 'year' | 'doi'>,
+  candidate: ParsedArxivEntry,
+  directIdEvidence = false
+): boolean {
+  const referenceDoi = normalizeDoi(reference.doi)
+  const candidateDoi = normalizeDoi(candidate.doi)
+  const canonicalArxivDoi = normalizeDoi(deriveDoiFromArxivId(candidate.arxivId))
+  const referenceIsCanonicalArxivDoi = referenceDoi?.startsWith('10.48550/arxiv.') ?? false
+  if (referenceIsCanonicalArxivDoi && referenceDoi !== canonicalArxivDoi) return false
+  if (
+    referenceDoi !== null &&
+    candidateDoi !== null &&
+    referenceDoi !== canonicalArxivDoi &&
+    referenceDoi !== candidateDoi
+  ) return false
+  const doiMatch = referenceDoi !== null &&
+    (referenceDoi === candidateDoi || referenceDoi === canonicalArxivDoi)
+  const titleScore = reference.title
+    ? titleSimilarity(reference.title, candidate.title)
+    : 0
+
+  if (doiMatch) return !reference.title || titleScore >= TITLE_SIMILARITY_THRESHOLD
+  if (titleScore < TITLE_USE_THRESHOLD) return false
+  if (directIdEvidence) return true
+
+  const yearMatch = Boolean(reference.year && candidate.year && reference.year === candidate.year)
+  return yearMatch || authorsMatch(reference.authors, candidate.authors)
+}
 
 export function titlesMatch(a: string, b: string): boolean {
   return titleSimilarity(a, b) >= TITLE_SIMILARITY_THRESHOLD
@@ -871,15 +964,21 @@ async function fetchDblpByTitle(title: string): Promise<{ data: Partial<Document
   return { data, confidence }
 }
 
-async function fetchArxivByTitle(title: string): Promise<{ data: Partial<Document>; confidence: number } | null> {
+interface ArxivTitleResult {
+  data: Partial<Document>
+  confidence: number
+  entry: ParsedArxivEntry
+}
+
+async function fetchArxivByTitle(title: string): Promise<ArxivTitleResult[]> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), NET_TIMEOUT_MS)
 
   let text: string
   try {
-    const url = `https://export.arxiv.org/api/query?search_query=ti:${encodeURIComponent(`"${title}"`)}&max_results=1`
+    const url = `https://export.arxiv.org/api/query?search_query=ti:${encodeURIComponent(`"${title}"`)}&max_results=5`
     const response = await net.fetch(url, { signal: controller.signal })
-    if (!response.ok) return null
+    if (!response.ok) return []
     text = await response.text()
   } catch (e) {
     throw new NetworkError(e instanceof Error ? e.message : String(e))
@@ -887,22 +986,36 @@ async function fetchArxivByTitle(title: string): Promise<{ data: Partial<Documen
     clearTimeout(timer)
   }
 
-  const entry = parseArxivEntry(text)
-  if (!entry) return null
+  const candidates = parseArxivEntries(text)
+  return candidates
+    .map((candidate) => ({ candidate, score: titleSimilarity(title, candidate.title) }))
+    .filter((entry) => entry.score >= TITLE_SIMILARITY_THRESHOLD)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => ({
+      data: {
+        title: entry.candidate.title,
+        authors: normalizeAuthors(entry.candidate.authors),
+        year: entry.candidate.year,
+        abstract: entry.candidate.abstract,
+        url: entry.candidate.id,
+        metadataSource: 'arxiv' as MetadataSource
+      },
+      confidence: entry.score,
+      entry: entry.candidate
+    }))
+}
 
-  const confidence = titleSimilarity(title, entry.title)
-  if (confidence < TITLE_SIMILARITY_THRESHOLD) return null
-
+export async function findVerifiedArxivMetadata(
+  reference: Pick<Partial<Document>, 'title' | 'authors' | 'year' | 'doi'>
+): Promise<Partial<Document> | null> {
+  if (!reference.title) return null
+  const results = await fetchArxivByTitle(reference.title)
+  const result = results.find((candidate) => isArxivCandidateVerified(reference, candidate.entry))
+  if (!result) return null
   return {
-    data: {
-      title: entry.title,
-      authors: normalizeAuthors(entry.authors),
-      year: entry.year,
-      abstract: entry.abstract,
-      url: entry.id,
-      metadataSource: 'arxiv' as MetadataSource
-    },
-    confidence
+    ...result.data,
+    arxivId: result.entry.arxivId,
+    doi: result.entry.doi ?? reference.doi
   }
 }
 
@@ -918,6 +1031,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
   let lastCrossrefMs = 0
   let lastArxivMs = 0
   let lastDblpMs = 0
+  let arxivGateTail: Promise<void> = Promise.resolve()
 
   const getWin = (): BrowserWindow | null => {
     const w = typeof win === 'function' ? win() : win
@@ -1003,26 +1117,67 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
   }
 
   async function rateGate(source: MetadataSource): Promise<void> {
-    const now = Date.now()
     if (source === 'arxiv') {
-      const elapsed = now - lastArxivMs
-      if (elapsed < 3000) {
-        await new Promise((r) => setTimeout(r, 3000 - elapsed))
-      }
-      lastArxivMs = Date.now()
+      const turn = arxivGateTail.then(async () => {
+        const elapsed = Date.now() - lastArxivMs
+        if (elapsed < 3000) {
+          await new Promise((r) => setTimeout(r, 3000 - elapsed))
+        }
+        lastArxivMs = Date.now()
+      })
+      arxivGateTail = turn.catch(() => undefined)
+      await turn
     } else if (source === 'dblp') {
+      const now = Date.now()
       const elapsed = now - lastDblpMs
       if (elapsed < 1000) {
         await new Promise((r) => setTimeout(r, 1000 - elapsed))
       }
       lastDblpMs = Date.now()
     } else {
+      const now = Date.now()
       const elapsed = now - lastCrossrefMs
       if (elapsed < 1000) {
         await new Promise((r) => setTimeout(r, 1000 - elapsed))
       }
       lastCrossrefMs = Date.now()
     }
+  }
+
+  async function updateVerifiedArxivId(docId: string, input: string): Promise<Document> {
+    const doc = repos.documents.get(docId)
+    if (!doc) throw new RepoError('not_found', `document not found: ${docId}`)
+    if (input.trim() === '') return repos.documents.update(docId, { arxivId: '' })
+
+    const arxivId = normalizeArxivId(input)
+    if (!arxivId) {
+      throw new RepoError('invalid_arxiv_id', 'Invalid arXiv ID format', 'arxivId')
+    }
+    if (doc.arxivId === arxivId) return doc
+
+    await rateGate('arxiv')
+    let result: Awaited<ReturnType<typeof fetchArxiv>>
+    try {
+      result = await fetchArxiv(arxivId)
+    } catch (error) {
+      if (isNetworkError(error)) {
+        throw new RepoError('arxiv_unreachable', 'Could not reach arXiv to verify this ID', 'arxivId')
+      }
+      throw error
+    }
+    if (!result) {
+      throw new RepoError('invalid_arxiv_id', 'arXiv did not return a matching record', 'arxivId')
+    }
+
+    const urlArxivId = doc.url ? normalizeArxivId(doc.url) : null
+    if (!isArxivCandidateVerified(doc, result.entry, urlArxivId === arxivId)) {
+      throw new RepoError(
+        'arxiv_metadata_mismatch',
+        'The arXiv record does not match this paper metadata',
+        'arxivId'
+      )
+    }
+    return repos.documents.update(docId, { arxivId })
   }
 
   async function processJob(docId: string): Promise<void> {
@@ -1105,25 +1260,34 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       }
     }
 
-    if (!fetchedData) {
-      if (arxivIdFromText) {
-        await rateGate('arxiv')
-        let result: { data: Partial<Document>; confidence: number } | null = null
-        try {
-          result = await fetchArxiv(arxivIdFromText)
-        } catch (e) {
-          if (isNetworkError(e)) networkFailed = true
-          else throw e
+    if (arxivIdFromText) {
+      await rateGate('arxiv')
+      let result: Awaited<ReturnType<typeof fetchArxiv>> = null
+      try {
+        result = await fetchArxiv(arxivIdFromText)
+      } catch (e) {
+        if (isNetworkError(e)) networkFailed = true
+        else throw e
+      }
+      const arxivReference = {
+        title: textTitle ?? fetchedData?.title ?? doc.title,
+        authors: fetchedData?.authors ?? nonEmptyString(info['Author']) ?? doc.authors,
+        year: fetchedData?.year ?? doc.year,
+        doi: fetchedData?.doi ?? doi ?? doc.doi
+      }
+      const verified = result !== null &&
+        isReliableTitle(result.data.title ?? null, text) &&
+        isArxivCandidateVerified(arxivReference, result.entry, true)
+      logger.info(`metadata:processJob arxiv id=${docId} ok=${!!result} verified=${verified}`)
+      if (result && verified) {
+        if (fetchedData) {
+          fetchedData.arxivId = result.entry.arxivId
+        } else {
+          fetchedData = { ...result.data, arxivId: result.entry.arxivId }
+          source = 'arxiv'
         }
-        logger.info(`metadata:processJob arxiv id=${docId} ok=${!!result}`)
-        if (result && isReliableTitle(result.data.title ?? null, text)) {
-          if (textTitle && titleSimilarity(textTitle, result.data.title ?? '') < TITLE_SIMILARITY_THRESHOLD) {
-            logger.info(`metadata:processJob arxiv id=${docId} mismatch title=${JSON.stringify(result.data.title).slice(0, 60)} vs text=${JSON.stringify(textTitle).slice(0, 60)}`)
-          } else {
-            fetchedData = result.data
-            source = 'arxiv'
-          }
-        }
+      } else if (result && textTitle) {
+        logger.info(`metadata:processJob arxiv id=${docId} mismatch title=${JSON.stringify(result.data.title).slice(0, 60)} vs text=${JSON.stringify(textTitle).slice(0, 60)}`)
       }
     }
 
@@ -1149,17 +1313,30 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
       }
       if (!fetchedData) {
         await rateGate('arxiv')
-        let arxivResult: { data: Partial<Document>; confidence: number } | null = null
+        let arxivResults: Awaited<ReturnType<typeof fetchArxivByTitle>> = []
         try {
-          arxivResult = await fetchArxivByTitle(searchTitle)
+          arxivResults = await fetchArxivByTitle(searchTitle)
         } catch (e) {
           if (isNetworkError(e)) networkFailed = true
           else throw e
         }
+        const reference = {
+          title: searchTitle,
+          authors: nonEmptyString(info['Author']) ?? doc.authors,
+          year: doc.year,
+          doi: doc.doi
+        }
+        const verifiedArxivResult = arxivResults.find((candidate) =>
+          isArxivCandidateVerified(reference, candidate.entry)
+        ) ?? null
+        const arxivResult = verifiedArxivResult ?? arxivResults[0] ?? null
         logger.info(`metadata:processJob arxiv-title id=${docId} ok=${!!arxivResult}${arxivResult ? ` confidence=${arxivResult.confidence.toFixed(2)}` : ''}`)
         if (arxivResult) {
           if (arxivResult.confidence >= TITLE_USE_THRESHOLD) {
-            fetchedData = arxivResult.data
+            fetchedData = {
+              ...arxivResult.data,
+              arxivId: verifiedArxivResult?.entry.arxivId
+            }
             source = 'arxiv'
           } else {
             weakMatch = true
@@ -1236,6 +1413,9 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     if (affiliationsFromText && remoteValues.affiliations) {
       remoteValues.affiliations = { value: remoteValues.affiliations.value, source: 'pdf' }
     }
+    if (remoteValues.arxivId) {
+      remoteValues.arxivId = { value: remoteValues.arxivId.value, source: 'arxiv' }
+    }
     logger.info(`metadata:processJob merge id=${docId} patchKeys=${Object.keys(patch).join(',') || 'none'} remoteKeys=${Object.keys(remoteValues).join(',') || 'none'} source=${source}`)
     repos.documents.applyMetadataFields(docId, patch, remoteValues, 'done', source)
 
@@ -1244,6 +1424,41 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
     if (updated && w) {
       emitDocumentUpdated(w, updated)
     }
+
+    if (!arxivIdFromText && fetchedData.title && fetchedData.doi) {
+      void enrichVerifiedArxivId(docId, fetchedData).catch((error) => {
+        logger.warn(`metadata:arxiv-crosscheck failed id=${docId}: ${error instanceof Error ? error.message : String(error)}`)
+      })
+    }
+  }
+
+  async function enrichVerifiedArxivId(
+    docId: string,
+    reference: Pick<Partial<Document>, 'title' | 'authors' | 'year' | 'doi'>
+  ): Promise<void> {
+    await rateGate('arxiv')
+    const result = await findVerifiedArxivMetadata(reference)
+    if (!result?.arxivId || destroyed) return
+    const current = repos.documents.get(docId)
+    if (!current || current.arxivId) return
+    const { patch, remoteValues } = mergeMetadata(current, {
+      arxivId: result.arxivId,
+      metadataSource: 'arxiv'
+    })
+    const combinedRemoteValues = {
+      ...(current.remoteValues ?? {}),
+      ...remoteValues
+    }
+    const updated = repos.documents.applyMetadataFields(
+      docId,
+      patch,
+      combinedRemoteValues,
+      current.metadataStatus,
+      null
+    )
+    const w = getWin()
+    if (w) emitDocumentUpdated(w, updated)
+    logger.info(`metadata:arxiv-crosscheck id=${docId} arxiv=${result.arxivId}`)
   }
 
   async function supplementVenueFields(
@@ -1363,6 +1578,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
 
   return {
     enqueue,
+    updateVerifiedArxivId,
     refreshMetadata,
     bulkRefreshMetadata,
     resumeOnStartup,

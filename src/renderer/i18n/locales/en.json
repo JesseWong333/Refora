@@ -102,6 +102,7 @@
     "abstract": "Abstract",
     "keywords": "Keywords",
     "url": "URL",
+    "arxivId": "arXiv ID",
     "addedAt": "Added",
     "filePath": "Path",
     "note": "Notes",
@@ -119,7 +120,8 @@
     "relocate": "Relocate",
     "restoreOriginal": "Restore to Original Location",
     "open": "Open",
-    "applyRemote": "Apply remote value"
+    "applyRemote": "Apply remote value",
+    "saveFailed": "Could not save"
   },
   "ocr": {
     "title": "Structured document",

@@ -185,6 +185,7 @@ export interface RuntimeRef {
   }
   metadataService?: {
     enqueue: (docId: string) => void
+    updateVerifiedArxivId: (docId: string, input: string) => Promise<Document>
     refreshMetadata: (docId: string) => void
     bulkRefreshMetadata: (ids: string[]) => void
     resumeOnStartup: () => void
@@ -226,7 +227,12 @@ async function importBibtex(
   }
   const rt = deps.getRuntime()
   if (!rt) throw new Error('Runtime not ready')
-  const res = await importFromBibtex(rt.repos, result.filePaths[0], source)
+  const res = await importFromBibtex(
+    rt.repos,
+    result.filePaths[0],
+    source,
+    rt.metadataService?.updateVerifiedArxivId
+  )
   return { added: res.added.length, skipped: res.skipped.length, errors: res.errors }
 }
 
@@ -279,8 +285,21 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
       wrap(() => repos().documents.search(q)),
     [IpcChannel.DocumentsGet]: (id: string): Result<Document | null> =>
       wrap(() => repos().documents.get(id)),
-    [IpcChannel.DocumentsUpdate]: (id: string, patch: DocumentPatch): Result<Document> =>
-      wrap(() => repos().documents.update(id, patch)),
+    [IpcChannel.DocumentsUpdate]: (id: string, patch: DocumentPatch): Result<Document> | Promise<Result<Document>> => {
+      if (patch.arxivId === undefined) return wrap(() => repos().documents.update(id, patch))
+      if (typeof patch.arxivId !== 'string') return wrap(() => repos().documents.update(id, patch))
+      const rawArxivId = patch.arxivId
+      return asyncWrap(async () => {
+        const service = deps.getRuntime()?.metadataService
+        if (!service) throw new RepoError('metadata_unavailable', 'Metadata service is unavailable')
+        const otherFields = { ...patch }
+        delete otherFields.arxivId
+        const verified = await service.updateVerifiedArxivId(id, rawArxivId)
+        return Object.keys(otherFields).length > 0
+          ? repos().documents.update(verified.id, otherFields)
+          : verified
+      })
+    },
     [IpcChannel.DocumentsSetStarred]: (id: string, value: boolean): Result<void> =>
       wrap(() => repos().documents.setStarred(id, value)),
     [IpcChannel.DocumentsDelete]: (id: string): Promise<Result<void>> =>

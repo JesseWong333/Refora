@@ -31,6 +31,7 @@ const mockDoc: Document = {
   keywords: 'ML, AI',
   url: 'https://example.com',
   doi: '10.1234/test',
+  arxivId: '2401.12345',
   note: 'Good read',
   affiliations: 'MIT; Stanford University',
   starred: 1,
@@ -181,6 +182,7 @@ describe('DetailPanel', () => {
       expect(screen.getByText('ML, AI')).toBeInTheDocument()
       expect(screen.getByText('https://example.com')).toBeInTheDocument()
       expect(screen.getByText('10.1234/test')).toBeInTheDocument()
+      expect(screen.getByText('2401.12345')).toBeInTheDocument()
       expect(screen.getByText('Good read')).toBeInTheDocument()
     })
 
@@ -430,6 +432,19 @@ describe('DetailPanel', () => {
         expect(screen.getByText('common.saved')).toBeInTheDocument()
       })
     })
+
+    it('shows the backend verification error when an arXiv ID is rejected', async () => {
+      mockUpdateDoc.mockRejectedValue(new Error('The arXiv record does not match this paper metadata'))
+      render(<DetailPanel />)
+
+      fireEvent.click(screen.getByRole('button', { name: '2401.12345' }))
+      const input = screen.getByDisplayValue('2401.12345') as HTMLTextAreaElement
+      fireEvent.change(input, { target: { value: '2401.99999' } })
+      fireEvent.blur(input)
+
+      expect(await screen.findByText('The arXiv record does not match this paper metadata')).toBeInTheDocument()
+      expect(mockUpdateDoc).toHaveBeenCalledWith('1', { arxivId: '2401.99999' })
+    })
   })
 
   describe('inline edit — Escape cancels', () => {
@@ -591,11 +606,14 @@ describe('DetailPanel', () => {
 
       render(<DetailPanel />)
 
-      const placeholder = screen.getByText('\u2014')
+      const placeholder = screen.getAllByText('\u2014').find((element) =>
+        element.className.includes('text-justify')
+      )
+      expect(placeholder).toBeDefined()
       expect(placeholder).toBeInTheDocument()
 
       await act(async () => {
-        fireEvent.click(placeholder)
+        fireEvent.click(placeholder as HTMLElement)
       })
 
       const input = screen.getByDisplayValue('') as HTMLTextAreaElement

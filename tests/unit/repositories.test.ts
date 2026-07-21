@@ -170,12 +170,16 @@ describe('documents repository', () => {
     doc = repos.documents.update('d1', { doi: '10.1/x' })
     expect(doc.editedFields).toEqual(['title', 'doi'])
 
+    doc = repos.documents.update('d1', { arxivId: '2401.12345' })
+    expect(doc.arxivId).toBe('2401.12345')
+    expect(doc.editedFields).toEqual(['title', 'doi', 'arxivId'])
+
     doc = repos.documents.update('d1', { title: '' })
     expect(doc.title).toBe('')
-    expect(doc.editedFields).toEqual(['doi'])
+    expect(doc.editedFields).toEqual(['doi', 'arxivId'])
 
     doc = repos.documents.update('d1', { note: 'a note' })
-    expect(doc.editedFields).toEqual(['doi', 'note'])
+    expect(doc.editedFields).toEqual(['doi', 'arxivId', 'note'])
   })
 
   it('update with an empty patch is a no-op', () => {

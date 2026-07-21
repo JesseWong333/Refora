@@ -914,7 +914,7 @@ export function createAiAgentService(
     const getPaperMetadata = new DynamicTool({
       name: 'get_paper_metadata',
       description:
-        'Get full metadata of a paper by its docId. Returns a JSON object with title, authors, year, venue, abstract, keywords, doi, url, and other fields.',
+        'Get full metadata of a paper by its docId. Returns a JSON object with title, authors, year, venue, abstract, keywords, doi, arxivId, url, and other fields.',
       func: async (docId: string) => {
         if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
         const doc = repos.documents.get(docId.trim())
@@ -931,6 +931,7 @@ export function createAiAgentService(
           abstract: doc.abstract,
           keywords: doc.keywords,
           doi: doc.doi,
+          arxivId: doc.arxivId,
           url: doc.url
         })
       }

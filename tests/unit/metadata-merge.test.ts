@@ -4,7 +4,10 @@ import {
   extractDoiFromText,
   extractDoiFromInfo,
   extractArxivFromText,
+  isArxivCandidateVerified,
+  normalizeArxivId,
   normalizeAuthors,
+  parseArxivEntry,
   titlesMatch,
   titleSimilarity,
   titleFromFileName,
@@ -32,6 +35,7 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     keywords: null,
     url: null,
     doi: null,
+    arxivId: null,
     note: null,
     starred: 0,
     addedAt: 1000,
@@ -248,6 +252,79 @@ describe('arXiv extraction', () => {
 
   it('returns null when no arXiv ID found', () => {
     expect(extractArxivFromText('No arXiv ID here')).toBeNull()
+  })
+
+  it('normalizes modern and legacy arXiv identifiers', () => {
+    expect(normalizeArxivId('arXiv:2401.12345v2')).toBe('2401.12345v2')
+    expect(normalizeArxivId('https://arxiv.org/pdf/hep-th/9901001v3.pdf')).toBe('hep-th/9901001v3')
+    expect(normalizeArxivId('not-an-arxiv-id')).toBeNull()
+  })
+
+  it('parses the canonical ID and DOI from an arXiv Atom entry', () => {
+    const entry = parseArxivEntry(`<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+      <entry>
+        <title>Verified Paper</title>
+        <author><name>Jane Doe</name></author>
+        <published>2024-01-01T00:00:00Z</published>
+        <summary>Abstract</summary>
+        <id>https://arxiv.org/abs/2401.12345v2</id>
+        <arxiv:doi>10.1000/verified</arxiv:doi>
+      </entry>
+    </feed>`)
+
+    expect(entry).toMatchObject({
+      arxivId: '2401.12345v2',
+      doi: '10.1000/verified'
+    })
+  })
+
+  it('requires a DOI match or title plus a second metadata signal', () => {
+    const candidate = {
+      title: 'Verified Paper',
+      authors: 'Jane Doe; John Smith',
+      year: '2024',
+      abstract: null,
+      id: 'https://arxiv.org/abs/2401.12345',
+      arxivId: '2401.12345',
+      doi: '10.1000/verified'
+    }
+
+    expect(isArxivCandidateVerified({
+      title: 'Verified Paper',
+      authors: 'Doe, Jane',
+      year: '2023',
+      doi: null
+    }, candidate)).toBe(true)
+    expect(isArxivCandidateVerified({
+      title: 'Unrelated local title',
+      authors: null,
+      year: null,
+      doi: '10.1000/verified'
+    }, candidate)).toBe(false)
+    expect(isArxivCandidateVerified({
+      title: 'Verified Paper',
+      authors: null,
+      year: null,
+      doi: null
+    }, candidate)).toBe(false)
+    expect(isArxivCandidateVerified({
+      title: 'Verified Paper',
+      authors: null,
+      year: null,
+      doi: '10.1000/verified'
+    }, candidate)).toBe(true)
+    expect(isArxivCandidateVerified({
+      title: 'Verified Paper',
+      authors: 'Doe, Jane',
+      year: '2024',
+      doi: '10.1000/different'
+    }, candidate)).toBe(false)
+    expect(isArxivCandidateVerified({
+      title: 'Verified Paper',
+      authors: 'Doe, Jane',
+      year: '2024',
+      doi: '10.48550/arXiv.2401.99999'
+    }, { ...candidate, doi: null })).toBe(false)
   })
 })
 

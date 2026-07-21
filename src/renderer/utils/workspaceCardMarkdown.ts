@@ -36,6 +36,7 @@ export function paperCardMarkdown(doc: Document, summary: AiSummary | null): str
     ['Year', doc.year],
     ['Venue', doc.venue],
     ['DOI', doc.doi],
+    ['arXiv ID', doc.arxivId],
     ['URL', doc.url],
     ['Source file', doc.fileName]
   ].filter((entry): entry is [string, string] => Boolean(entry[1]))

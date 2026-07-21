@@ -24,11 +24,15 @@ describe('ipc-types shapes', () => {
       year: '2020',
       venue: 'V',
       volume: '1',
+      issue: '2',
+      pages: '3-4',
       abstract: 'ab',
       keywords: 'k',
       url: 'u',
       doi: '10.1/x',
+      arxivId: '2401.12345',
       note: 'n',
+      affiliations: 'Institute',
       starred: 0,
       addedAt: 1,
       lastReadAt: null,
@@ -61,25 +65,30 @@ describe('ipc-types shapes', () => {
   })
 
   it('DocumentPatch only allows editable fields', () => {
-    const patch: DocumentPatch = { title: 'New', doi: '10.1/y' }
+    const patch: DocumentPatch = { title: 'New', doi: '10.1/y', arxivId: '2401.12345' }
     expect(patch.title).toBe('New')
     expect(patch.doi).toBe('10.1/y')
+    expect(patch.arxivId).toBe('2401.12345')
   })
 
-  it('EditableField whitelist has exactly the 10 editable fields', () => {
+  it('EditableField whitelist includes every editable metadata field', () => {
     const editable: EditableField[] = [
       'title',
       'authors',
       'year',
       'venue',
       'volume',
+      'issue',
+      'pages',
       'abstract',
       'keywords',
       'url',
       'doi',
-      'note'
+      'arxivId',
+      'note',
+      'affiliations'
     ]
-    expect(editable).toHaveLength(10)
+    expect(editable).toHaveLength(14)
     expect(editable).not.toContain('id')
     expect(editable).not.toContain('filePath')
     expect(editable).not.toContain('starred')

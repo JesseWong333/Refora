@@ -70,7 +70,7 @@ vi.mock('../../src/main/db/repositories/documents', () => ({
 // ============================================================
 // Import the service under test
 // ============================================================
-import { createMetadataService } from '../../src/main/services/metadata'
+import { createMetadataService, findVerifiedArxivMetadata } from '../../src/main/services/metadata'
 
 // ============================================================
 // Helpers
@@ -83,6 +83,7 @@ interface FakeRepos {
     setMetadataStatus: ReturnType<typeof vi.fn>
     incrementMetadataAttempts: ReturnType<typeof vi.fn>
     applyMetadataFields: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
   }
   settings: {
     get: ReturnType<typeof vi.fn>
@@ -109,6 +110,7 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     keywords: null,
     url: null,
     doi: null,
+    arxivId: null,
     note: null,
     starred: 0,
     addedAt: 1000,
@@ -161,8 +163,15 @@ function mockRepos(docs: Document[]): FakeRepos {
     }
   )
 
+  const update = vi.fn((id: string, patch: DocumentPatch) => {
+    const doc = byId.get(id)
+    if (!doc) throw new Error(`document not found: ${id}`)
+    Object.assign(doc, patch)
+    return { ...doc }
+  })
+
   return {
-    documents: { get, getResumableMetadataRows, setMetadataStatus, incrementMetadataAttempts, applyMetadataFields },
+    documents: { get, getResumableMetadataRows, setMetadataStatus, incrementMetadataAttempts, applyMetadataFields, update },
     settings: { get: vi.fn(() => '') },
     _byId: byId
   }
@@ -205,15 +214,19 @@ function makeArxivResponse(overrides: Record<string, unknown> = {}) {
   const title = (overrides.title as string) ?? 'Arxiv Paper Title'
   const summary = (overrides.summary as string) ?? 'Arxiv abstract text here.'
   const published = (overrides.published as string) ?? '2023'
+  const id = (overrides.id as string) ?? '2301.12345'
+  const author = (overrides.author as string) ?? 'Doe, Jane'
+  const doi = overrides.doi as string | undefined
   return {
     ok: true,
     text: async () => `<feed xmlns="http://www.w3.org/2005/Atom">
   <entry>
     <title>${title}</title>
-    <author><name>Doe, Jane</name></author>
+    <author><name>${author}</name></author>
     <published>${published}</published>
     <summary>${summary}</summary>
-    <id>http://arxiv.org/abs/2301.12345</id>
+    <id>http://arxiv.org/abs/${id}</id>
+    ${doi ? `<arxiv:doi xmlns:arxiv="http://arxiv.org/schemas/atom">${doi}</arxiv:doi>` : ''}
   </entry>
 </feed>`
   }
@@ -310,6 +323,131 @@ describe('createMetadataService', () => {
     expect(source).toBe('crossref')
   })
 
+  it('stores a manually edited arXiv ID only after API and metadata verification', async () => {
+    const doc = makeDoc({
+      title: 'Verified Paper',
+      authors: 'Doe, Jane',
+      year: '2024'
+    })
+    const repos = mockRepos([doc])
+    mockNetFetchImpl = () => Promise.resolve(makeArxivResponse({
+      title: 'Verified Paper',
+      author: 'Jane Doe',
+      published: '2024-01-01',
+      id: '2401.12345v2'
+    }))
+
+    const svc = createMetadataService(asRepos(repos), mockWin())
+    const updated = await svc.updateVerifiedArxivId('doc-1', 'https://arxiv.org/abs/2401.12345v2')
+
+    expect(repos.documents.update).toHaveBeenCalledWith('doc-1', { arxivId: '2401.12345v2' })
+    expect(updated.arxivId).toBe('2401.12345v2')
+  })
+
+  it('serializes concurrent arXiv verification requests at three-second intervals', async () => {
+    const repos = mockRepos([
+      makeDoc({ id: 'doc-1', title: 'Verified Paper', authors: 'Doe, Jane', year: '2024' }),
+      makeDoc({ id: 'doc-2', title: 'Verified Paper', authors: 'Doe, Jane', year: '2024' })
+    ])
+    const requestTimes: number[] = []
+    mockNetFetchImpl = (url: string) => {
+      requestTimes.push(Date.now())
+      return Promise.resolve(makeArxivResponse({
+        title: 'Verified Paper',
+        author: 'Jane Doe',
+        published: '2024-01-01',
+        id: url.includes('2401.22222') ? '2401.22222' : '2401.11111'
+      }))
+    }
+
+    const svc = createMetadataService(asRepos(repos), mockWin())
+    const first = svc.updateVerifiedArxivId('doc-1', '2401.11111')
+    const second = svc.updateVerifiedArxivId('doc-2', '2401.22222')
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(requestTimes).toEqual([10000])
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(requestTimes).toEqual([10000])
+    await vi.advanceTimersByTimeAsync(1)
+    await Promise.all([first, second])
+
+    expect(requestTimes).toEqual([10000, 13000])
+  })
+
+  it('rejects an arXiv ID whose record does not match the paper', async () => {
+    const repos = mockRepos([makeDoc({
+      title: 'Local Paper',
+      authors: 'Smith, John',
+      year: '2024'
+    })])
+    mockNetFetchImpl = () => Promise.resolve(makeArxivResponse({
+      title: 'Different Research',
+      author: 'Jane Doe',
+      published: '2022-01-01',
+      id: '2401.12345'
+    }))
+
+    const svc = createMetadataService(asRepos(repos), mockWin())
+
+    await expect(svc.updateVerifiedArxivId('doc-1', '2401.12345')).rejects.toMatchObject({
+      code: 'arxiv_metadata_mismatch'
+    })
+    expect(repos.documents.update).not.toHaveBeenCalled()
+  })
+
+  it('adds an arXiv ID found from DOI metadata only after cross-checking the record', async () => {
+    const repos = mockRepos([makeDoc()])
+    mockWorkerInfo = { doi: '10.1234/test' }
+    mockNetFetchImpl = (url: string) => {
+      if (url.includes('crossref')) return Promise.resolve(makeCrossrefResponse())
+      return Promise.resolve(makeArxivResponse({
+        title: 'Test Title',
+        author: 'John Smith',
+        published: '2024-01-01',
+        id: '2401.54321',
+        doi: '10.1234/test'
+      }))
+    }
+
+    const svc = createMetadataService(asRepos(repos), mockWin())
+    svc.enqueue('doc-1')
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(repos.documents.applyMetadataFields).toHaveBeenCalledTimes(2)
+    expect(repos.documents.applyMetadataFields.mock.calls[1][1]).toEqual({
+      arxivId: '2401.54321'
+    })
+  })
+
+  it('checks lower-ranked arXiv title candidates when the first candidate fails verification', async () => {
+    mockNetFetchImpl = () => Promise.resolve({
+      ok: true,
+      text: async () => `<feed xmlns="http://www.w3.org/2005/Atom">
+        <entry>
+          <title>Shared Paper Title</title>
+          <author><name>Wrong Author</name></author>
+          <published>2021-01-01</published>
+          <id>http://arxiv.org/abs/2101.11111</id>
+        </entry>
+        <entry>
+          <title>Shared Paper Title</title>
+          <author><name>Jane Doe</name></author>
+          <published>2024-01-01</published>
+          <id>http://arxiv.org/abs/2401.22222</id>
+        </entry>
+      </feed>`
+    })
+
+    const result = await findVerifiedArxivMetadata({
+      title: 'Shared Paper Title',
+      authors: 'Doe, Jane',
+      year: '2024',
+      doi: null
+    })
+
+    expect(result?.arxivId).toBe('2401.22222')
+  })
+
   // ----------------------------------------------------------
   // Test 2: Fallback to arXiv
   // ----------------------------------------------------------
@@ -343,6 +481,7 @@ describe('createMetadataService', () => {
     expect(fields.year).toBe('2023')
     expect(fields.abstract).toBe('Arxiv abstract text here.')
     expect(fields.url).toBe('http://arxiv.org/abs/2301.12345')
+    expect(fields.arxivId).toBe('2301.12345')
     expect(status).toBe('done')
     expect(source).toBe('arxiv')
   })
@@ -1023,7 +1162,7 @@ describe('createMetadataService', () => {
     }
 
     mockNetFetchImpl = (url: string) => {
-      if (url.includes('id_list=')) return makeArxivResponse({ title: realTitle })
+      if (url.includes('id_list=')) return makeArxivResponse({ title: realTitle, id: '1506.02640v5' })
       if (url.includes('query.title=')) return crossrefTitleResponse
       if (url.includes('crossref')) return Promise.resolve({ ok: false })
       if (url.includes('dblp.org')) return makeDblpResponse({ empty: true })

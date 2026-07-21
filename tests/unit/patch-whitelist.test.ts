@@ -18,7 +18,11 @@ function expectForbiddenField(patch: Record<string, unknown>, field: string): vo
 
 describe('patch whitelist (real validatePatch from documents repository)', () => {
   it('accepts editable fields and returns them', () => {
-    expect(validatePatch({ title: 'a', doi: '10.1/x' })).toEqual(['title', 'doi'])
+    expect(validatePatch({ title: 'a', doi: '10.1/x', arxivId: '2401.12345' })).toEqual([
+      'title',
+      'doi',
+      'arxivId'
+    ])
   })
 
   it('rejects id', () => {

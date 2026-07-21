@@ -323,6 +323,14 @@ function extractMetadataFromEntry(
     result[docField] = value
   }
 
+  const archivePrefix = entry.fields.archiveprefix
+    ? unescapeLatex(entry.fields.archiveprefix).trim().toLowerCase()
+    : ''
+  const eprint = entry.fields.eprint
+    ? unescapeLatex(entry.fields.eprint).trim().replace(/[{}]/g, '')
+    : ''
+  if (archivePrefix === 'arxiv' && eprint) result.arxivId = eprint
+
   return result
 }
 
@@ -469,6 +477,7 @@ function buildBaseDoc(
     keywords: metadata.keywords ?? null,
     url: metadata.url ?? null,
     doi: metadata.doi ?? null,
+    arxivId: metadata.arxivId ?? null,
     note: citekey || null,
     starred: 0,
     addedAt: now,
@@ -486,7 +495,8 @@ function buildBaseDoc(
 export async function importFromBibtex(
   repos: Repositories,
   filePath: string,
-  source: BibImportSource
+  source: BibImportSource,
+  verifyArxivId?: (docId: string, input: string) => Promise<Document>
 ): Promise<BibImportResultInternal> {
   const bibStat = statSync(filePath)
   if (!bibStat.isFile()) throw new Error('BibTeX path is not a file')
@@ -503,6 +513,23 @@ export async function importFromBibtex(
   for (const entry of entries) {
     const key = entry.citekey || `entry-${entries.indexOf(entry) + 1}`
     const metadata = extractMetadataFromEntry(entry)
+    const arxivId = metadata.arxivId
+    delete metadata.arxivId
+    const applyArxivId = async (docId: string): Promise<void> => {
+      if (!arxivId) return
+      if (!verifyArxivId) {
+        errors.push({ key, message: 'arXiv verification service is unavailable' })
+        return
+      }
+      try {
+        await verifyArxivId(docId, arxivId)
+      } catch (error) {
+        errors.push({
+          key,
+          message: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
 
     const pdfPath = findPdfFromEntry(entry, source, dirname(filePath))
 
@@ -510,6 +537,7 @@ export async function importFromBibtex(
       const existingByPath = repos.documents.findByPath(pdfPath)
       if (existingByPath) {
         applyMetadataToExistingDoc(repos, existingByPath.id, metadata, entry.citekey)
+        await applyArxivId(existingByPath.id)
         skipped.push(existingByPath.id)
         continue
       }
@@ -519,6 +547,7 @@ export async function importFromBibtex(
         const existingByHash = repos.documents.findByHash(fileHash)
         if (existingByHash) {
           applyMetadataToExistingDoc(repos, existingByHash.id, metadata, entry.citekey)
+          await applyArxivId(existingByHash.id)
           skipped.push(existingByHash.id)
           continue
         }
@@ -548,6 +577,7 @@ export async function importFromBibtex(
         }
 
         added.push(doc.id)
+        await applyArxivId(doc.id)
         logger.info(`bib-import:added ${doc.id} - ${entry.citekey}`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -567,6 +597,7 @@ export async function importFromBibtex(
           fileMissing: 1
         })
         added.push(doc.id)
+        await applyArxivId(doc.id)
         logger.info(`bib-import:added (no-pdf) ${doc.id} - ${entry.citekey}`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

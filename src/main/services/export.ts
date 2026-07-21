@@ -162,6 +162,10 @@ function formatBibtexEntry(doc: Document, used: Set<string>): string | null {
   if (doc.keywords) fields.keywords = escapeBibtexValue(doc.keywords)
   if (doc.url) fields.url = escapeBibtexValue(doc.url)
   if (doc.doi) fields.doi = escapeBibtexValue(doc.doi)
+  if (doc.arxivId) {
+    fields.eprint = escapeBibtexValue(doc.arxivId)
+    fields.archiveprefix = escapeBibtexValue('arXiv')
+  }
 
   if (Object.keys(fields).length === 0) return null
 
@@ -242,6 +246,7 @@ const EDITABLE_FIELD_VALUES: readonly EditableField[] = [
   'keywords',
   'url',
   'doi',
+  'arxivId',
   'note',
   'affiliations'
 ]
@@ -346,6 +351,7 @@ export function sanitizeImportedDoc(doc: unknown, libraryFolder: string): NewDoc
     keywords: asStringOrNull(d.keywords),
     url: asStringOrNull(d.url),
     doi: asStringOrNull(d.doi),
+    arxivId: asStringOrNull(d.arxivId),
     note: asStringOrNull(d.note),
     affiliations: asStringOrNull(d.affiliations),
     starred: asNumberDefault(d.starred, 0),

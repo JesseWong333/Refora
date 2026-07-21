@@ -248,7 +248,8 @@ function InlineField({
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(value)
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const statusRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -270,6 +271,7 @@ function InlineField({
       return
     }
     setStatus('saving')
+    setSaveError(null)
     try {
       const patch: DocumentPatch = {}
       patch[field] = trimmed || ''
@@ -278,17 +280,19 @@ function InlineField({
       setStatus('saved')
       if (statusRef.current) clearTimeout(statusRef.current)
       statusRef.current = setTimeout(() => setStatus('idle'), 2000)
-    } catch {
+    } catch (error) {
       setText(value)
-      setStatus('idle')
+      setSaveError(errorMessage(error, t('detail.saveFailed')))
+      setStatus('error')
     }
     setEditing(false)
-  }, [text, value, field, docId, onSaved])
+  }, [text, value, field, docId, onSaved, t])
 
   const applyRemote = useCallback(async () => {
     if (!remoteValue) return
     setText(remoteValue.value)
     setStatus('saving')
+    setSaveError(null)
     try {
       const patch: DocumentPatch = {}
       patch[field] = remoteValue.value
@@ -297,11 +301,12 @@ function InlineField({
       setStatus('saved')
       if (statusRef.current) clearTimeout(statusRef.current)
       statusRef.current = setTimeout(() => setStatus('idle'), 2000)
-    } catch {
+    } catch (error) {
       setText(value)
-      setStatus('idle')
+      setSaveError(errorMessage(error, t('detail.saveFailed')))
+      setStatus('error')
     }
-  }, [field, remoteValue, docId, onSaved, value])
+  }, [field, remoteValue, docId, onSaved, value, t])
 
   const hasRemoteDiff = remoteValue && remoteValue.value !== '' && remoteValue.value !== (value ?? '')
   const authors = variant === 'authors'
@@ -354,11 +359,19 @@ function InlineField({
         ) : (
           <div
             className={`w-full cursor-text border border-transparent text-foreground transition-colors duration-150 hover:border-border focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent ${DISPLAY_CLASSES[variant]}`}
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setSaveError(null)
+              setStatus('idle')
+              setEditing(true)
+            }}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') setEditing(true)
+              if (e.key === 'Enter' || e.key === ' ') {
+                setSaveError(null)
+                setStatus('idle')
+                setEditing(true)
+              }
             }}
           >
             {variant === 'authors' && authors.length > 0 ? (
@@ -389,8 +402,12 @@ function InlineField({
         )}
       </div>
       {!label && status !== 'idle' ? (
-        <span className={`text-caption ${status === 'saved' ? 'text-success' : 'text-muted'}`}>
-          {status === 'saved' ? t('common.saved') : t('common.saving')}
+        <span className={`text-caption ${status === 'saved' ? 'text-success' : status === 'error' ? 'text-error' : 'text-muted'}`}>
+          {status === 'saved'
+            ? t('common.saved')
+            : status === 'error'
+              ? saveError
+              : t('common.saving')}
         </span>
       ) : null}
     </div>
@@ -780,7 +797,7 @@ function SingleDetail({ doc }: { doc: Document }) {
         </div>
 
         <div className="mt-6 grid grid-cols-[84px_minmax(0,1fr)] gap-x-4 gap-y-2 border-t border-border pt-5">
-          {(['keywords', 'url', 'doi'] as const).map((field) => (
+          {(['keywords', 'url', 'doi', 'arxivId'] as const).map((field) => (
             <div key={field} className="contents">
               <span className="text-[13px] leading-5 text-muted">
                 {field === 'doi' ? 'DOI' : t(`detail.${field}` as never)}

@@ -21,6 +21,7 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     keywords: null,
     url: null,
     doi: null,
+    arxivId: null,
     note: null,
     starred: 0,
     addedAt: Date.now(),
@@ -108,7 +109,8 @@ describe('toBibtex', () => {
       abstract: 'An abstract.',
       keywords: 'key1, key2',
       url: 'https://example.com',
-      doi: '10.1234/test'
+      doi: '10.1234/test',
+      arxivId: '2401.12345'
     })
     const result = toBibtex([doc])
     expect(result).toContain('title')
@@ -119,6 +121,8 @@ describe('toBibtex', () => {
     expect(result).toContain('keywords')
     expect(result).toContain('url')
     expect(result).toContain('doi')
+    expect(result).toContain('eprint')
+    expect(result).toContain('archiveprefix')
     expect(result).not.toContain('abstract')
   })
 

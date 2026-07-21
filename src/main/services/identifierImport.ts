@@ -13,7 +13,14 @@ import type { Document, IdentifierImportResult, IdentifierType, MetadataSource }
 import { newId } from '../db/repositories/documents'
 import { copyToLibrary } from './library'
 import { logger } from './logger'
-import { normalizeAuthors, parseCrossrefMessage, parseArxivEntry } from './metadata'
+import {
+  deriveDoiFromArxivId,
+  findVerifiedArxivMetadata,
+  normalizeArxivId,
+  normalizeAuthors,
+  parseCrossrefMessage,
+  parseArxivEntry
+} from './metadata'
 
 const CONNECT_TIMEOUT_MS = 15_000
 const DOWNLOAD_IDLE_TIMEOUT_MS = 60_000
@@ -212,8 +219,7 @@ export function detectIdentifierType(input: string): IdentifierType | null {
 
   if (/^10\.\d{4,9}\/[-._;()/:a-zA-Z0-9+]+$/.test(trimmed)) return 'doi'
 
-  if (/^\d{4}\.\d{4,5}(v\d+)?$/.test(trimmed)) return 'arxiv'
-  if (/^(?:arxiv\s*:?\s*)?\d{4}\.\d{4,5}(v\d+)?$/i.test(trimmed)) return 'arxiv'
+  if (normalizeArxivId(trimmed)) return 'arxiv'
 
   if (/^[\d-]{9,17}[\dXx]$/.test(trimmed.replace(/\s/g, ''))) return 'isbn'
 
@@ -221,26 +227,7 @@ export function detectIdentifierType(input: string): IdentifierType | null {
 }
 
 export function extractArxivId(input: string): string | null {
-  const trimmed = input.trim()
-  const lower = trimmed.toLowerCase()
-
-  if (lower.startsWith('http://') || lower.startsWith('https://')) {
-    try {
-      const url = new URL(trimmed)
-      if (url.hostname.includes('arxiv.org')) {
-        const absMatch = url.pathname.match(/\/abs\/([^/?#]+)/)
-        if (absMatch) return absMatch[1]
-        const pdfMatch = url.pathname.match(/\/pdf\/([^/?#]+)/)
-        if (pdfMatch) return pdfMatch[1].replace(/\.pdf$/, '')
-      }
-    } catch {
-      return null
-    }
-    return null
-  }
-
-  const m = trimmed.match(/(\d{4}\.\d{4,5}(?:v\d+)?)/)
-  return m ? m[1] : null
+  return normalizeArxivId(input)
 }
 
 export function extractDoi(input: string): string | null {
@@ -340,9 +327,10 @@ async function fetchArxivMetadata(arxivId: string): Promise<{ data: Partial<Docu
     const text = await response.text()
 
     const entry = parseArxivEntry(text)
-    if (!entry) return null
+    const normalizedId = normalizeArxivId(arxivId)
+    if (!entry || !normalizedId || entry.arxivId.replace(/v\d+$/i, '') !== normalizedId.replace(/v\d+$/i, '')) return null
 
-    const pdfUrl = `https://arxiv.org/pdf/${arxivId}.pdf`
+    const pdfUrl = `https://arxiv.org/pdf/${normalizedId}.pdf`
 
     const data: Partial<Document> = {
       metadataSource: 'arxiv' as MetadataSource,
@@ -350,7 +338,9 @@ async function fetchArxivMetadata(arxivId: string): Promise<{ data: Partial<Docu
       authors: normalizeAuthors(entry.authors),
       year: entry.year,
       abstract: entry.abstract,
-      url: entry.id ?? `https://arxiv.org/abs/${arxivId}`
+      url: entry.id ?? `https://arxiv.org/abs/${normalizedId}`,
+      doi: entry.doi ?? deriveDoiFromArxivId(normalizedId),
+      arxivId: normalizedId
     }
 
     return { data, pdfUrl }
@@ -513,6 +503,12 @@ export async function importFromIdentifier(
       return { added: [], message: `Could not fetch Crossref metadata for DOI: ${doi}` }
     }
     metadata = crossrefResult.data
+    try {
+      const verifiedArxiv = await findVerifiedArxivMetadata(metadata)
+      if (verifiedArxiv?.arxivId) metadata.arxivId = verifiedArxiv.arxivId
+    } catch (error) {
+      logger.warn(`identifier:doi arxiv-crosscheck failed ${error instanceof Error ? error.message : String(error)}`)
+    }
     pdfUrl = crossrefResult.pdfUrl ?? null
     if (!pdfUrl) {
       pdfUrl = await resolveDoiPdfUrl(doi)
@@ -580,6 +576,7 @@ export async function importFromIdentifier(
       keywords: meta?.keywords ?? null,
       url: meta?.url ?? null,
       doi: meta?.doi ?? null,
+      arxivId: meta?.arxivId ?? null,
       note: null,
       starred: 0,
       addedAt: now,

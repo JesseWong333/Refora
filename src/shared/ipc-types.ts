@@ -61,6 +61,7 @@ export type EditableField =
   | 'keywords'
   | 'url'
   | 'doi'
+  | 'arxivId'
   | 'note'
   | 'affiliations'
 
@@ -100,6 +101,7 @@ export interface Document {
   keywords: string | null
   url: string | null
   doi: string | null
+  arxivId: string | null
   note: string | null
   affiliations: string | null
   starred: number

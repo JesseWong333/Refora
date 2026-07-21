@@ -69,6 +69,7 @@ export function makeNewDocument(id: string, overrides: Partial<NewDocument> = {}
     keywords: null,
     url: null,
     doi: null,
+    arxivId: null,
     note: null,
     starred: 0,
     addedAt: 1000,

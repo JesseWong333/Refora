@@ -102,6 +102,7 @@
     "abstract": "摘要",
     "keywords": "关键词",
     "url": "URL",
+    "arxivId": "arXiv ID",
     "addedAt": "添加时间",
     "filePath": "PDF位置",
     "note": "笔记",
@@ -119,7 +120,8 @@
     "relocate": "重新定位",
     "restoreOriginal": "恢复到原始位置",
     "open": "打开",
-    "applyRemote": "应用远端值"
+    "applyRemote": "应用远端值",
+    "saveFailed": "保存失败"
   },
   "ocr": {
     "title": "结构化文档",

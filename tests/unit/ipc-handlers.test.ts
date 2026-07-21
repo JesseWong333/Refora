@@ -135,6 +135,33 @@ describe('IPC handlers (data layer)', () => {
     expect((r as { ok: true; data: { editedFields: string[] } }).data.editedFields).toEqual(['title'])
   })
 
+  it('documents.update delegates arXiv ID verification to the metadata service', async () => {
+    const original = repos.documents.insert(makeDoc('d1'))
+    const verified = { ...original, arxivId: '2401.12345' }
+    const metadataService = {
+      enqueue: vi.fn(),
+      updateVerifiedArxivId: vi.fn().mockResolvedValue(verified),
+      refreshMetadata: vi.fn(),
+      bulkRefreshMetadata: vi.fn(),
+      resumeOnStartup: vi.fn(),
+      destroy: vi.fn()
+    }
+    const localHandlers = createIpcHandlers({
+      getWin: () => null,
+      getRuntime: () => ({ repos, metadataService })
+    })
+
+    const result = await localHandlers[IpcChannel.DocumentsUpdate]('d1', {
+      arxivId: 'https://arxiv.org/abs/2401.12345'
+    })
+
+    expect(result).toEqual({ ok: true, data: verified })
+    expect(metadataService.updateVerifiedArxivId).toHaveBeenCalledWith(
+      'd1',
+      'https://arxiv.org/abs/2401.12345'
+    )
+  })
+
   it('a handler that throws internally resolves { ok: false } (never rejects)', () => {
     const r = handlers[IpcChannel.DocumentsUpdate]('missing', { title: 'x' })
     expect(r.ok).toBe(false)

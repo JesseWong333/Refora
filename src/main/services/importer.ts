@@ -251,6 +251,7 @@ export function createImporter(repos: Repositories, win: BrowserWindow | (() => 
             keywords: null,
             url: null,
             doi: null,
+            arxivId: null,
             note: null,
             affiliations: null,
             starred: 0,

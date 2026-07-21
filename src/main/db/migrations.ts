@@ -115,6 +115,7 @@ function migrationSchemaPresent(db: SqliteLike, version: number): boolean {
       ['index', 'idx_document_ocr_results_document']
     ])
   }
+  if (version === 22) return hasColumns('documents', ['arxivId'])
   return version <= db.getUserVersion()
 }
 
