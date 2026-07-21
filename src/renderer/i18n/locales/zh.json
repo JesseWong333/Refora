@@ -121,6 +121,39 @@
     "open": "打开",
     "applyRemote": "应用远端值"
   },
+  "ocr": {
+    "title": "结构化文档",
+    "description": "使用本地 MinerU OCR 生成包含公式、表格和图片的可搜索 Markdown。",
+    "engineRequired": "请先在设置中安装 MinerU，再转换此文档。",
+    "openSettings": "打开设置",
+    "convert": "使用 MinerU 转换",
+    "rebuild": "重新生成",
+    "cancel": "取消转换",
+    "open": "打开结构化文档",
+    "processing": "处理中 · {{stage}}",
+    "elapsed": "已用时 {{time}}",
+    "failed": "转换失败：{{message}}",
+    "stale": "生成后 PDF 已发生变化，需要重新生成。",
+    "profile": "解析档位",
+    "profiles": {
+      "compatible": "兼容（Pipeline）",
+      "balanced": "均衡",
+      "quality": "高质量"
+    },
+    "readerLoading": "正在加载结构化文档…",
+    "readerFailed": "无法加载结构化文档",
+    "empty": "未生成结构化内容。",
+    "close": "关闭结构化文档",
+    "stage": {
+      "queued": "等待中",
+      "startingWorker": "正在启动 MinerU",
+      "loadingModels": "正在加载模型",
+      "parsing": "正在解析文档",
+      "writingResults": "正在写入结果",
+      "validating": "正在校验输出",
+      "completed": "已完成"
+    }
+  },
   "settings": {
     "title": "设置",
     "libraryFolder": "库文件夹",
@@ -147,6 +180,38 @@
     "sectionAppearance": {
       "title": "外观",
       "desc": "主题、语言与侧边栏偏好"
+    },
+    "mineru": {
+      "title": "MinerU OCR",
+      "desc": "本地结构化 PDF 解析运行时与模型",
+      "installLocation": "安装位置",
+      "locationHint": "Refora 会在此位置内创建带版本的 MinerU 目录；OCR 结果仍保存在库文件夹中。",
+      "requirements": "约需 20 GB 磁盘空间，安装时会下载模型。",
+      "installedDetails": "版本 {{version}} · {{size}}",
+      "install": "安装 MinerU",
+      "uninstall": "卸载",
+      "loadFailed": "无法读取 MinerU 状态",
+      "operationFailed": "MinerU 操作失败",
+      "progressStep": "步骤 {{current}}/{{total}}",
+      "elapsed": "已用时 {{time}}",
+      "progress": {
+        "preparing": "正在准备安装目录",
+        "installingTools": "正在下载安装工具",
+        "installingPython": "正在下载并安装 Python 运行时",
+        "installingMineru": "正在下载并安装 MinerU 依赖",
+        "downloadingModels": "正在下载 MinerU 模型",
+        "healthCheck": "正在检查 MinerU 运行环境",
+        "finalizing": "正在完成安装",
+        "completed": "安装完成"
+      },
+      "state": {
+        "loading": "正在检查…",
+        "notInstalled": "未安装",
+        "installing": "正在安装",
+        "installed": "已安装",
+        "unavailable": "不可用",
+        "invalid": "安装需要修复"
+      }
     },
     "aiProviders": {
       "title": "AI 服务商",

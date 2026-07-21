@@ -14,6 +14,7 @@ import { createAiReportsRepository } from './aiReports'
 import { createChatRepository } from './chat'
 import { createAgentTracesRepository } from './agentTraces'
 import { createAiProvidersRepository } from './aiProviders'
+import { createDocumentOcrRepository } from './documentOcr'
 import { RepoError } from './errors'
 
 export interface RepositoryDeps {
@@ -39,6 +40,7 @@ export function createRepositories(db: SqliteDb, deps: RepositoryDeps = {}) {
   const chat = createChatRepository(db)
   const agentTraces = createAgentTracesRepository(db)
   const aiProviders = createAiProvidersRepository(db)
+  const documentOcr = createDocumentOcrRepository(db)
 
   let depth = 0
 
@@ -94,6 +96,7 @@ export function createRepositories(db: SqliteDb, deps: RepositoryDeps = {}) {
     chat,
     agentTraces,
     aiProviders,
+    documentOcr,
     transaction
   }
 }

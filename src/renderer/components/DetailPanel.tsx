@@ -10,7 +10,7 @@ import type { ContextMenuItem } from '@lobehub/ui'
 
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
-import { formatDate, formatFilePath } from '../utils/format'
+import { formatDate, formatElapsedClock, formatFilePath } from '../utils/format'
 import type {
   Document,
   EditableField,
@@ -19,8 +19,203 @@ import type {
   DocumentPatch
 } from '../../shared/ipc-types'
 import { errorMessage } from '../../shared/ipc-types'
+import type {
+  MineruInstallProgress,
+  OcrCompletedEvent,
+  OcrDocumentState,
+  OcrErrorEvent,
+  OcrProfile,
+  OcrProgressEvent
+} from '../../shared/mineru-types'
+import { IpcChannel } from '../../shared/ipc-channels'
+import { useOcrReaderStore } from '../store/ocrReaderStore'
 
 type InlineFieldVariant = 'default' | 'title' | 'year' | 'authors' | 'metadata' | 'abstract'
+
+function OcrSection({ doc }: { doc: Document }) {
+  const { t } = useTranslation()
+  const openReader = useOcrReaderStore((state) => state.open)
+  const [state, setState] = useState<OcrDocumentState | null>(null)
+  const [profile, setProfile] = useState<OcrProfile>('balanced')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [now, setNow] = useState(Date.now())
+  const refreshGeneration = useRef(0)
+  const readerFailedMessage = t('ocr.readerFailed')
+  const activeJobId = state?.activeJob?.id ?? null
+
+  useEffect(() => {
+    if (!activeJobId) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [activeJobId])
+
+  const refresh = useCallback(async () => {
+    const generation = refreshGeneration.current + 1
+    refreshGeneration.current = generation
+    try {
+      const next = await api.ocr.getState(doc.id)
+      if (refreshGeneration.current !== generation) return
+      setState(next)
+      setError(null)
+    } catch (value) {
+      if (refreshGeneration.current !== generation) return
+      setError(errorMessage(value, readerFailedMessage))
+    } finally {
+      if (refreshGeneration.current === generation) setLoading(false)
+    }
+  }, [doc.id, readerFailedMessage])
+
+  useEffect(() => {
+    setState(null)
+    setError(null)
+    setLoading(true)
+    void refresh()
+    const onProgress = (payload: OcrProgressEvent) => {
+      if (payload.job.documentId !== doc.id) return
+      void refresh()
+      setError(null)
+    }
+    const onCompleted = (payload: OcrCompletedEvent) => {
+      if (payload.documentId !== doc.id) return
+      void refresh()
+      setError(null)
+    }
+    const onError = (payload: OcrErrorEvent) => {
+      if (payload.documentId !== doc.id) return
+      refreshGeneration.current += 1
+      setState((current) => current ? { ...current, activeJob: null } : current)
+      setLoading(false)
+      setError(t('ocr.failed', { message: payload.message }))
+    }
+    const onInstallProgress = (payload: MineruInstallProgress) => {
+      if (payload.stage === 'completed') void refresh()
+    }
+    api.events.onOcrProgress(onProgress)
+    api.events.onOcrCompleted(onCompleted)
+    api.events.onOcrError(onError)
+    api.events.onMineruInstallProgress(onInstallProgress)
+    return () => {
+      refreshGeneration.current += 1
+      api.events.off(IpcChannel.EventOcrProgress, onProgress)
+      api.events.off(IpcChannel.EventOcrCompleted, onCompleted)
+      api.events.off(IpcChannel.EventOcrError, onError)
+      api.events.off(IpcChannel.EventMineruInstallProgress, onInstallProgress)
+    }
+  }, [doc.id, refresh])
+
+  const start = async () => {
+    setError(null)
+    try {
+      const job = await api.ocr.start(doc.id, profile)
+      setState((current) => current ? { ...current, activeJob: job } : current)
+    } catch (value) {
+      setError(errorMessage(value, readerFailedMessage))
+    }
+  }
+
+  const cancel = async () => {
+    if (!state?.activeJob) return
+    try {
+      await api.ocr.cancel(state.activeJob.id)
+      await refresh()
+    } catch (value) {
+      setError(errorMessage(value, readerFailedMessage))
+    }
+  }
+
+  if (loading) return null
+  const installed = state?.engine.state === 'installed'
+  const job = state?.activeJob
+  const result = state?.result
+  const elapsed = job
+    ? formatElapsedClock(now - (job.startedAt ?? job.createdAt))
+    : null
+
+  return (
+    <div className="mt-5 flex flex-col gap-3 border-t border-border pt-5">
+      <div>
+        <div className="text-label font-semibold uppercase tracking-wide text-muted">
+          {t('ocr.title')}
+        </div>
+        <p className="mb-0 mt-1 text-xs leading-5 text-muted">{t('ocr.description')}</p>
+      </div>
+
+      {job ? (
+        <div className="flex flex-col gap-2 rounded-lg bg-panel-2 px-3 py-2">
+          <div className="flex items-center justify-between gap-2 text-xs text-foreground">
+            <span>{t('ocr.processing', { stage: t(`ocr.stage.${job.stage}`) })}</span>
+            <span className="text-muted">
+              {job.progress != null ? `${Math.round(job.progress * 100)}% · ` : ''}
+              {t('ocr.elapsed', { time: elapsed })}
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-background">
+            <div
+              className={`h-full rounded-full bg-accent ${
+                job.progress == null
+                  ? 'mineru-progress-indeterminate'
+                  : 'transition-[width] duration-300'
+              }`}
+              style={job.progress == null
+                ? undefined
+                : { width: `${Math.max(2, Math.min(100, job.progress * 100))}%` }}
+            />
+          </div>
+          <Button variant="ghost" size="sm" className="self-start" onClick={() => void cancel()}>
+            {t('ocr.cancel')}
+          </Button>
+        </div>
+      ) : (
+        <>
+          {result && (
+            <div className="flex flex-col gap-2">
+              {result.stale && (
+                <div className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+                  {t('ocr.stale')}
+                </div>
+              )}
+              <Button
+                variant="primary"
+                size="sm"
+                className="self-start"
+                icon={<FileText className="h-3.5 w-3.5" />}
+                onClick={() => openReader(doc.id, result.resultKey, doc.title || doc.fileName)}
+              >
+                {t('ocr.open')}
+              </Button>
+            </div>
+          )}
+          {installed ? (
+            <div className="flex items-center gap-2">
+              <Select
+                value={profile}
+                onChange={(value) => setProfile(value as OcrProfile)}
+                options={(['compatible', 'balanced', 'quality'] as OcrProfile[]).map((value) => ({
+                  value,
+                  label: t(`ocr.profiles.${value}`)
+                }))}
+                size="small"
+                style={{ minWidth: 150 }}
+                aria-label={t('ocr.profile')}
+              />
+              <Button variant="ghost" size="sm" onClick={() => void start()}>
+                {result ? t('ocr.rebuild') : t('ocr.convert')}
+              </Button>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-panel-2 px-3 py-2 text-xs text-muted">
+              {t('ocr.engineRequired')}
+            </div>
+          )}
+        </>
+      )}
+
+      {error && <div className="rounded-lg bg-error/10 px-3 py-2 text-xs text-error">{error}</div>}
+    </div>
+  )
+}
 
 const DISPLAY_CLASSES: Record<InlineFieldVariant, string> = {
   default: 'rounded-lg bg-background px-3 py-1.5 text-sm leading-5',
@@ -664,6 +859,8 @@ function SingleDetail({ doc }: { doc: Document }) {
             </Button>
           </div>
         )}
+
+        <OcrSection key={doc.id} doc={doc} />
 
         <div className="mt-5">
           <NoteField value={doc.note ?? ''} docId={doc.id} onSaved={onSaved} />

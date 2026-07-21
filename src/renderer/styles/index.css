@@ -1206,6 +1206,32 @@
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-125%);
+  }
+  50% {
+    transform: translateX(125%);
+  }
+  100% {
+    transform: translateX(325%);
+  }
+}
+
+.mineru-progress-indeterminate {
+  width: 32%;
+  animation: progress-indeterminate 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mineru-progress-indeterminate {
+    width: 32%;
+    transform: translateX(106%);
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
 @keyframes slide-up {
   from {
     opacity: 0;

@@ -12,6 +12,7 @@ import WorkspacePanel from './components/workspace/WorkspacePanel'
 import ChatPanel from './components/workspace/ChatPanel'
 import ResizeDivider from './components/ResizeDivider'
 import ConfirmDialog from './components/ConfirmDialog'
+import StructuredDocumentPanel from './components/StructuredDocumentPanel'
 import FirstRunWizard from './components/FirstRunWizard'
 import { Toast } from './components/ui'
 import { useAppShortcuts } from './hooks/useAppShortcuts'
@@ -19,6 +20,7 @@ import { useTheme, AppThemeProvider } from './hooks/useTheme'
 import { getAntdTokenOverrides } from './theme/tokens'
 import { useDocumentStore } from './store/documentStore'
 import { useWorkspaceStore } from './store/workspaceStore'
+import { useOcrReaderStore } from './store/ocrReaderStore'
 import { api } from './ipc'
 import type { ListColumnState } from '../shared/ipc-types'
 
@@ -128,6 +130,7 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
   const workspaceFullscreen = useWorkspaceStore((s) => s.fullscreen)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const chatStreaming = useWorkspaceStore((s) => s.chatStreaming)
+  const ocrReaderOpen = useOcrReaderStore((s) => s.documentId !== null)
   const previousActiveWorkspaceIdRef = useRef(activeWorkspaceId)
 
   const setDocumentListMode = useCallback((compact: boolean) => {
@@ -175,6 +178,8 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
       store.destroy()
     }
   }, [])
+
+  useEffect(() => () => useOcrReaderStore.getState().close(), [])
 
   useEffect(() => {
     const store = useWorkspaceStore.getState()
@@ -546,7 +551,12 @@ function AppInner({ listColumnState, sidebarCollapsed: initialSidebarCollapsed, 
             className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
             data-testid="app-panel-layer"
           >
-            {workspaceFullscreen ? (
+            {ocrReaderOpen ? (
+              <div className="relative z-40 flex h-full min-h-0 w-full min-w-0 overflow-hidden">
+                <StructuredDocumentPanel />
+                {chatPane}
+              </div>
+            ) : workspaceFullscreen ? (
               <div className="relative z-40 flex h-full min-h-0 w-full min-w-0 overflow-hidden">
                 <div className="min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="app-workspace-panel">
                   <WorkspacePanel />

@@ -11,6 +11,8 @@ extraResources:
     filter:
       - '**/*'
       - '!module-cache{,/**}'
+  - from: resources/mineru_worker.py
+    to: mineru/mineru_worker.py
 asar: true
 asarUnpack:
   - '**/*.node'

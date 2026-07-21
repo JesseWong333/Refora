@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage, net, pro
 import { join, resolve as resolvePath } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createWriteStream, existsSync, statSync } from 'node:fs'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { initLogger, logger } from './services/logger'
 import { openDatabase, seedSettings, closeDatabase, getSetting, getSearchMode } from './db/connection'
@@ -42,6 +42,12 @@ import { createAgentExecutionService, createBrokerAgentRunner } from './services
 import type { AgentExecutionService } from './services/agentExecution'
 import { createAgentArtifactPublisher } from './services/agentArtifactPublisher'
 import type { AgentArtifactPublisher } from './services/agentArtifactPublisher'
+import { createMineruEngineManager } from './services/mineruEngineManager'
+import type { MineruEngineManager } from './services/mineruEngineManager'
+import { createMineruWorkerProcess } from './services/mineruWorkerProcess'
+import type { MineruWorkerProcess } from './services/mineruWorkerProcess'
+import { createMineruDocumentService } from './services/mineruDocumentService'
+import type { MineruDocumentService } from './services/mineruDocumentService'
 import {
   activeDuplicateFiles,
   duplicateFileFingerprint,
@@ -54,6 +60,10 @@ import {
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'refora-asset',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  },
+  {
+    scheme: 'refora-document',
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
   }
 ])
@@ -79,8 +89,11 @@ interface Runtime extends RuntimeRef {
   agentExecutionService: AgentExecutionService
   agentArtifactPublisher: AgentArtifactPublisher
   agentRuntimeManager: AgentRuntimeManager
+  mineruWorker: MineruWorkerProcess
+  mineruDocumentService: MineruDocumentService
 }
 let runtime: Runtime | null = null
+let mineruEngineManager: MineruEngineManager | null = null
 let win: BrowserWindow | null = null
 let isQuitting = false
 
@@ -101,9 +114,9 @@ function reportMenuError(action: string, error: unknown): void {
 
 function applyCsp(): void {
   const prod =
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: refora-asset:; media-src 'self' refora-asset:; connect-src 'self'"
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: refora-asset: refora-document:; media-src 'self' refora-asset:; connect-src 'self'"
   const dev =
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: refora-asset:; media-src 'self' refora-asset:; connect-src 'self' ws://localhost:*"
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: refora-asset: refora-document:; media-src 'self' refora-asset:; connect-src 'self' ws://localhost:*"
   const csp = app.isPackaged ? prod : dev
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -135,6 +148,34 @@ function registerWorkspaceAssetProtocol(): void {
       })
       const headers = new Headers(response.headers)
       headers.set('Content-Type', asset.mimeType)
+      headers.set('X-Content-Type-Options', 'nosniff')
+      return new Response(response.body, { status: response.status, headers })
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
+  })
+}
+
+function registerDocumentProtocol(): void {
+  void protocol.handle('refora-document', async (request) => {
+    try {
+      const url = new URL(request.url)
+      const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+      if (url.hostname !== 'ocr' || parts.length < 4 || parts[2] !== 'assets') {
+        return new Response('Not found', { status: 404 })
+      }
+      const current = runtime
+      if (!current) return new Response('Runtime unavailable', { status: 503 })
+      const filePath = await current.mineruDocumentService.resolveAsset(
+        parts[0],
+        parts[1],
+        parts.slice(2).join('/')
+      )
+      const response = await net.fetch(pathToFileURL(filePath).toString(), {
+        headers: request.headers,
+        bypassCustomProtocolHandlers: true
+      })
+      const headers = new Headers(response.headers)
       headers.set('X-Content-Type-Options', 'nosniff')
       return new Response(response.body, { status: response.status, headers })
     } catch {
@@ -385,6 +426,7 @@ function destroyRuntime(target: Runtime): void {
   target.aiAgentService.destroy()
   target.agentExecutionService.destroy()
   target.pdfTextService.destroy()
+  target.mineruDocumentService.destroy()
   closeDatabase(target.db)
 }
 
@@ -395,6 +437,7 @@ function teardownRuntime(): void {
 }
 
 function buildRuntime(dbPath: string): Runtime {
+  if (!mineruEngineManager) throw new Error('MinerU engine manager is not ready')
   const db = openDatabase(dbPath)
   try {
     seedSettings(db, detectLanguage())
@@ -478,6 +521,25 @@ function buildRuntime(dbPath: string): Runtime {
       agentArtifactPublisher,
       agentRuntimeManager
     )
+    const workerScriptPath = app.isPackaged
+      ? join(process.resourcesPath, 'mineru', 'mineru_worker.py')
+      : join(__dirname, '../../resources/mineru_worker.py')
+    const mineruWorker = createMineruWorkerProcess({
+      engineManager: mineruEngineManager,
+      workerScriptPath
+    })
+    const send = (channel: string, payload: unknown): void => {
+      if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
+    }
+    const mineruDocumentService = createMineruDocumentService({
+      repos,
+      engineManager: mineruEngineManager,
+      worker: mineruWorker,
+      getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', ''),
+      emitProgress: (payload) => send(IpcChannel.EventOcrProgress, payload),
+      emitCompleted: (payload) => send(IpcChannel.EventOcrCompleted, payload),
+      emitError: (payload) => send(IpcChannel.EventOcrError, payload)
+    })
     const watcher = createWatcher({
       importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
       getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', ''),
@@ -548,7 +610,9 @@ function buildRuntime(dbPath: string): Runtime {
       agentSandboxService,
       agentExecutionService,
       agentArtifactPublisher,
-      agentRuntimeManager
+      agentRuntimeManager,
+      mineruWorker,
+      mineruDocumentService
     }
   } catch (error) {
     closeDatabase(db)
@@ -562,6 +626,9 @@ function activateRuntime(target: Runtime, startLibraryWatcher = true): void {
   target.metadataService.resumeOnStartup()
   void target.agentSandboxService.ensure(null).catch((error) => {
     logger.warn(`agent:sandbox init failed: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  void target.mineruDocumentService.initialize().catch((error) => {
+    logger.warn(`ocr:init failed: ${error instanceof Error ? error.message : String(error)}`)
   })
   const signal = target.missingCheckAbort.signal
 
@@ -721,6 +788,49 @@ void app.whenReady().then(() => {
   logger.info(`app:ready (dev=${isDev})`)
   applyCsp()
 
+  mineruEngineManager = createMineruEngineManager({
+    userDataDir: app.getPath('userData'),
+    downloadFile: async (url, destination, signal, onProgress) => {
+      const response = await net.fetch(url, { signal })
+      if (!response.ok) throw new Error(`Runtime download failed with HTTP ${response.status}`)
+      if (!response.body) throw new Error('Runtime download returned an empty response')
+      const totalHeader = response.headers.get('content-length')
+      const parsedTotal = totalHeader ? Number(totalHeader) : NaN
+      const total = Number.isFinite(parsedTotal) && parsedTotal > 0 ? parsedTotal : null
+      let received = 0
+      let lastReportedAt = 0
+      let lastReportedBytes = -1
+      const reportProgress = (force = false): void => {
+        const now = Date.now()
+        if (!force && now - lastReportedAt < 100) return
+        if (!force && received === lastReportedBytes) return
+        lastReportedAt = now
+        lastReportedBytes = received
+        onProgress(received, total)
+      }
+      const tracker = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          received += chunk.length
+          reportProgress()
+          callback(null, chunk)
+        }
+      })
+      await pipeline(
+        Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>),
+        tracker,
+        createWriteStream(destination, { mode: 0o600 }),
+        { signal }
+      )
+      if (received !== lastReportedBytes) reportProgress(true)
+    },
+    trashItem: (path) => shell.trashItem(path)
+  })
+  mineruEngineManager.onProgress((payload) => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IpcChannel.EventMineruInstallProgress, payload)
+    }
+  })
+
   if (isDev) {
     const devIconPath = join(__dirname, '../../build/icon.png')
     if (existsSync(devIconPath)) {
@@ -731,6 +841,7 @@ void app.whenReady().then(() => {
   const dbPath = resolveStartupDbPath()
   runtime = buildRuntime(dbPath)
   registerWorkspaceAssetProtocol()
+  registerDocumentProtocol()
   const r = runtime.repos
   const savedBounds = r.settings.get<{ x?: number; y?: number; width?: number; height?: number } | null>('windowBounds', null)
   win = createWindow(savedBounds)
@@ -740,6 +851,7 @@ void app.whenReady().then(() => {
   registerIpcHandlers({
     getWin: () => win,
     getRuntime: () => runtime,
+    mineruEngineManager,
     switchLibraryFolder
   })
 
@@ -756,6 +868,7 @@ void app.whenReady().then(() => {
 app.on('before-quit', () => {
   isQuitting = true
   teardownRuntime()
+  mineruEngineManager?.destroy()
   if (win) {
     win = null
   }

@@ -121,6 +121,39 @@
     "open": "Open",
     "applyRemote": "Apply remote value"
   },
+  "ocr": {
+    "title": "Structured document",
+    "description": "Use local MinerU OCR to create searchable Markdown with formulas, tables, and images.",
+    "engineRequired": "Install MinerU in Settings before converting this document.",
+    "openSettings": "Open Settings",
+    "convert": "Convert with MinerU",
+    "rebuild": "Rebuild",
+    "cancel": "Cancel conversion",
+    "open": "Open structured document",
+    "processing": "Processing · {{stage}}",
+    "elapsed": "Elapsed {{time}}",
+    "failed": "Conversion failed: {{message}}",
+    "stale": "The PDF changed after this structured document was created.",
+    "profile": "Parsing profile",
+    "profiles": {
+      "compatible": "Compatible (pipeline)",
+      "balanced": "Balanced",
+      "quality": "Quality"
+    },
+    "readerLoading": "Loading structured document…",
+    "readerFailed": "Could not load structured document",
+    "empty": "No structured content was produced.",
+    "close": "Close structured document",
+    "stage": {
+      "queued": "Queued",
+      "startingWorker": "Starting MinerU",
+      "loadingModels": "Loading models",
+      "parsing": "Parsing document",
+      "writingResults": "Writing results",
+      "validating": "Validating output",
+      "completed": "Completed"
+    }
+  },
   "settings": {
     "title": "Settings",
     "libraryFolder": "Library Folder",
@@ -147,6 +180,38 @@
     "sectionAppearance": {
       "title": "Appearance",
       "desc": "Theme, language, and sidebar preferences"
+    },
+    "mineru": {
+      "title": "MinerU OCR",
+      "desc": "Local structured PDF parsing runtime and models",
+      "installLocation": "Install location",
+      "locationHint": "Refora creates a versioned MinerU folder inside this location. OCR results stay in the Library folder.",
+      "requirements": "Requires about 20 GB of disk space. Models are downloaded during installation.",
+      "installedDetails": "Version {{version}} · {{size}}",
+      "install": "Install MinerU",
+      "uninstall": "Uninstall",
+      "loadFailed": "Failed to load MinerU status",
+      "operationFailed": "MinerU operation failed",
+      "progressStep": "Step {{current}}/{{total}}",
+      "elapsed": "Elapsed {{time}}",
+      "progress": {
+        "preparing": "Preparing the install location",
+        "installingTools": "Downloading installation tools",
+        "installingPython": "Downloading and installing the Python runtime",
+        "installingMineru": "Downloading and installing MinerU dependencies",
+        "downloadingModels": "Downloading MinerU models",
+        "healthCheck": "Checking the MinerU runtime",
+        "finalizing": "Finishing the installation",
+        "completed": "Installation complete"
+      },
+      "state": {
+        "loading": "Checking…",
+        "notInstalled": "Not installed",
+        "installing": "Installing",
+        "installed": "Installed",
+        "unavailable": "Unavailable",
+        "invalid": "Installation needs repair"
+      }
     },
     "aiProviders": {
       "title": "AI Providers",

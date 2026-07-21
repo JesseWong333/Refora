@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AiProvider, ReforaApi } from '../../src/shared/ipc-types'
 
@@ -11,6 +11,20 @@ vi.mock('react-i18next', () => ({
         'settings.sectionGeneral.desc': 'Library and network',
         'settings.sectionAppearance.title': 'Appearance',
         'settings.sectionAppearance.desc': 'Theme and language',
+        'settings.mineru.title': 'MinerU OCR',
+        'settings.mineru.desc': 'Local structured parsing',
+        'settings.mineru.installLocation': 'Install location',
+        'settings.mineru.locationHint': 'Managed location',
+        'settings.mineru.requirements': 'Requires disk space',
+        'settings.mineru.state.installing': 'Installing',
+        'settings.mineru.state.installed': 'Installed',
+        'settings.mineru.state.notInstalled': 'Not installed',
+        'settings.mineru.install': 'Install MinerU',
+        'settings.mineru.progress.installingMineru': 'Installing MinerU dependencies',
+        'settings.mineru.progress.downloadingModels': 'Downloading MinerU models',
+        'settings.mineru.progress.completed': 'Installation complete',
+        'settings.mineru.progressStep': 'Step',
+        'settings.mineru.elapsed': 'Elapsed',
         'settings.aiProviders.title': 'AI Providers',
         'settings.aiProviders.desc': 'Model providers and API keys',
         'settings.libraryFolder': 'Library Folder',
@@ -36,7 +50,8 @@ vi.mock('react-i18next', () => ({
         'settings.aiProviders.active': 'Active',
         'settings.aiProviders.setActive': 'Set Active',
         'settings.aiProviders.reasoningControl': 'Reasoning parameter',
-        'common.done': 'Done'
+        'common.done': 'Done',
+        'common.cancel': 'Cancel'
       } as Record<string, string>)[key] ?? (typeof fallback === 'string' ? fallback : key),
     i18n: { language: 'en' }
   })
@@ -101,6 +116,22 @@ describe('AiProvidersSection', () => {
     )
     api.settings.get = vi.fn().mockResolvedValue('')
     api.settings.set = set.mockResolvedValue(undefined)
+    api.mineru.status = vi.fn().mockResolvedValue({
+      state: 'notInstalled',
+      installRoot: '/Volumes/Models',
+      installPath: null,
+      version: null,
+      architecture: 'arm64',
+      pythonPath: null,
+      modelConfigPath: null,
+      installedAt: null,
+      diskBytes: null,
+      error: null,
+      progress: null
+    })
+    api.mineru.install = vi.fn()
+    api.mineru.cancelInstall = vi.fn()
+    api.events.onMineruInstallProgress = vi.fn()
   })
 
   afterEach(() => {
@@ -291,5 +322,191 @@ describe('AiProvidersSection', () => {
 
     expect(screen.getByText('Theme')).toBeInTheDocument()
     expect(screen.getByText('Language')).toBeInTheDocument()
+  })
+
+  it('shows the MinerU install path and progress in Settings', async () => {
+    api.mineru.status = vi.fn().mockResolvedValue({
+      state: 'installing',
+      installRoot: '/Volumes/Models',
+      installPath: '/Volumes/Models/Refora/MinerU/3.4.4/darwin-arm64',
+      version: '3.4.4',
+      architecture: 'arm64',
+      pythonPath: null,
+      modelConfigPath: null,
+      installedAt: null,
+      diskBytes: null,
+      error: null,
+      progress: {
+        installId: 'install-1',
+        startedAt: Date.now() - 5000,
+        stage: 'installingMineru',
+        currentArtifact: null,
+        bytesReceived: 0,
+        bytesTotal: null,
+        percent: 42,
+        cancellable: true,
+        message: 'Installing MinerU 3.4.4'
+      }
+    })
+
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const navigation = await screen.findByRole('navigation', { name: 'Settings' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'MinerU OCR' }))
+
+    expect(await screen.findByText('/Volumes/Models')).toBeInTheDocument()
+    expect(screen.getByText('Installing MinerU dependencies')).toBeInTheDocument()
+    expect(screen.getByText('42%')).toBeInTheDocument()
+  })
+
+  it('uses moving indeterminate progress for model downloads without a measurable total', async () => {
+    api.mineru.status = vi.fn().mockResolvedValue({
+      state: 'installing',
+      installRoot: '/Volumes/Models',
+      installPath: '/Volumes/Models/Refora/MinerU/3.4.4/darwin-arm64',
+      version: '3.4.4',
+      architecture: 'arm64',
+      pythonPath: null,
+      modelConfigPath: null,
+      installedAt: null,
+      diskBytes: null,
+      error: null,
+      progress: {
+        installId: 'install-1',
+        startedAt: Date.now() - 5000,
+        stage: 'downloadingModels',
+        currentArtifact: 'MinerU models',
+        bytesReceived: 0,
+        bytesTotal: null,
+        percent: null,
+        cancellable: true,
+        message: 'Downloading MinerU models'
+      }
+    })
+
+    const { container } = render(<SettingsModal open onClose={vi.fn()} />)
+    const navigation = await screen.findByRole('navigation', { name: 'Settings' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'MinerU OCR' }))
+
+    expect(await screen.findByText('Downloading MinerU models')).toBeInTheDocument()
+    expect(container.querySelector('.mineru-progress-indeterminate')).toBeInTheDocument()
+    expect(screen.queryByText(/%$/)).not.toBeInTheDocument()
+    expect(screen.getByText('Elapsed')).toBeInTheDocument()
+  })
+
+  it('refreshes to installed immediately after the completed progress event', async () => {
+    let emitProgress: ((payload: {
+      installId: string
+      startedAt: number
+      stage: 'completed'
+      currentArtifact: null
+      bytesReceived: number
+      bytesTotal: null
+      percent: number
+      cancellable: boolean
+      message: string
+    }) => void) | null = null
+    api.events.onMineruInstallProgress = vi.fn((callback) => {
+      emitProgress = callback
+    })
+    api.mineru.status = vi.fn()
+      .mockResolvedValueOnce({
+        state: 'installing',
+        installRoot: '/Volumes/Models',
+        installPath: '/Volumes/Models/Refora/MinerU/3.4.4/darwin-arm64',
+        version: '3.4.4',
+        architecture: 'arm64',
+        pythonPath: null,
+        modelConfigPath: null,
+        installedAt: null,
+        diskBytes: null,
+        error: null,
+        progress: null
+      })
+      .mockResolvedValueOnce({
+        state: 'installed',
+        installRoot: '/Volumes/Models',
+        installPath: '/Volumes/Models/Refora/MinerU/3.4.4/darwin-arm64',
+        version: '3.4.4',
+        architecture: 'arm64',
+        pythonPath: '/Volumes/Models/python',
+        modelConfigPath: '/Volumes/Models/mineru.json',
+        installedAt: Date.now(),
+        diskBytes: null,
+        error: null,
+        progress: null
+      })
+
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const navigation = await screen.findByRole('navigation', { name: 'Settings' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'MinerU OCR' }))
+    expect(await screen.findByText('Installing')).toBeInTheDocument()
+
+    act(() => {
+      emitProgress?.({
+        installId: 'install-1',
+        startedAt: Date.now() - 5000,
+        stage: 'completed',
+        currentArtifact: null,
+        bytesReceived: 0,
+        bytesTotal: null,
+        percent: 100,
+        cancellable: false,
+        message: 'ready'
+      })
+    })
+
+    expect(await screen.findByText('Installed')).toBeInTheDocument()
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
+    expect(api.mineru.status).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows cancelling while the install request is still pending', async () => {
+    let emitProgress: ((payload: {
+      installId: string
+      startedAt: number
+      stage: 'installingMineru'
+      currentArtifact: null
+      bytesReceived: number
+      bytesTotal: null
+      percent: number
+      cancellable: boolean
+      message: string
+    }) => void) | null = null
+    let rejectInstall: (error: Error) => void = () => undefined
+    api.events.onMineruInstallProgress = vi.fn((callback) => {
+      emitProgress = callback
+    })
+    api.mineru.install = vi.fn(() => new Promise((_resolve, reject) => {
+      rejectInstall = reject
+    }))
+    api.mineru.cancelInstall = vi.fn(async () => {
+      rejectInstall(new Error('MinerU installation was cancelled'))
+      return api.mineru.status()
+    })
+
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const navigation = await screen.findByRole('navigation', { name: 'Settings' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'MinerU OCR' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Install MinerU' }))
+    await waitFor(() => expect(api.mineru.install).toHaveBeenCalledTimes(1))
+
+    act(() => {
+      emitProgress?.({
+        installId: 'install-1',
+        startedAt: Date.now(),
+        stage: 'installingMineru',
+        currentArtifact: null,
+        bytesReceived: 0,
+        bytesTotal: null,
+        percent: 42,
+        cancellable: true,
+        message: 'Installing MinerU 3.4.4'
+      })
+    })
+
+    const cancel = await screen.findByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeEnabled()
+    fireEvent.click(cancel)
+    await waitFor(() => expect(api.mineru.cancelInstall).toHaveBeenCalledTimes(1))
   })
 })

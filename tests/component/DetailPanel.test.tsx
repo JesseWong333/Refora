@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react'
 import DetailPanel from '../../src/renderer/components/DetailPanel'
-import type { Document, Category } from '../../src/shared/ipc-types'
+import type { Document, Category, ReforaApi } from '../../src/shared/ipc-types'
+import type { MineruEngineStatus, OcrDocumentState } from '../../src/shared/mineru-types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -44,6 +45,32 @@ const mockDoc: Document = {
   fileMissing: 0,
   categories: [mockCat]
 }
+
+const notInstalledEngine: MineruEngineStatus = {
+  state: 'notInstalled',
+  installRoot: '/models',
+  installPath: null,
+  version: null,
+  architecture: 'arm64',
+  pythonPath: null,
+  modelConfigPath: null,
+  installedAt: null,
+  diskBytes: null,
+  error: null,
+  progress: null
+}
+
+const installedEngine: MineruEngineStatus = {
+  ...notInstalledEngine,
+  state: 'installed',
+  installPath: '/models/Refora/MinerU/3.4.4/darwin-arm64',
+  version: '3.4.4',
+  pythonPath: '/models/python',
+  modelConfigPath: '/models/mineru.json',
+  installedAt: 1
+}
+
+const api = (window as unknown as { api: ReforaApi }).api
 
 const mockStoreState = vi.hoisted(() => ({
   focusedDocId: null as string | null,
@@ -106,6 +133,12 @@ beforeEach(() => {
     cats.assign = vi.fn().mockResolvedValue(undefined)
     cats.unassign = vi.fn().mockResolvedValue(undefined)
   }
+  api.ocr.getState = vi.fn().mockResolvedValue({
+    engine: notInstalledEngine,
+    activeJob: null,
+    result: null
+  } satisfies OcrDocumentState)
+  api.events.onMineruInstallProgress = vi.fn()
   resetStore()
 })
 
@@ -154,6 +187,169 @@ describe('DetailPanel', () => {
     it('renders category chips', () => {
       render(<DetailPanel />)
       expect(screen.getByText('ML')).toBeInTheDocument()
+    })
+
+    it('keeps an existing OCR result available without the MinerU runtime', async () => {
+      api.ocr.getState = vi.fn().mockResolvedValue({
+        engine: notInstalledEngine,
+        activeJob: null,
+        result: {
+          id: 'result-1',
+          documentId: '1',
+          resultKey: 'key-1',
+          sourceHash: 'abc',
+          mineruVersion: '3.4.4',
+          modelRevision: 'models-1',
+          profile: 'balanced',
+          optionsHash: 'options-1',
+          schemaVersion: 1,
+          relativeRoot: '.refora/derived/OCR/1/key-1',
+          markdownRelativePath: '.refora/derived/OCR/1/key-1/document.md',
+          blocksRelativePath: '.refora/derived/OCR/1/key-1/blocks.jsonl',
+          manifestRelativePath: '.refora/derived/OCR/1/key-1/manifest.json',
+          createdAt: 1,
+          stale: false
+        }
+      } satisfies OcrDocumentState)
+
+      render(<DetailPanel />)
+
+      expect(await screen.findByText('ocr.open')).toBeInTheDocument()
+      expect(screen.getByText('ocr.engineRequired')).toBeInTheDocument()
+    })
+
+    it('refreshes OCR state when MinerU installation completes', async () => {
+      let installProgress: ((payload: {
+        installId: string
+        startedAt: number
+        stage: 'completed'
+        currentArtifact: null
+        bytesReceived: number
+        bytesTotal: null
+        percent: number
+        cancellable: boolean
+        message: string
+      }) => void) | null = null
+      api.events.onMineruInstallProgress = vi.fn((callback) => {
+        installProgress = callback
+      })
+      api.ocr.getState = vi.fn()
+        .mockResolvedValueOnce({ engine: notInstalledEngine, activeJob: null, result: null })
+        .mockResolvedValueOnce({ engine: installedEngine, activeJob: null, result: null })
+
+      render(<DetailPanel />)
+      expect(await screen.findByText('ocr.engineRequired')).toBeInTheDocument()
+
+      act(() => {
+        installProgress?.({
+          installId: 'install-1',
+          startedAt: Date.now(),
+          stage: 'completed',
+          currentArtifact: null,
+          bytesReceived: 0,
+          bytesTotal: null,
+          percent: 100,
+          cancellable: false,
+          message: 'ready'
+        })
+      })
+
+      expect(await screen.findByText('ocr.convert')).toBeInTheDocument()
+      expect(api.ocr.getState).toHaveBeenCalledTimes(2)
+    })
+
+    it('ignores an earlier document OCR refresh after the selection changes', async () => {
+      const secondDoc = {
+        ...mockDoc,
+        id: '2',
+        filePath: '/pdfs/second.pdf',
+        fileName: 'second.pdf',
+        title: 'Second Paper',
+        fileHash: 'def'
+      }
+      let resolveFirst: (state: OcrDocumentState) => void = () => undefined
+      let resolveSecond: (state: OcrDocumentState) => void = () => undefined
+      const firstState = new Promise<OcrDocumentState>((resolvePromise) => {
+        resolveFirst = resolvePromise
+      })
+      const secondState = new Promise<OcrDocumentState>((resolvePromise) => {
+        resolveSecond = resolvePromise
+      })
+      api.ocr.getState = vi.fn((documentId: string) =>
+        documentId === '1' ? firstState : secondState)
+
+      const { rerender } = render(<DetailPanel />)
+      await waitFor(() => expect(api.ocr.getState).toHaveBeenCalledWith('1'))
+
+      mockStoreState.focusedDocId = '2'
+      mockStoreState.documents = [mockDoc, secondDoc]
+      rerender(<DetailPanel />)
+      await waitFor(() => expect(api.ocr.getState).toHaveBeenCalledWith('2'))
+
+      await act(async () => {
+        resolveSecond({ engine: installedEngine, activeJob: null, result: null })
+        await secondState
+      })
+      expect(await screen.findByText('ocr.convert')).toBeInTheDocument()
+
+      await act(async () => {
+        resolveFirst({
+          engine: installedEngine,
+          activeJob: null,
+          result: {
+            id: 'result-1',
+            documentId: '1',
+            resultKey: 'key-1',
+            sourceHash: 'abc',
+            mineruVersion: '3.4.4',
+            modelRevision: 'models-1',
+            profile: 'balanced',
+            optionsHash: 'options-1',
+            schemaVersion: 1,
+            relativeRoot: '.refora/derived/OCR/1/key-1',
+            markdownRelativePath: '.refora/derived/OCR/1/key-1/document.md',
+            blocksRelativePath: '.refora/derived/OCR/1/key-1/blocks.jsonl',
+            manifestRelativePath: '.refora/derived/OCR/1/key-1/manifest.json',
+            createdAt: 1,
+            stale: false
+          }
+        })
+        await firstState
+      })
+
+      expect(screen.getByText('ocr.convert')).toBeInTheDocument()
+      expect(screen.queryByText('ocr.open')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Second Paper' })).toBeInTheDocument()
+    })
+
+    it('shows active indeterminate progress instead of a frozen parsing percentage', async () => {
+      api.ocr.getState = vi.fn().mockResolvedValue({
+        engine: installedEngine,
+        activeJob: {
+          id: 'job-1',
+          documentId: '1',
+          resultKey: 'key-1',
+          sourceHash: 'abc',
+          profile: 'balanced',
+          status: 'running',
+          stage: 'parsing',
+          progress: null,
+          errorCode: null,
+          errorMessage: null,
+          createdAt: Date.now() - 5000,
+          startedAt: Date.now() - 5000,
+          finishedAt: null,
+          updatedAt: Date.now()
+        },
+        result: null
+      } satisfies OcrDocumentState)
+
+      const { container } = render(<DetailPanel />)
+
+      expect(await screen.findByText('ocr.processing')).toBeInTheDocument()
+      expect(container.querySelector('.mineru-progress-indeterminate')).toBeInTheDocument()
+      expect(screen.getByText('ocr.elapsed')).toBeInTheDocument()
+      expect(screen.queryByText('12%')).not.toBeInTheDocument()
     })
 
     it('renders semicolon-separated authors as individual chips', () => {

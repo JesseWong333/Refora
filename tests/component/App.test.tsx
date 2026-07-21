@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
     init: vi.fn(),
     destroy: vi.fn()
   },
+  ocrReaderState: {
+    documentId: null as string | null,
+    close: vi.fn()
+  },
   settingsGet: vi.fn(),
   settingsSet: vi.fn(),
   documentListRender: vi.fn(),
@@ -79,6 +83,13 @@ vi.mock('@renderer/store/workspaceStore', () => ({
   )
 }))
 
+vi.mock('@renderer/store/ocrReaderStore', () => ({
+  useOcrReaderStore: Object.assign(
+    (selector: (state: typeof mocks.ocrReaderState) => unknown) => selector(mocks.ocrReaderState),
+    { getState: () => mocks.ocrReaderState }
+  )
+}))
+
 vi.mock('@renderer/ipc', () => ({
   api: {
     settings: {
@@ -113,6 +124,9 @@ vi.mock('@renderer/components/DocumentList', () => ({
 }))
 vi.mock('@renderer/components/DetailPanel', () => ({
   default: () => <div data-testid="detail-panel" />
+}))
+vi.mock('@renderer/components/StructuredDocumentPanel', () => ({
+  default: () => <div data-testid="structured-document-panel" />
 }))
 vi.mock('@renderer/components/workspace/WorkspacePanel', () => ({
   default: () => {

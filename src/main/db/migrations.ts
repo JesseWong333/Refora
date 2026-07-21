@@ -106,6 +106,15 @@ function migrationSchemaPresent(db: SqliteLike, version: number): boolean {
         ['index', 'uq_workspace_items_asset']
       ])
   }
+  if (version === 21) {
+    return hasObjects([
+      ['table', 'document_ocr_jobs'],
+      ['table', 'document_ocr_results'],
+      ['index', 'idx_document_ocr_jobs_document'],
+      ['index', 'idx_document_ocr_jobs_status'],
+      ['index', 'idx_document_ocr_results_document']
+    ])
+  }
   return version <= db.getUserVersion()
 }
 

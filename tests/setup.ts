@@ -88,6 +88,51 @@ const noop = async () => undefined
     set: noop,
   },
 
+  mineru: {
+    status: async () => ({
+      state: 'notInstalled',
+      installRoot: '/fake/mineru',
+      installPath: null,
+      version: null,
+      architecture: 'arm64',
+      pythonPath: null,
+      modelConfigPath: null,
+      installedAt: null,
+      diskBytes: null,
+      error: null,
+      progress: null,
+    }),
+    chooseInstallRoot: noop,
+    install: noop,
+    cancelInstall: noop,
+    uninstall: noop,
+  },
+
+  ocr: {
+    getState: async () => ({
+      engine: {
+        state: 'notInstalled',
+        installRoot: '/fake/mineru',
+        installPath: null,
+        version: null,
+        architecture: 'arm64',
+        pythonPath: null,
+        modelConfigPath: null,
+        installedAt: null,
+        diskBytes: null,
+        error: null,
+        progress: null,
+      },
+      activeJob: null,
+      result: null,
+    }),
+    start: noop,
+    cancel: noop,
+    readMarkdown: async () => '',
+    assetUrl: (documentId: string, resultKey: string, assetPath: string) =>
+      `refora-document://ocr/${documentId}/${resultKey}/${assetPath}`,
+  },
+
   dialog: {
     openDirectory: async () => null,
   },
@@ -108,6 +153,7 @@ const noop = async () => undefined
   export: {
     toJson: async () => '',
     toBibtex: async () => '',
+    toBibtexString: async () => '',
   },
 
   clipboard: {
@@ -306,6 +352,10 @@ const noop = async () => undefined
     onAiChatError: (_cb: unknown) => undefined,
     onAiChatTrace: (_cb: unknown) => undefined,
     onAiChatTitleUpdated: (_cb: unknown) => undefined,
+    onMineruInstallProgress: (_cb: unknown) => undefined,
+    onOcrProgress: (_cb: unknown) => undefined,
+    onOcrCompleted: (_cb: unknown) => undefined,
+    onOcrError: (_cb: unknown) => undefined,
     off: (_channel: string, _cb: unknown) => undefined,
   },
 }

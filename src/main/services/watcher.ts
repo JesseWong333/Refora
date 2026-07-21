@@ -134,6 +134,7 @@ export function createWatcher(deps: WatcherDeps) {
 
     const assetFolder = join(folder, WORKSPACE_ASSET_DIRECTORY)
     const agentSandboxFolder = join(folder, AGENT_SANDBOX_DIRECTORY)
+    const derivedFolder = join(folder, '.refora')
     const inst = watch(folder, {
       depth: 20,
       ignoreInitial: true,
@@ -142,6 +143,7 @@ export function createWatcher(deps: WatcherDeps) {
         if (testPath === folder) return false
         if (testPath === assetFolder || isInsideLibrary(testPath, assetFolder)) return true
         if (testPath === agentSandboxFolder || isInsideLibrary(testPath, agentSandboxFolder)) return true
+        if (testPath === derivedFolder || isInsideLibrary(testPath, derivedFolder)) return true
         const base = testPath.split('/').pop() ?? testPath
         if (!base.includes('.')) return false
         return !base.toLowerCase().endsWith('.pdf')

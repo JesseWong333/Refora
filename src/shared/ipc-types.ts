@@ -1,4 +1,14 @@
 import { IpcChannel } from './ipc-channels'
+import type {
+  MineruEngineStatus,
+  MineruInstallProgress,
+  OcrCompletedEvent,
+  OcrDocumentState,
+  OcrErrorEvent,
+  OcrJob,
+  OcrProfile,
+  OcrProgressEvent
+} from './mineru-types'
 
 export interface IpcError {
   code: string
@@ -596,6 +606,10 @@ export interface DocumentEvents {
   onAiChatTitleUpdated(cb: (payload: ChatTitleUpdatedEvent) => void): void
   onAiReportCreated(cb: (report: AiReport) => void): void
   onWorkspaceItemsChanged(cb: (payload: WorkspaceItemsChangedEvent) => void): void
+  onMineruInstallProgress(cb: (payload: MineruInstallProgress) => void): void
+  onOcrProgress(cb: (payload: OcrProgressEvent) => void): void
+  onOcrCompleted(cb: (payload: OcrCompletedEvent) => void): void
+  onOcrError(cb: (payload: OcrErrorEvent) => void): void
   off(channel: EventChannel, cb: unknown): void
 }
 
@@ -646,6 +660,20 @@ export interface ReforaApi {
   settings: {
     get<T>(key: string, defaultValue: T): Promise<T>
     set(key: string, value: unknown): Promise<void>
+  }
+  mineru: {
+    status(): Promise<MineruEngineStatus>
+    chooseInstallRoot(): Promise<MineruEngineStatus>
+    install(): Promise<MineruEngineStatus>
+    cancelInstall(): Promise<MineruEngineStatus>
+    uninstall(): Promise<MineruEngineStatus>
+  }
+  ocr: {
+    getState(documentId: string): Promise<OcrDocumentState>
+    start(documentId: string, profile: OcrProfile): Promise<OcrJob>
+    cancel(jobId: string): Promise<OcrJob>
+    readMarkdown(documentId: string, resultKey: string): Promise<string>
+    assetUrl(documentId: string, resultKey: string, assetPath: string): string
   }
   dialog: {
     openDirectory(): Promise<string | null>

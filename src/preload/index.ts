@@ -51,6 +51,16 @@ import type {
   WorkspaceNoteType,
   WorkspaceItemsChangedEvent
 } from '../shared/ipc-types'
+import type {
+  MineruEngineStatus,
+  MineruInstallProgress,
+  OcrCompletedEvent,
+  OcrDocumentState,
+  OcrErrorEvent,
+  OcrJob,
+  OcrProfile,
+  OcrProgressEvent
+} from '../shared/mineru-types'
 
 class IpcResponseError extends Error {
   readonly code: string
@@ -173,6 +183,27 @@ const api: ReforaApi = {
     get: <T>(key: string, defaultValue: T) =>
       invoke<T>(IpcChannel.SettingsGet, key, defaultValue),
     set: (key: string, value: unknown) => invoke<void>(IpcChannel.SettingsSet, key, value)
+  },
+
+  mineru: {
+    status: () => invoke<MineruEngineStatus>(IpcChannel.MineruStatus),
+    chooseInstallRoot: () =>
+      invoke<MineruEngineStatus>(IpcChannel.MineruChooseInstallRoot),
+    install: () => invoke<MineruEngineStatus>(IpcChannel.MineruInstall),
+    cancelInstall: () => invoke<MineruEngineStatus>(IpcChannel.MineruCancelInstall),
+    uninstall: () => invoke<MineruEngineStatus>(IpcChannel.MineruUninstall)
+  },
+
+  ocr: {
+    getState: (documentId: string) =>
+      invoke<OcrDocumentState>(IpcChannel.OcrGetState, documentId),
+    start: (documentId: string, profile: OcrProfile) =>
+      invoke<OcrJob>(IpcChannel.OcrStart, documentId, profile),
+    cancel: (jobId: string) => invoke<OcrJob>(IpcChannel.OcrCancel, jobId),
+    readMarkdown: (documentId: string, resultKey: string) =>
+      invoke<string>(IpcChannel.OcrReadMarkdown, documentId, resultKey),
+    assetUrl: (documentId: string, resultKey: string, assetPath: string) =>
+      `refora-document://ocr/${encodeURIComponent(documentId)}/${encodeURIComponent(resultKey)}/${assetPath.split('/').map(encodeURIComponent).join('/')}`
   },
 
   dialog: {
@@ -349,6 +380,14 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventAiReportCreated, cb),
     onWorkspaceItemsChanged: (cb: (payload: WorkspaceItemsChangedEvent) => void) =>
       subscribe(IpcChannel.EventWorkspaceItemsChanged, cb),
+    onMineruInstallProgress: (cb: (payload: MineruInstallProgress) => void) =>
+      subscribe(IpcChannel.EventMineruInstallProgress, cb),
+    onOcrProgress: (cb: (payload: OcrProgressEvent) => void) =>
+      subscribe(IpcChannel.EventOcrProgress, cb),
+    onOcrCompleted: (cb: (payload: OcrCompletedEvent) => void) =>
+      subscribe(IpcChannel.EventOcrCompleted, cb),
+    onOcrError: (cb: (payload: OcrErrorEvent) => void) =>
+      subscribe(IpcChannel.EventOcrError, cb),
     off: (channel: EventChannel, cb: unknown) => unsubscribe(channel, cb)
   }
 }

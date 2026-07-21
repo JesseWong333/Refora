@@ -45,6 +45,17 @@ export const IpcChannel = {
   SettingsGet: 'settings:get',
   SettingsSet: 'settings:set',
 
+  MineruStatus: 'mineru:status',
+  MineruChooseInstallRoot: 'mineru:chooseInstallRoot',
+  MineruInstall: 'mineru:install',
+  MineruCancelInstall: 'mineru:cancelInstall',
+  MineruUninstall: 'mineru:uninstall',
+
+  OcrGetState: 'ocr:getState',
+  OcrStart: 'ocr:start',
+  OcrCancel: 'ocr:cancel',
+  OcrReadMarkdown: 'ocr:readMarkdown',
+
   ExportToJson: 'export:toJson',
   ExportToBibtex: 'export:toBibtex',
   ExportBibtexString: 'export:bibtexString',
@@ -127,5 +138,9 @@ export const IpcChannel = {
   EventAiChatTrace: 'ai:chat:trace',
   EventAiChatTitleUpdated: 'ai:chat:titleUpdated',
   EventAiReportCreated: 'ai:report:created',
-  EventWorkspaceItemsChanged: 'workspace:items:changed'
+  EventWorkspaceItemsChanged: 'workspace:items:changed',
+  EventMineruInstallProgress: 'mineru:installProgress',
+  EventOcrProgress: 'ocr:progress',
+  EventOcrCompleted: 'ocr:completed',
+  EventOcrError: 'ocr:error'
 } as const

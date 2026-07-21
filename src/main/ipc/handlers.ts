@@ -65,6 +65,9 @@ import type { AiAgentService } from '../services/aiAgent'
 import type { AgentSandboxService } from '../services/agentSandbox'
 import type { AgentExecutionService } from '../services/agentExecution'
 import type { AgentArtifactPublisher } from '../services/agentArtifactPublisher'
+import type { MineruEngineManager } from '../services/mineruEngineManager'
+import type { MineruDocumentService } from '../services/mineruDocumentService'
+import type { OcrJob, OcrProfile } from '../../shared/mineru-types'
 import {
   deleteWorkspaceAsset,
   deleteWorkspaceWithAssets,
@@ -104,6 +107,10 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventAiChatTitleUpdated
   | typeof IpcChannel.EventAiReportCreated
   | typeof IpcChannel.EventWorkspaceItemsChanged
+  | typeof IpcChannel.EventMineruInstallProgress
+  | typeof IpcChannel.EventOcrProgress
+  | typeof IpcChannel.EventOcrCompleted
+  | typeof IpcChannel.EventOcrError
 >
 
 function errorResult(e: unknown): Result<never> {
@@ -191,11 +198,13 @@ export interface RuntimeRef {
   agentSandboxService?: AgentSandboxService
   agentExecutionService?: AgentExecutionService
   agentArtifactPublisher?: AgentArtifactPublisher
+  mineruDocumentService?: MineruDocumentService
 }
 
 export interface IpcHandlerDeps {
   getWin: () => BrowserWindow | null
   getRuntime: () => RuntimeRef | null
+  mineruEngineManager: MineruEngineManager
   switchLibraryFolder?: (folder: string) => Promise<LibrarySwitchResult>
 }
 
@@ -275,9 +284,18 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.DocumentsSetStarred]: (id: string, value: boolean): Result<void> =>
       wrap(() => repos().documents.setStarred(id, value)),
     [IpcChannel.DocumentsDelete]: (id: string): Promise<Result<void>> =>
-      asyncWrap(() => deleteDocument(repos(), id)),
+      asyncWrap(async () => {
+        await deps.getRuntime()?.mineruDocumentService?.prepareDocumentDelete(id)
+        await deleteDocument(repos(), id)
+      }),
     [IpcChannel.DocumentsBulkDelete]: (ids: string[]): Promise<Result<void>> =>
-      asyncWrap(() => bulkDeleteDocuments(repos(), ids)),
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.mineruDocumentService
+        if (service) {
+          for (const id of ids) await service.prepareDocumentDelete(id)
+        }
+        await bulkDeleteDocuments(repos(), ids)
+      }),
     [IpcChannel.DocumentsBulkCategorize]: (ids: string[], catId: string): Result<void> =>
       wrap(() => {
         const r = repos()
@@ -548,6 +566,54 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           const rules = typeof value === 'string' && value.trim() ? value.trim() : ''
           applyProxyRules(rules)
         }
+      }),
+
+    [IpcChannel.MineruStatus]: (): Promise<Result<Awaited<ReturnType<MineruEngineManager['getStatus']>>>> =>
+      asyncWrap(() => deps.mineruEngineManager.getStatus()),
+    [IpcChannel.MineruChooseInstallRoot]: (): Promise<Result<Awaited<ReturnType<MineruEngineManager['getStatus']>>>> =>
+      asyncWrap(async () => {
+        const result = await dialog.showOpenDialog(requireWin(), {
+          title: 'Select MinerU Install Location',
+          properties: ['openDirectory', 'createDirectory']
+        })
+        if (result.canceled || result.filePaths.length === 0) {
+          return deps.mineruEngineManager.getStatus()
+        }
+        return deps.mineruEngineManager.setInstallRoot(resolvePath(result.filePaths[0]))
+      }),
+    [IpcChannel.MineruInstall]: (): Promise<Result<Awaited<ReturnType<MineruEngineManager['getStatus']>>>> =>
+      asyncWrap(() => deps.mineruEngineManager.install()),
+    [IpcChannel.MineruCancelInstall]: (): Promise<Result<Awaited<ReturnType<MineruEngineManager['getStatus']>>>> =>
+      asyncWrap(() => deps.mineruEngineManager.cancelInstall()),
+    [IpcChannel.MineruUninstall]: (): Promise<Result<Awaited<ReturnType<MineruEngineManager['getStatus']>>>> =>
+      asyncWrap(async () => {
+        await deps.getRuntime()?.mineruDocumentService?.stopWorker()
+        return deps.mineruEngineManager.uninstall()
+      }),
+
+    [IpcChannel.OcrGetState]: (documentId: string): Promise<Result<Awaited<ReturnType<MineruDocumentService['getState']>>>> =>
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.mineruDocumentService
+        if (!service) throw new RepoError('not_ready', 'OCR service is not ready')
+        return service.getState(documentId)
+      }),
+    [IpcChannel.OcrStart]: (documentId: string, profile: OcrProfile): Promise<Result<OcrJob>> =>
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.mineruDocumentService
+        if (!service) throw new RepoError('not_ready', 'OCR service is not ready')
+        return service.start(documentId, profile)
+      }),
+    [IpcChannel.OcrCancel]: (jobId: string): Promise<Result<OcrJob>> =>
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.mineruDocumentService
+        if (!service) throw new RepoError('not_ready', 'OCR service is not ready')
+        return service.cancel(jobId)
+      }),
+    [IpcChannel.OcrReadMarkdown]: (documentId: string, resultKey: string): Promise<Result<string>> =>
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.mineruDocumentService
+        if (!service) throw new RepoError('not_ready', 'OCR service is not ready')
+        return service.readMarkdown(documentId, resultKey)
       }),
 
     [IpcChannel.ExportToJson]: async (): Promise<Result<string>> =>
