@@ -6,11 +6,25 @@ import type { ContextMenuItem } from '@lobehub/ui'
 import { BookOpen, Copy, Trash, PencilSimple, Download } from '@phosphor-icons/react'
 import { motion, MotionConfig } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
-import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
+import {
+  REMARK_PLUGINS,
+  REHYPE_PLUGINS,
+  createReforaDocMarkdownComponents,
+  urlTransform
+} from '../../utils/markdown'
+import { useDocumentStore } from '../../store/documentStore'
+import { api } from '../../ipc'
 import { formatDate } from '../../utils/format'
 import { boardCardPreview } from '../../utils/workspaceCardMarkdown'
 import { Input as UiInput, Textarea as UiTextarea, cardClassName } from '../ui'
 import type { AiReport, Document } from '../../../shared/ipc-types'
+
+const MARKDOWN_COMPONENTS = createReforaDocMarkdownComponents(
+  (docId) => api.documents.openPdf(docId),
+  () => useDocumentStore.getState().showToast(
+    'Failed to open document. It may have been moved or deleted.'
+  )
+)
 
 interface ReportCardProps {
   report: AiReport
@@ -198,7 +212,14 @@ export default function ReportCard({
           onWheel={(event) => event.stopPropagation()}
         >
           <div>
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{boardPreview}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={REMARK_PLUGINS}
+              rehypePlugins={REHYPE_PLUGINS}
+              components={MARKDOWN_COMPONENTS}
+              urlTransform={urlTransform}
+            >
+              {boardPreview}
+            </ReactMarkdown>
           </div>
         </div>
       </motion.div>
@@ -311,7 +332,14 @@ export default function ReportCard({
               </section>
             )}
             <div className="max-h-[60vh] overflow-y-auto text-sm text-foreground [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-panel-2 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-panel-2 [&_code]:px-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-accent [&_a]:underline [&_h1]:mb-2 [&_h1]:font-bold [&_h1]:text-base [&_h2]:mb-2 [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:font-medium [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted">
-              <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{report.contentMd}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={REMARK_PLUGINS}
+                rehypePlugins={REHYPE_PLUGINS}
+                components={MARKDOWN_COMPONENTS}
+                urlTransform={urlTransform}
+              >
+                {report.contentMd}
+              </ReactMarkdown>
             </div>
           </>
         )}

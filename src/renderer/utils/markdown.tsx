@@ -80,6 +80,24 @@ export function urlTransform(url: string): string {
   return defaultUrlTransform(url)
 }
 
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+export function parseReforaDocLink(href: string): { docId: string; query?: string } | null {
+  if (!href) return null
+  const match = href.match(/^refora:\/\/doc\/([^?]+)(?:\?(.*))?$/)
+  if (!match) return null
+  return {
+    docId: safeDecode(match[1]),
+    query: match[2] ? safeDecode(match[2]) : undefined
+  }
+}
+
 function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<'pre'>) {
   const ref = useRef<HTMLPreElement>(null)
   const [copied, setCopied] = useState(false)
@@ -125,4 +143,39 @@ export function createMarkdownComponents(
   overrides?: Partial<Components>
 ): Components {
   return { ...BASE_MARKDOWN_COMPONENTS, ...overrides }
+}
+
+export function createReforaDocMarkdownComponents(
+  onOpenDocument: (docId: string) => Promise<unknown>,
+  onOpenError?: () => void
+): Components {
+  return createMarkdownComponents({
+    a: ({ href, children }) => {
+      const parsed = href ? parseReforaDocLink(href) : null
+      if (!parsed) {
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        )
+      }
+      return (
+        <button
+          type="button"
+          className="inline-flex cursor-pointer items-center gap-0.5 text-accent underline transition-opacity duration-150 hover:opacity-80"
+          onClick={async (event) => {
+            event.stopPropagation()
+            try {
+              await onOpenDocument(parsed.docId)
+            } catch {
+              onOpenError?.()
+            }
+          }}
+          title={parsed.query ?? undefined}
+        >
+          {children}
+        </button>
+      )
+    }
+  })
 }

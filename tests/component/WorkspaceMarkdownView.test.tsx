@@ -24,12 +24,43 @@ function renderView(overrides: Partial<React.ComponentProps<typeof WorkspaceMark
   return { onBack, onUpdate, ...view }
 }
 
+const originalOpenPdf = window.api.documents.openPdf
+const mockOpenPdf = vi.fn()
+
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  window.api.documents.openPdf = originalOpenPdf
 })
 
 describe('WorkspaceMarkdownView', () => {
+  it('opens a refora document link in the PDF reader', async () => {
+    window.api.documents.openPdf = mockOpenPdf
+    mockOpenPdf.mockResolvedValue(undefined)
+    renderView({
+      kind: 'report',
+      contentMd: '[3DGUT](refora://doc/e9e71747-2fd1-4038-ab42-00553e68328c)'
+    })
+
+    const link = screen.getByRole('button', { name: '3DGUT' })
+    expect(link).toHaveClass('cursor-pointer')
+    expect(screen.queryByRole('link', { name: '3DGUT' })).not.toBeInTheDocument()
+    fireEvent.click(link)
+
+    await waitFor(() => {
+      expect(mockOpenPdf).toHaveBeenCalledWith('e9e71747-2fd1-4038-ab42-00553e68328c')
+    })
+  })
+
+  it('keeps regular Markdown links external', () => {
+    renderView({ contentMd: '[Example](https://example.com)' })
+
+    expect(screen.getByRole('link', { name: 'Example' })).toHaveAttribute(
+      'target',
+      '_blank'
+    )
+  })
+
   it.each(['note', 'report'] as const)('renders sanitized HTML in a %s', (kind) => {
     const { container } = renderView({
       kind,

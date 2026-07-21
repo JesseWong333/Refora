@@ -8,67 +8,24 @@ import {
   CaretDown
 } from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
-import { REMARK_PLUGINS, REHYPE_PLUGINS, createMarkdownComponents, urlTransform } from '../../utils/markdown'
+import {
+  REMARK_PLUGINS,
+  REHYPE_PLUGINS,
+  createReforaDocMarkdownComponents,
+  urlTransform
+} from '../../utils/markdown'
 import { useDocumentStore } from '../../store/documentStore'
 import { api } from '../../ipc'
 import { Button as UiButton } from '../ui'
 import { AgentTraceStepItem } from './AgentTrace'
 import type { AgentTraceStep, AiProvider, ChatMessage } from '../../../shared/ipc-types'
 
-function safeDecode(s: string): string {
-  try {
-    return decodeURIComponent(s)
-  } catch {
-    return s
-  }
-}
-
-export function parseReforaDocLink(href: string): { docId: string; query?: string } | null {
-  if (!href) return null
-  const match = href.match(/^refora:\/\/doc\/([^?]+)(?:\?(.*))?$/)
-  if (!match) return null
-  return {
-    docId: safeDecode(match[1]),
-    query: match[2] ? safeDecode(match[2]) : undefined
-  }
-}
-
-async function openCitationDoc(docId: string): Promise<boolean> {
-  try {
-    await api.documents.openPdf(docId)
-    return true
-  } catch {
-    return false
-  }
-}
-
-const MARKDOWN_COMPONENTS = createMarkdownComponents({
-  a: ({ href, children }) => {
-    if (href) {
-      const parsed = parseReforaDocLink(href)
-      if (parsed) {
-        return (
-          <button
-            type="button"
-            className="inline-flex items-center gap-0.5 text-accent underline transition-opacity duration-150 hover:opacity-80"
-            onClick={async () => {
-              const ok = await openCitationDoc(parsed.docId)
-              if (!ok) useDocumentStore.getState().showToast('Failed to open document. It may have been moved or deleted.')
-            }}
-            title={parsed.query ?? undefined}
-          >
-            {children}
-          </button>
-        )
-      }
-    }
-    return (
-      <a href={href} target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
-    )
-  }
-})
+const MARKDOWN_COMPONENTS = createReforaDocMarkdownComponents(
+  (docId) => api.documents.openPdf(docId),
+  () => useDocumentStore.getState().showToast(
+    'Failed to open document. It may have been moved or deleted.'
+  )
+)
 
 const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content: string }) {
   return (

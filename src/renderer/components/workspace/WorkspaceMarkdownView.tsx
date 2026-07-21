@@ -2,7 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BookOpen, PencilSimple } from '@phosphor-icons/react'
 import ReactMarkdown from 'react-markdown'
-import { REMARK_PLUGINS, REHYPE_PLUGINS, MARKDOWN_COMPONENTS } from '../../utils/markdown'
+import {
+  REMARK_PLUGINS,
+  REHYPE_PLUGINS,
+  createReforaDocMarkdownComponents,
+  urlTransform
+} from '../../utils/markdown'
+import { useDocumentStore } from '../../store/documentStore'
+import { api } from '../../ipc'
 import { formatDate } from '../../utils/format'
 import { IconTooltip, Input, PanelTabHeader, Textarea } from '../ui'
 import WorkspaceNavigationControls from './WorkspaceNavigationControls'
@@ -14,6 +21,13 @@ interface MarkdownDraft {
   title: string
   contentMd: string
 }
+
+const MARKDOWN_COMPONENTS = createReforaDocMarkdownComponents(
+  (docId) => api.documents.openPdf(docId),
+  () => useDocumentStore.getState().showToast(
+    'Failed to open document. It may have been moved or deleted.'
+  )
+)
 
 interface WorkspaceMarkdownViewProps {
   kind: WorkspaceMarkdownViewKind
@@ -231,6 +245,7 @@ export default function WorkspaceMarkdownView({
                   remarkPlugins={REMARK_PLUGINS}
                   rehypePlugins={REHYPE_PLUGINS}
                   components={MARKDOWN_COMPONENTS}
+                  urlTransform={urlTransform}
                 >
                   {savedDraft.contentMd}
                 </ReactMarkdown>

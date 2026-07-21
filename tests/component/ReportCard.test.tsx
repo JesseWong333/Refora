@@ -10,6 +10,8 @@ vi.mock('react-i18next', () => ({
 }))
 
 const mockShowContextMenu = vi.fn()
+const mockOpenPdf = vi.fn()
+const originalOpenPdf = window.api.documents.openPdf
 const mockBoardCreateNote = vi.hoisted(() => vi.fn())
 const mockWorkspacePanelState = vi.hoisted(() => ({
   workspaces: [
@@ -132,6 +134,8 @@ function makeReport(overrides: Partial<AiReport> = {}): AiReport {
 
 beforeEach(() => {
   mockShowContextMenu.mockReset()
+  mockOpenPdf.mockReset().mockResolvedValue(undefined)
+  window.api.documents.openPdf = mockOpenPdf
   mockBoardCreateNote.mockReset()
   mockWorkspacePanelState.workspaces = [
     { id: 'ws-1', name: 'Research', createdAt: 1, updatedAt: 1 },
@@ -154,9 +158,33 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  window.api.documents.openPdf = originalOpenPdf
 })
 
 describe('ReportCard', () => {
+  it('opens a citation PDF without opening the Markdown reader or a browser link', async () => {
+    const onOpen = vi.fn()
+    render(
+      <ReportCard
+        report={makeReport({
+          contentMd: '[3DGUT](refora://doc/e9e71747-2fd1-4038-ab42-00553e68328c)'
+        })}
+        onDelete={() => {}}
+        onUpdate={async () => true}
+        onOpen={onOpen}
+      />
+    )
+
+    const citation = screen.getByRole('button', { name: '3DGUT' })
+    expect(screen.queryByRole('link', { name: '3DGUT' })).not.toBeInTheDocument()
+    fireEvent.click(citation)
+
+    await waitFor(() => {
+      expect(mockOpenPdf).toHaveBeenCalledWith('e9e71747-2fd1-4038-ab42-00553e68328c')
+    })
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
   it('renders the report title and preview content', () => {
     render(<ReportCard report={makeReport()} onDelete={() => {}} onUpdate={async () => true} />)
     expect(screen.getByText('Test Report')).toBeTruthy()

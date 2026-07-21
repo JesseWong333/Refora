@@ -18,7 +18,7 @@ import ChatInput from './ChatInput'
 import ModelSelector from './ModelSelector'
 import ThreadHistory from './ThreadHistory'
 
-export { parseReforaDocLink } from './ChatMessages'
+export { parseReforaDocLink } from '../../utils/markdown'
 
 const AI_REASONING_EFFORTS = new Set<AiReasoningEffort>([
   'none',
