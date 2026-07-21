@@ -9,7 +9,7 @@ import { emitDocumentUpdated } from '../ipc/events'
 import { logger } from './logger'
 import { resolvePdfFilePath } from './pdfPath'
 import { streamFileHash } from './fileHash'
-import { WORKSPACE_ASSET_DIRECTORY } from '../../shared/ipc-types'
+import { AGENT_SANDBOX_DIRECTORY, WORKSPACE_ASSET_DIRECTORY } from '../../shared/ipc-types'
 
 export async function findPdfsRecursively(
   dir: string,
@@ -30,6 +30,7 @@ export async function findPdfsRecursively(
         if (opts?.signal?.aborted) return
         if (
           entry.name === WORKSPACE_ASSET_DIRECTORY ||
+          entry.name === AGENT_SANDBOX_DIRECTORY ||
           (skipHidden && (entry.name === '.git' || entry.name.startsWith('.')))
         ) continue
         if (entry.isSymbolicLink()) continue

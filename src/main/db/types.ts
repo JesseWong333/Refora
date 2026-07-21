@@ -7,4 +7,5 @@ export interface SqliteStatement {
 export interface SqliteDb {
   exec(sql: string): void
   prepare(sql: string): SqliteStatement
+  backup?(destination: string): Promise<unknown>
 }

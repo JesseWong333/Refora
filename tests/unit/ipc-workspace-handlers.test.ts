@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRepositories } from '../../src/main/db/repositories'
+import { createAgentSandboxService } from '../../src/main/services/agentSandbox'
 import {
   createIpcHandlers,
   registerIpcHandlers,
@@ -94,7 +95,7 @@ describe('workspace IPC handlers', () => {
   })
 
   it('round-trips workspace lifecycle operations through Result envelopes', async () => {
-    const created = expectOk(handlers[IpcChannel.WorkspacesCreate]('Research'))
+    const created = expectOk(await handlers[IpcChannel.WorkspacesCreate]('Research'))
     expect(expectOk(handlers[IpcChannel.WorkspacesList]())).toEqual([created])
 
     expectOk(handlers[IpcChannel.WorkspacesRename](created.id, 'Renamed'))
@@ -103,6 +104,23 @@ describe('workspace IPC handlers', () => {
     expectOk(await handlers[IpcChannel.WorkspacesDelete](created.id))
     expect(expectOk(handlers[IpcChannel.WorkspacesList]())).toEqual([])
     expectError(await handlers[IpcChannel.WorkspacesDelete]('missing'), 'not_found')
+  })
+
+  it('opens only an existing workspace sandbox directory', async () => {
+    repos.settings.set('libraryFolderPath', directory)
+    const workspace = repos.workspaces.create('Research')
+    const agentSandboxService = createAgentSandboxService({ repos, dbPath: join(directory, 'refora.db') })
+    handlers = createIpcHandlers({
+      getWin: () => null,
+      getRuntime: () => ({ repos, agentSandboxService })
+    })
+
+    expectOk(await handlers[IpcChannel.WorkspacesOpenSandbox](workspace.id))
+
+    expect(electronMocks.openPath).toHaveBeenCalledWith(
+      join(directory, '.refora-agent', 'workspaces', workspace.id)
+    )
+    expectError(await handlers[IpcChannel.WorkspacesOpenSandbox]('missing'), 'not_found')
   })
 
   it('round-trips card add, list, reorder, resize, move, and remove operations', () => {
@@ -288,7 +306,7 @@ describe('workspace IPC handlers', () => {
     expectError(handlers[IpcChannel.ClipboardCopyWorkspaceAsset]('missing'), 'not_found')
   })
 
-  it('registers every handler and forwards invocation arguments', () => {
+  it('registers every handler and forwards invocation arguments', async () => {
     registerIpcHandlers({
       getWin: () => null,
       getRuntime: () => ({ repos })
@@ -298,15 +316,15 @@ describe('workspace IPC handlers', () => {
     expect(electronMocks.handle).toHaveBeenCalledTimes(expectedCount)
     const registration = electronMocks.handle.mock.calls.find(
       ([channel]) => channel === IpcChannel.WorkspacesCreate
-    ) as [string, (event: unknown, name: string) => Result<Workspace>] | undefined
+    ) as [string, (event: unknown, name: string) => Promise<Result<Workspace>>] | undefined
     expect(registration).toBeDefined()
 
-    const result = registration?.[1]({ sender: 'ignored' }, 'Registered')
+    const result = await registration?.[1]({ sender: 'ignored' }, 'Registered')
     expect(result && expectOk(result).name).toBe('Registered')
   })
 
-  it('keeps workspace handler return types serializable', () => {
-    const workspace = expectOk<Workspace>(handlers[IpcChannel.WorkspacesCreate]('Serializable'))
+  it('keeps workspace handler return types serializable', async () => {
+    const workspace = expectOk<Workspace>(await handlers[IpcChannel.WorkspacesCreate]('Serializable'))
     repos.documents.insert(makeNewDocument('doc-1'))
     const item = expectOk<WorkspaceItem[]>(
       handlers[IpcChannel.WorkspaceItemsAdd](workspace.id, 'document', ['doc-1'])

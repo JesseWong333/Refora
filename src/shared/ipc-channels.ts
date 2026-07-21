@@ -57,6 +57,7 @@ export const IpcChannel = {
   WorkspacesCreate: 'workspaces:create',
   WorkspacesRename: 'workspaces:rename',
   WorkspacesDelete: 'workspaces:delete',
+  WorkspacesOpenSandbox: 'workspaces:openSandbox',
 
   WorkspaceItemsList: 'workspaceItems:list',
   WorkspaceItemsAdd: 'workspaceItems:add',

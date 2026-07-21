@@ -12,7 +12,10 @@ import {
   FileMagnifyingGlass,
   FilePlus,
   ClipboardText,
-  FolderOpen
+  FolderOpen,
+  TerminalWindow,
+  Package,
+  UploadSimple
 } from '@phosphor-icons/react'
 import type { AgentTraceStep } from '../../../shared/ipc-types'
 
@@ -174,6 +177,27 @@ function formatToolLabel(
           ? t('workspace.chat.toolRequestSummary', 'Requesting summary…')
           : t('workspace.chat.toolRequestSummaryDone', 'Requested summary')
       }
+    case 'run_bash':
+      return {
+        icon: 'terminal',
+        text: running
+          ? t('workspace.chat.toolRunBash', 'Running command…')
+          : t('workspace.chat.toolRunBashDone', 'Ran command')
+      }
+    case 'install_runtime_packages':
+      return {
+        icon: 'package',
+        text: running
+          ? t('workspace.chat.toolInstallPackages', 'Installing packages…')
+          : t('workspace.chat.toolInstallPackagesDone', 'Installed packages')
+      }
+    case 'publish_workspace_artifacts':
+      return {
+        icon: 'publish',
+        text: running
+          ? t('workspace.chat.toolPublishArtifacts', 'Publishing artifacts…')
+          : t('workspace.chat.toolPublishArtifactsDone', 'Published artifacts')
+      }
     default:
       return null
   }
@@ -186,7 +210,10 @@ const TOOL_ICONS: Record<string, typeof MagnifyingGlass> = {
   metadata: FileMagnifyingGlass,
   open: FolderOpen,
   report: ClipboardText,
-  add: FilePlus
+  add: FilePlus,
+  terminal: TerminalWindow,
+  package: Package,
+  publish: UploadSimple
 }
 
 function TraceStepRow({

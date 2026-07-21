@@ -121,6 +121,7 @@ const noop = async () => undefined
     create: async (name: string) => ({ id: 'ws', name, createdAt: 0, updatedAt: 0 }),
     rename: noop,
     delete: noop,
+    openSandbox: noop,
   },
 
   workspaceItems: {

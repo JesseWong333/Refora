@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from 'chokidar'
 import { existsSync } from 'node:fs'
 import { logger } from './logger'
 import { isInsideLibrary } from './paths'
-import { WORKSPACE_ASSET_DIRECTORY } from '../../shared/ipc-types'
+import { AGENT_SANDBOX_DIRECTORY, WORKSPACE_ASSET_DIRECTORY } from '../../shared/ipc-types'
 import { join } from 'node:path'
 import type { PdfImportResult, WatchFolder } from '../../shared/ipc-types'
 
@@ -133,6 +133,7 @@ export function createWatcher(deps: WatcherDeps) {
     }
 
     const assetFolder = join(folder, WORKSPACE_ASSET_DIRECTORY)
+    const agentSandboxFolder = join(folder, AGENT_SANDBOX_DIRECTORY)
     const inst = watch(folder, {
       depth: 20,
       ignoreInitial: true,
@@ -140,6 +141,7 @@ export function createWatcher(deps: WatcherDeps) {
       ignored: (testPath: string) => {
         if (testPath === folder) return false
         if (testPath === assetFolder || isInsideLibrary(testPath, assetFolder)) return true
+        if (testPath === agentSandboxFolder || isInsideLibrary(testPath, agentSandboxFolder)) return true
         const base = testPath.split('/').pop() ?? testPath
         if (!base.includes('.')) return false
         return !base.toLowerCase().endsWith('.pdf')

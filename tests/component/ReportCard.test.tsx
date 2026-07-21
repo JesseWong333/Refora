@@ -503,6 +503,18 @@ describe('WorkspacePanel tab header', () => {
       screen.getByRole('button', { name: 'workspace.createNote' })
     )
   })
+
+  it('opens the active workspace sandbox from the title bar', () => {
+    const openSandbox = vi.spyOn(window.api.workspaces, 'openSandbox').mockResolvedValue()
+    render(<WorkspacePanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.openSandbox' }))
+
+    expect(openSandbox).toHaveBeenCalledWith('ws-1')
+    expect(screen.getByTestId('panel-tab-actions')).toContainElement(
+      screen.getByRole('button', { name: 'workspace.openSandbox' })
+    )
+  })
 })
 
 describe('NoteCard', () => {

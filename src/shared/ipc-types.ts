@@ -236,6 +236,30 @@ export type WorkspaceItemKind = 'document' | 'report' | 'note' | 'asset'
 export type WorkspaceAssetPreviewKind = 'image' | 'text' | 'audio' | 'video' | 'none'
 
 export const WORKSPACE_ASSET_DIRECTORY = 'refora-assets'
+export const AGENT_SANDBOX_DIRECTORY = '.refora-agent'
+
+export interface AgentExecutionChangedFile {
+  path: string
+  mimeType: string
+  size: number
+}
+
+export interface AgentExecutionResult {
+  exitCode: number | null
+  signal: string | null
+  stdout: string
+  stderr: string
+  durationMs: number
+  timedOut: boolean
+  truncated: boolean
+  changedFiles: AgentExecutionChangedFile[]
+}
+
+export interface AgentPublishedArtifact {
+  path: string
+  assetId: string
+  fileName: string
+}
 
 export interface WorkspaceAsset {
   id: string
@@ -645,6 +669,7 @@ export interface ReforaApi {
     create(name: string): Promise<Workspace>
     rename(id: string, name: string): Promise<void>
     delete(id: string): Promise<void>
+    openSandbox(id: string): Promise<void>
   }
   workspaceItems: {
     list(workspaceId: string): Promise<WorkspaceItem[]>

@@ -1,7 +1,9 @@
 import { app, BrowserWindow, Menu, shell, session, dialog, nativeImage, net, protocol } from 'electron'
 import { join, resolve as resolvePath } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { existsSync, statSync } from 'node:fs'
+import { createWriteStream, existsSync, statSync } from 'node:fs'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { initLogger, logger } from './services/logger'
 import { openDatabase, seedSettings, closeDatabase, getSetting, getSearchMode } from './db/connection'
 import { createRepositories } from './db/repositories'
@@ -30,6 +32,16 @@ import { runMenuAction } from './services/menuAction'
 import { prepareReplacement } from './services/resourceReplacement'
 import { requireWorkspaceAssetFile } from './services/workspaceAssets'
 import { isInsideLibrary } from './services/paths'
+import { createAgentSandboxService } from './services/agentSandbox'
+import type { AgentSandboxService } from './services/agentSandbox'
+import { createAgentDatabaseSnapshotService } from './services/agentDatabaseSnapshot'
+import { createAgentReadonlyFilesService } from './services/agentReadonlyFiles'
+import { createAgentRuntimeManager } from './services/agentRuntimeManager'
+import type { AgentRuntimeManager } from './services/agentRuntimeManager'
+import { createAgentExecutionService, createBrokerAgentRunner } from './services/agentExecution'
+import type { AgentExecutionService } from './services/agentExecution'
+import { createAgentArtifactPublisher } from './services/agentArtifactPublisher'
+import type { AgentArtifactPublisher } from './services/agentArtifactPublisher'
 import {
   activeDuplicateFiles,
   duplicateFileFingerprint,
@@ -63,6 +75,10 @@ interface Runtime extends RuntimeRef {
   pdfTextService: PdfTextService
   aiSummaryService: AiSummaryService
   aiAgentService: AiAgentService
+  agentSandboxService: AgentSandboxService
+  agentExecutionService: AgentExecutionService
+  agentArtifactPublisher: AgentArtifactPublisher
+  agentRuntimeManager: AgentRuntimeManager
 }
 let runtime: Runtime | null = null
 let win: BrowserWindow | null = null
@@ -367,6 +383,7 @@ function destroyRuntime(target: Runtime): void {
   target.importer.destroy()
   target.aiSummaryService.destroy()
   target.aiAgentService.destroy()
+  target.agentExecutionService.destroy()
   target.pdfTextService.destroy()
   closeDatabase(target.db)
 }
@@ -395,7 +412,72 @@ function buildRuntime(dbPath: string): Runtime {
       aiProvidersService,
       pdfTextService
     )
-    const aiAgentService = createAiAgentService(repos, () => win, aiProvidersService, pdfTextService, aiSummaryService)
+    const agentSandboxService = createAgentSandboxService({
+      repos,
+      dbPath,
+      trashItem: (path) => shell.trashItem(path)
+    })
+    const agentDatabaseSnapshotService = createAgentDatabaseSnapshotService({
+      db,
+      sandboxService: agentSandboxService
+    })
+    const agentReadonlyFilesService = createAgentReadonlyFilesService({
+      repos,
+      db,
+      sandboxService: agentSandboxService
+    })
+    const agentRuntimeManager = createAgentRuntimeManager({
+      sandboxService: agentSandboxService,
+      downloadFile: async (url, destination) => {
+        const response = await net.fetch(url)
+        if (!response.ok) throw new Error(`Runtime download failed with HTTP ${response.status}`)
+        if (!response.body) throw new Error('Runtime download returned an empty response')
+        await pipeline(
+          Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>),
+          createWriteStream(destination, { mode: 0o600 })
+        )
+      },
+      confirmInstall: async (message) => {
+        const language = detectLanguage()
+        const result = await dialog.showMessageBox({
+          type: 'warning',
+          title: language === 'zh' ? '安装 Agent 依赖' : 'Install Agent Dependencies',
+          message,
+          detail: language === 'zh'
+            ? '运行时只下载一份并在所有沙箱间共享；依赖使用共享缓存，安装脚本会被禁用。'
+            : 'Runtimes are downloaded once and shared by all sandboxes. Dependencies use shared caches and install scripts are disabled.',
+          buttons: language === 'zh' ? ['安装', '取消'] : ['Install', 'Cancel'],
+          defaultId: 0,
+          cancelId: 1
+        })
+        return result.response === 0
+      }
+    })
+    const agentBrokerPath = app.isPackaged
+      ? join(process.resourcesPath, 'agent-runner', 'refora-agent-broker')
+      : join(__dirname, '../../build/agent-runner/refora-agent-broker')
+    const agentExecutionService = createAgentExecutionService({
+      sandboxService: agentSandboxService,
+      snapshotService: agentDatabaseSnapshotService,
+      readonlyFilesService: agentReadonlyFilesService,
+      runtimeManager: agentRuntimeManager,
+      runner: createBrokerAgentRunner(agentBrokerPath)
+    })
+    const agentArtifactPublisher = createAgentArtifactPublisher({
+      repos,
+      sandboxService: agentSandboxService,
+      win: () => win
+    })
+    const aiAgentService = createAiAgentService(
+      repos,
+      () => win,
+      aiProvidersService,
+      pdfTextService,
+      aiSummaryService,
+      agentExecutionService,
+      agentArtifactPublisher,
+      agentRuntimeManager
+    )
     const watcher = createWatcher({
       importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
       getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', ''),
@@ -462,7 +544,11 @@ function buildRuntime(dbPath: string): Runtime {
       aiProvidersService,
       pdfTextService,
       aiSummaryService,
-      aiAgentService
+      aiAgentService,
+      agentSandboxService,
+      agentExecutionService,
+      agentArtifactPublisher,
+      agentRuntimeManager
     }
   } catch (error) {
     closeDatabase(db)
@@ -474,6 +560,9 @@ function activateRuntime(target: Runtime, startLibraryWatcher = true): void {
   if (target.activated) return
   target.activated = true
   target.metadataService.resumeOnStartup()
+  void target.agentSandboxService.ensure(null).catch((error) => {
+    logger.warn(`agent:sandbox init failed: ${error instanceof Error ? error.message : String(error)}`)
+  })
   const signal = target.missingCheckAbort.signal
 
   setImmediate(() => {

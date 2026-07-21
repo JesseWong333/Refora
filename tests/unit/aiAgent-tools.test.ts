@@ -207,7 +207,10 @@ describe('AI agent tools', () => {
       'get_paper_summary',
       'get_paper_metadata',
       'open_paper',
-      'request_summary'
+      'request_summary',
+      'run_bash',
+      'install_runtime_packages',
+      'publish_workspace_artifacts'
     ])
     expect(repos.workspaceItems.list).not.toHaveBeenCalled()
     const systemMessage = mocks.messages[0] as { content: string }

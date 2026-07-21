@@ -62,6 +62,9 @@ import type { AiProvidersService } from '../services/aiProviders'
 import type { PdfTextService } from '../services/pdfText'
 import type { AiSummaryService } from '../services/aiSummary'
 import type { AiAgentService } from '../services/aiAgent'
+import type { AgentSandboxService } from '../services/agentSandbox'
+import type { AgentExecutionService } from '../services/agentExecution'
+import type { AgentArtifactPublisher } from '../services/agentArtifactPublisher'
 import {
   deleteWorkspaceAsset,
   deleteWorkspaceWithAssets,
@@ -185,6 +188,9 @@ export interface RuntimeRef {
   pdfTextService?: PdfTextService
   aiSummaryService?: AiSummaryService
   aiAgentService?: AiAgentService
+  agentSandboxService?: AgentSandboxService
+  agentExecutionService?: AgentExecutionService
+  agentArtifactPublisher?: AgentArtifactPublisher
 }
 
 export interface IpcHandlerDeps {
@@ -591,12 +597,41 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
 
     [IpcChannel.WorkspacesList]: (): Result<Workspace[]> =>
       wrap(() => repos().workspaces.list()),
-    [IpcChannel.WorkspacesCreate]: (name: string): Result<Workspace> =>
-      wrap(() => repos().workspaces.create(name)),
+    [IpcChannel.WorkspacesCreate]: (name: string): Promise<Result<Workspace>> =>
+      asyncWrap(async () => {
+        const rt = deps.getRuntime()
+        const workspace = repos().workspaces.create(name)
+        try {
+          await rt?.agentSandboxService?.ensure(workspace.id)
+          return workspace
+        } catch (error) {
+          repos().workspaces.delete(workspace.id)
+          throw error
+        }
+      }),
     [IpcChannel.WorkspacesRename]: (id: string, name: string): Result<void> =>
       wrap(() => repos().workspaces.rename(id, name)),
     [IpcChannel.WorkspacesDelete]: (id: string): Promise<Result<void>> =>
-      asyncWrap(() => deleteWorkspaceWithAssets(repos(), id)),
+      asyncWrap(async () => {
+        const rt = deps.getRuntime()
+        await deleteWorkspaceWithAssets(repos(), id)
+        try {
+          await rt?.agentSandboxService?.deleteWorkspace(id)
+        } catch (error) {
+          logger.warn(`agentSandbox:trash-failed ${id}: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }),
+    [IpcChannel.WorkspacesOpenSandbox]: (id: string): Promise<Result<void>> =>
+      asyncWrap(async () => {
+        const rt = deps.getRuntime()
+        if (!rt?.agentSandboxService) throw new RepoError('not_ready', 'Agent sandbox is not available')
+        if (!repos().workspaces.list().some((workspace) => workspace.id === id)) {
+          throw new RepoError('not_found', `workspace not found: ${id}`)
+        }
+        const paths = await rt.agentSandboxService.ensure(id)
+        const message = await shell.openPath(paths.sandboxRoot)
+        if (message) throw new RepoError('open_failed', message)
+      }),
 
     [IpcChannel.WorkspaceItemsList]: (workspaceId: string): Result<WorkspaceItem[]> =>
       wrap(() => repos().workspaceItems.list(workspaceId)),

@@ -203,7 +203,8 @@ const api: ReforaApi = {
     list: () => invoke<Workspace[]>(IpcChannel.WorkspacesList),
     create: (name: string) => invoke<Workspace>(IpcChannel.WorkspacesCreate, name),
     rename: (id: string, name: string) => invoke<void>(IpcChannel.WorkspacesRename, id, name),
-    delete: (id: string) => invoke<void>(IpcChannel.WorkspacesDelete, id)
+    delete: (id: string) => invoke<void>(IpcChannel.WorkspacesDelete, id),
+    openSandbox: (id: string) => invoke<void>(IpcChannel.WorkspacesOpenSandbox, id)
   },
 
   workspaceItems: {

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsOutSimple, ArrowsInSimple, FilePlus, NotePencil, Sticker } from '@phosphor-icons/react'
+import { ArrowsOutSimple, ArrowsInSimple, FilePlus, FolderOpen, NotePencil, Sticker } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../store/workspaceStore'
 import { PanelTabHeader } from '../ui'
 import Board, {
@@ -63,6 +63,11 @@ export default function WorkspacePanel() {
     setActiveMarkdownCard(forwardMarkdownCard)
     setForwardMarkdownCard(null)
   }, [forwardMarkdownCard])
+
+  const handleOpenSandbox = useCallback(() => {
+    if (!activeWorkspaceId) return
+    void window.api.workspaces.openSandbox(activeWorkspaceId).catch(() => undefined)
+  }, [activeWorkspaceId])
 
   const active = workspaces.find((w) => w.id === activeWorkspaceId)
   const name = active?.name ?? t('workspace.untitled')
@@ -172,6 +177,16 @@ export default function WorkspacePanel() {
                 aria-label={t('workspace.createStickyNote')}
               >
                 <Sticker className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="sidebar-header-btn"
+                onClick={handleOpenSandbox}
+                disabled={!activeWorkspaceId}
+                title={t('workspace.openSandbox')}
+                aria-label={t('workspace.openSandbox')}
+              >
+                <FolderOpen className="h-4 w-4" />
               </button>
               <button
                 type="button"

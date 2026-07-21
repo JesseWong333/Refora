@@ -5,10 +5,19 @@ directories:
   buildResources: build
 files:
   - out/**/*
+extraResources:
+  - from: build/agent-runner
+    to: agent-runner
+    filter:
+      - '**/*'
+      - '!module-cache{,/**}'
 asar: true
 asarUnpack:
   - '**/*.node'
 mac:
+  binaries:
+    - Contents/Resources/agent-runner/refora-agent-broker
+    - Contents/Resources/agent-runner/ReforaAgentRunner.app/Contents/MacOS/ReforaAgentRunner
   target:
     - dmg
   category: public.app-category.productivity

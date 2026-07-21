@@ -317,6 +317,8 @@ describe('createWatcher', () => {
       const opts = watchMockFn.mock.calls[0]?.[1]
       expect(opts?.ignored('/lib/refora-assets')).toBe(true)
       expect(opts?.ignored('/lib/refora-assets/asset-1/paper.pdf')).toBe(true)
+      expect(opts?.ignored('/lib/.refora-agent')).toBe(true)
+      expect(opts?.ignored('/lib/.refora-agent/workspaces/ws-1/generated.pdf')).toBe(true)
       expect(opts?.ignored('/lib/paper.pdf')).toBe(false)
     })
 

@@ -9,15 +9,16 @@
     "node": "24.x"
   },
   "scripts": {
-    "dev": "env -u ELECTRON_RUN_AS_NODE electron-vite dev",
-    "build": "electron-vite build",
+    "build:agent-runner": "sh scripts/build-agent-runner.sh",
+    "dev": "npm run build:agent-runner && env -u ELECTRON_RUN_AS_NODE electron-vite dev",
+    "build": "npm run build:agent-runner && electron-vite build",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "test:e2e:workspace-card": "electron-vite build && playwright test tests/e2e/workspace-card-pointer.spec.ts --workers=1",
-    "package": "electron-vite build && electron-builder --mac",
+    "package": "npm run build && electron-builder --mac",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },

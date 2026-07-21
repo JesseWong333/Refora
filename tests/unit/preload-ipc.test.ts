@@ -100,6 +100,7 @@ describe('preload IPC bridge', () => {
       { channel: IpcChannel.WorkspacesCreate, args: ['Workspace'], invoke: (value) => value.workspaces.create('Workspace') },
       { channel: IpcChannel.WorkspacesRename, args: ['workspace-1', 'Renamed'], invoke: (value) => value.workspaces.rename('workspace-1', 'Renamed') },
       { channel: IpcChannel.WorkspacesDelete, args: ['workspace-1'], invoke: (value) => value.workspaces.delete('workspace-1') },
+      { channel: IpcChannel.WorkspacesOpenSandbox, args: ['workspace-1'], invoke: (value) => value.workspaces.openSandbox('workspace-1') },
       { channel: IpcChannel.WorkspaceItemsList, args: ['workspace-1'], invoke: (value) => value.workspaceItems.list('workspace-1') },
       { channel: IpcChannel.WorkspaceItemsAdd, args: ['workspace-1', 'document', ['doc-1'], { x: 1, y: 2 }], invoke: (value) => value.workspaceItems.add('workspace-1', 'document', ['doc-1'], { x: 1, y: 2 }) },
       { channel: IpcChannel.WorkspaceItemsRemove, args: ['item-1'], invoke: (value) => value.workspaceItems.remove('item-1') },

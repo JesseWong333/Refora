@@ -66,7 +66,11 @@ export function workspaceAssetMediaType(fileName: string): {
       ? 'application/json'
       : extension === '.md' || extension === '.markdown'
         ? 'text/markdown'
-        : 'text/plain'
+        : extension === '.csv'
+          ? 'text/csv'
+          : extension === '.tsv'
+            ? 'text/tab-separated-values'
+            : 'text/plain'
     return { mimeType, previewKind: 'text' }
   }
   if (extension === '.pdf') return { mimeType: 'application/pdf', previewKind: 'none' }

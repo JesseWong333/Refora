@@ -40,6 +40,9 @@ import { historyToMessages, truncateOutput } from './chatHistoryMessages'
 import { resolveDeepThinkingMode, type DeepThinkingMode } from '../../shared/deepThinking'
 import { inferModelCapabilities } from '../../shared/providerCatalog'
 import { openPdf } from './pdfOpen'
+import type { AgentExecutionService } from './agentExecution'
+import type { AgentArtifactPublisher } from './agentArtifactPublisher'
+import type { AgentRuntimeManager } from './agentRuntimeManager'
 
 const MAX_FULLTEXT_CHARS = 8000
 const HISTORY_TOKEN_BUDGET = 8000
@@ -83,7 +86,9 @@ const SYSTEM_PROMPT =
   'Reference papers by their docId. ' +
   'Full text: use read_paper_fulltext with offset/limit; it returns a window with nextOffset - follow nextOffset until done or you have enough evidence. Do not assume the first window is the whole paper. When quoting, include the offset range you used. ' +
   'Citations: cite papers as markdown links [Title](refora://doc/<docId>). Prefer titles users can recognize. ' +
-  'Never invent docIds; only use ids returned by tools or supplied by the user.'
+  'Never invent docIds; only use ids returned by tools or supplied by the user. ' +
+  'Use run_bash for local calculations, data processing, or code execution. Use install_runtime_packages when required Python or Node packages are missing; installation requires user approval. Keep scripts and intermediate files in the sandbox scripts/work directories. ' +
+  'Put user-requested deliverables in the sandbox outputs directory. When a workspace is selected, publish final deliverables with publish_workspace_artifacts before answering. Do not publish caches, logs, package environments, or intermediate files.'
 
 const WORKSPACE_SYSTEM_PROMPT =
   'A workspace is selected for this chat. ' +
@@ -365,7 +370,10 @@ export function createAiAgentService(
   win: () => BrowserWindow | null,
   aiProvidersService: AiProvidersService,
   pdfTextService: PdfTextService,
-  aiSummaryService: AiSummaryService
+  aiSummaryService: AiSummaryService,
+  agentExecutionService?: AgentExecutionService,
+  agentArtifactPublisher?: AgentArtifactPublisher,
+  agentRuntimeManager?: AgentRuntimeManager
 ) {
   const getWin = (): BrowserWindow | null => {
     const w = win()
@@ -951,6 +959,83 @@ export function createAiAgentService(
       }
     })
 
+    const runBash = new DynamicStructuredTool({
+      name: 'run_bash',
+      description:
+        'Run a Bash script in the persistent sandbox for the current workspace, or the default sandbox when no workspace is selected. ' +
+        'The sandbox provides REFORA_WORK, REFORA_SCRIPTS, REFORA_OUTPUTS, REFORA_DB, and read-only library manifests. ' +
+        'Write intermediate files to scripts or work and final deliverables to outputs.',
+      schema: z.object({
+        script: z.string().min(1).max(100_000).describe('Bash script to execute'),
+        cwd: z.string().min(1).max(500).optional().describe('Relative directory inside the current sandbox'),
+        timeoutSeconds: z.number().int().min(1).max(300).optional().default(60)
+      }),
+      func: async ({ script, cwd, timeoutSeconds }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        if (!agentExecutionService) return JSON.stringify({ error: 'Agent execution is unavailable' })
+        try {
+          return JSON.stringify(await agentExecutionService.execute({
+            workspaceId: req.workspaceId,
+            script,
+            cwd,
+            timeoutSeconds,
+            signal
+          }))
+        } catch (error) {
+          return JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    })
+
+    const publishWorkspaceArtifacts = new DynamicStructuredTool({
+      name: 'publish_workspace_artifacts',
+      description:
+        'Publish final files from the current agent sandbox to the selected Workspace as managed WorkspaceAsset cards. ' +
+        'Use relative sandbox paths, normally under outputs/. Without a selected Workspace the files remain in the default sandbox.',
+      schema: z.object({
+        paths: z.array(z.string().min(1).max(500)).min(1).max(20),
+        x: z.number().finite().optional(),
+        y: z.number().finite().optional()
+      }),
+      func: async ({ paths, x, y }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        if (!agentArtifactPublisher) return JSON.stringify({ error: 'Artifact publishing is unavailable' })
+        const placement = x === undefined || y === undefined ? undefined : { x, y }
+        try {
+          return JSON.stringify(await agentArtifactPublisher.publish(req.workspaceId, paths, placement))
+        } catch (error) {
+          return JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    })
+
+    const installRuntimePackages = new DynamicStructuredTool({
+      name: 'install_runtime_packages',
+      description:
+        'Install shared Python 3.12 or Node.js 24 runtimes and version-pinned packages for the current Workspace or default sandbox. ' +
+        'The user must approve downloads and installation. Package lifecycle scripts and Python source builds are disabled.',
+      schema: z.object({
+        runtimes: z.array(z.enum(['python', 'node'])).max(2).optional().default([]),
+        python: z.array(z.object({
+          name: z.string().min(1).max(120),
+          version: z.string().min(1).max(80).optional()
+        })).max(20).optional().default([]),
+        node: z.array(z.object({
+          name: z.string().min(1).max(120),
+          version: z.string().min(1).max(80).optional()
+        })).max(20).optional().default([])
+      }),
+      func: async ({ runtimes, python, node }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        if (!agentRuntimeManager) return JSON.stringify({ error: 'Runtime package installation is unavailable' })
+        try {
+          return JSON.stringify(await agentRuntimeManager.installPackages(req.workspaceId, python, node, runtimes))
+        } catch (error) {
+          return JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    })
+
     const libraryTools = [
       searchLibrary,
       findRelatedPapers,
@@ -960,7 +1045,7 @@ export function createAiAgentService(
       openPaper,
       requestSummary
     ]
-    if (!workspaceId) return libraryTools
+    if (!workspaceId) return [...libraryTools, runBash, installRuntimePackages, publishWorkspaceArtifacts]
     return [
       listWorkspaceContext,
       searchWorkspaceDocs,
@@ -968,7 +1053,10 @@ export function createAiAgentService(
       generateReport,
       createWorkspaceConnections,
       addDocsToWorkspace,
-      requestSummary
+      requestSummary,
+      runBash,
+      installRuntimePackages,
+      publishWorkspaceArtifacts
     ]
   }
 
