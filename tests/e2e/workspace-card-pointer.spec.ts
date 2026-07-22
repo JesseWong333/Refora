@@ -300,7 +300,7 @@ test.describe('Workspace card pointer gestures', () => {
     if (!previewBounds) throw new Error('Paper preview has no bounding box')
     await electronPage.mouse.move(previewBounds.x + 40, previewBounds.y + 60)
     await electronPage.mouse.down()
-    await electronPage.mouse.move(previewBounds.x + 70, previewBounds.y + 80, { steps: 2 })
+    await electronPage.mouse.move(previewBounds.x + 70, previewBounds.y + 80)
     await electronPage.mouse.up()
 
     await expect.poll(() => electronPage.evaluate(
