@@ -140,7 +140,6 @@ export default function ResizableCard({
     interactionCleanupRef.current?.()
     const pointerId = e.pointerId
     const pointerTarget = dragClickTarget ?? target.closest<HTMLElement>('[data-card-kind]') ?? e.currentTarget
-    pointerTarget.setPointerCapture?.(pointerId)
     moveStartRef.current = {
       x: e.clientX,
       y: e.clientY,
@@ -160,6 +159,11 @@ export default function ResizableCard({
 
     const activate = () => {
       activated = true
+      try {
+        pointerTarget.setPointerCapture?.(pointerId)
+      } catch {
+        void 0
+      }
       movingRef.current = true
       setMoving(true)
       window.getSelection()?.removeAllRanges()

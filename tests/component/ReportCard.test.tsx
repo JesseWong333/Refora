@@ -842,12 +842,14 @@ describe('ResizableCard', () => {
     const setPointerCapture = vi.fn()
     content.setPointerCapture = setPointerCapture
     fireEvent.pointerDown(content, { pointerId: 2, button: 0, clientX: 100, clientY: 100 })
-    expect(setPointerCapture).toHaveBeenCalledWith(2)
+    expect(setPointerCapture).not.toHaveBeenCalled()
     fireEvent.pointerMove(document, { pointerId: 2, clientX: 103, clientY: 102 })
+    expect(setPointerCapture).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(onPositionChange).toHaveBeenLastCalledWith('item-1', { x: -14, y: 44, zIndex: 1 })
     })
     fireEvent.pointerMove(document, { pointerId: 2, clientX: 130, clientY: 80 })
+    expect(setPointerCapture).toHaveBeenCalledWith(2)
     fireEvent.pointerUp(document, { pointerId: 2 })
     fireEvent.click(content)
 
@@ -860,6 +862,38 @@ describe('ResizableCard', () => {
     fireEvent.click(content)
 
     expect(onOpen).toHaveBeenCalledOnce()
+  })
+
+  it('continues dragging when pointer capture fails', () => {
+    const onPositionChange = vi.fn()
+    const onPositionCommit = vi.fn()
+    render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 10, y: 20, zIndex: 1 }}
+        getScale={() => 1}
+        frontZIndex={4}
+        onSizeChange={() => {}}
+        onSizeCommit={() => {}}
+        onPositionChange={onPositionChange}
+        onPositionCommit={onPositionCommit}
+      >
+        <div data-card-kind="note">Content without capture</div>
+      </ResizableCard>
+    )
+
+    const content = screen.getByText('Content without capture')
+    content.setPointerCapture = vi.fn(() => {
+      throw new DOMException('Pointer is not active', 'NotFoundError')
+    })
+
+    fireEvent.pointerDown(content, { pointerId: 34, button: 0, clientX: 20, clientY: 30 })
+    fireEvent.pointerMove(document, { pointerId: 34, clientX: 50, clientY: 45 })
+    fireEvent.pointerUp(document, { pointerId: 34 })
+
+    expect(onPositionChange).toHaveBeenLastCalledWith('item-1', { x: 40, y: 35, zIndex: 4 })
+    expect(onPositionCommit).toHaveBeenCalledWith('item-1', { x: 40, y: 35, zIndex: 4 })
   })
 
   it('coalesces pointer movement into one visual update per animation frame', () => {
@@ -985,7 +1019,7 @@ describe('ResizableCard', () => {
     fireEvent.pointerUp(document, { pointerId: 3 })
     fireEvent.click(content)
 
-    expect(captureContentPointer).toHaveBeenCalledWith(3)
+    expect(captureContentPointer).not.toHaveBeenCalled()
     expect(onPositionChange).toHaveBeenCalledWith('item-1', { x: 4, y: 0, zIndex: 0 })
     expect(onPositionCommit).not.toHaveBeenCalled()
     expect(onPositionCancel).toHaveBeenCalledWith('item-1')

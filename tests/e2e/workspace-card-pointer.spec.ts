@@ -59,28 +59,154 @@ type ElectronApi = {
   }
 }
 
+type PointerTrace = {
+  startHit: string
+  endHit: string
+  events: Array<{
+    type: string
+    pointerId: number
+    button: number
+    buttons: number
+    clientX: number
+    clientY: number
+    target: string
+    hit: string
+    trusted: boolean
+  }>
+}
+
+type PointerTraceWindow = Window & {
+  __reforaPointerTrace?: PointerTrace
+  __reforaPointerTraceInstalled?: boolean
+}
+
 test.describe('Workspace card pointer gestures', () => {
   let electronApp: Awaited<ReturnType<typeof electron.launch>>
   let electronPage: Awaited<ReturnType<Awaited<ReturnType<typeof electron.launch>>['firstWindow']>>
   let userDataFolder: string
   let libraryFolder: string
   const mainLogs: string[] = []
+  const rendererErrors: string[] = []
 
-  const waitForRendererFrame = () => electronPage.evaluate(() => (
-    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  const preparePointerTrace = async (
+    start: { x: number; y: number },
+    end: { x: number; y: number }
+  ) => electronPage.evaluate(({ start: startPoint, end: endPoint }) => {
+    const traceWindow = window as PointerTraceWindow
+    const describeElement = (value: EventTarget | Element | null) => {
+      const element = value instanceof Element ? value : null
+      if (!element) return 'none'
+      const cardKind = element.closest('[data-card-kind]')?.getAttribute('data-card-kind')
+      const workspaceCardId = element.closest('[data-workspace-card]')?.getAttribute('data-workspace-card-id')
+      const role = element.closest('[role]')?.getAttribute('role')
+      return [
+        element.tagName.toLowerCase(),
+        cardKind ? `[data-card-kind="${cardKind}"]` : '',
+        element.closest('[data-card-drag-click]') ? '[data-card-drag-click]' : '',
+        workspaceCardId ? `[data-workspace-card-id="${workspaceCardId}"]` : '',
+        role ? `[role="${role}"]` : ''
+      ].join('')
+    }
+
+    if (!traceWindow.__reforaPointerTraceInstalled) {
+      const record = (event: PointerEvent) => {
+        const trace = traceWindow.__reforaPointerTrace
+        if (!trace) return
+        const hit = describeElement(document.elementFromPoint(event.clientX, event.clientY))
+        trace.endHit = hit
+        trace.events.push({
+          type: event.type,
+          pointerId: event.pointerId,
+          button: event.button,
+          buttons: event.buttons,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          target: describeElement(event.target),
+          hit,
+          trusted: event.isTrusted
+        })
+      }
+      document.addEventListener('pointerdown', record, true)
+      document.addEventListener('pointermove', record, true)
+      document.addEventListener('pointerup', record, true)
+      document.addEventListener('pointercancel', record, true)
+      traceWindow.__reforaPointerTraceInstalled = true
+    }
+
+    traceWindow.__reforaPointerTrace = {
+      startHit: describeElement(document.elementFromPoint(startPoint.x, startPoint.y)),
+      endHit: describeElement(document.elementFromPoint(endPoint.x, endPoint.y)),
+      events: []
+    }
+  }, { start, end })
+
+  const readPointerTrace = () => electronPage.evaluate(() => (
+    (window as PointerTraceWindow).__reforaPointerTrace ?? null
   ))
+
+  const pointerFailure = async (message: string, error: unknown) => {
+    let trace: PointerTrace | null = null
+    try {
+      trace = await readPointerTrace()
+    } catch (traceError) {
+      rendererErrors.push(traceError instanceof Error ? traceError.message : String(traceError))
+    }
+    const details = [
+      message,
+      error instanceof Error ? error.message : String(error),
+      `Pointer trace: ${JSON.stringify(trace, null, 2)}`,
+      `Renderer errors: ${rendererErrors.join('\n') || 'none'}`,
+      `Electron logs: ${mainLogs.join('') || 'none'}`
+    ]
+    return new Error(details.join('\n'))
+  }
+
+  const waitForPointerEvent = async (type: string, buttons: number) => {
+    try {
+      await expect.poll(async () => {
+        const trace = await readPointerTrace()
+        return trace?.events.some((event) => (
+          event.type === type && event.buttons === buttons && event.trusted
+        )) ?? false
+      }, { timeout: 3000 }).toBe(true)
+    } catch (error) {
+      throw await pointerFailure(`Expected native ${type} with buttons=${buttons}`, error)
+    }
+  }
 
   const dragPointer = async (
     start: { x: number; y: number },
     end: { x: number; y: number },
     steps = 1
   ) => {
+    await preparePointerTrace(start, end)
     await electronPage.mouse.move(start.x, start.y)
     await electronPage.mouse.down()
-    await waitForRendererFrame()
+    await waitForPointerEvent('pointerdown', 1)
     await electronPage.mouse.move(end.x, end.y, { steps })
-    await waitForRendererFrame()
+    await waitForPointerEvent('pointermove', 1)
     await electronPage.mouse.up()
+    await waitForPointerEvent('pointerup', 0)
+  }
+
+  const expectWorkspaceItemPosition = async (
+    workspaceId: string,
+    itemId: string,
+    expected: { x: number; y: number }
+  ) => {
+    try {
+      await expect.poll(() => electronPage.evaluate(
+        async ({ targetWorkspaceId, targetItemId }) => {
+          const electronApi = (window as Window & { api: ElectronApi }).api
+          const item = (await electronApi.workspaceItems.list(targetWorkspaceId))
+            .find((candidate) => candidate.id === targetItemId)
+          return item ? { x: item.x, y: item.y } : null
+        },
+        { targetWorkspaceId: workspaceId, targetItemId: itemId }
+      )).toEqual(expected)
+    } catch (error) {
+      throw await pointerFailure(`Expected workspace item ${itemId} at ${JSON.stringify(expected)}`, error)
+    }
   }
 
   test.beforeAll(async () => {
@@ -100,6 +226,10 @@ test.describe('Workspace card pointer gestures', () => {
     electronApp.process().stdout?.on('data', (chunk: Buffer) => mainLogs.push(chunk.toString()))
     electronApp.process().stderr?.on('data', (chunk: Buffer) => mainLogs.push(chunk.toString()))
     electronPage = await electronApp.firstWindow()
+    electronPage.on('pageerror', (error) => rendererErrors.push(error.stack ?? error.message))
+    electronPage.on('console', (message) => {
+      if (message.type() === 'error') rendererErrors.push(message.text())
+    })
 
     const actualUserDataFolder = await electronApp.evaluate(({ app }) => app.getPath('userData'))
     expect(actualUserDataFolder).toBe(userDataFolder)
@@ -157,15 +287,11 @@ test.describe('Workspace card pointer gestures', () => {
 
     await expect(card).toBeVisible()
     await expect(electronPage.locator('article.markdown-body')).toHaveCount(0)
-    await expect.poll(() => electronPage.evaluate(
-      async ({ workspaceId, itemId }) => {
-        const electronApi = (window as Window & { api: ElectronApi }).api
-        const item = (await electronApi.workspaceItems.list(workspaceId))
-          .find((candidate) => candidate.id === itemId)
-        return item ? { x: item.x, y: item.y } : null
-      },
-      { workspaceId: setup.workspaceId, itemId: setup.item.id }
-    )).toEqual({ x: setup.item.x + 30, y: setup.item.y + 20 })
+    await expectWorkspaceItemPosition(
+      setup.workspaceId,
+      setup.item.id,
+      { x: setup.item.x + 30, y: setup.item.y + 20 }
+    )
 
     const clickBox = await noteCard.boundingBox()
     if (!clickBox) throw new Error('Moved workspace note card has no bounding box')
@@ -177,15 +303,11 @@ test.describe('Workspace card pointer gestures', () => {
     await expect(reader).toBeVisible()
     await expect(reader.getByRole('heading', { level: 1 })).toHaveText(noteTitle)
     await expect(reader).toContainText(noteContent)
-    await expect(electronPage.evaluate(
-      async ({ workspaceId, itemId }) => {
-        const electronApi = (window as Window & { api: ElectronApi }).api
-        const item = (await electronApi.workspaceItems.list(workspaceId))
-          .find((candidate) => candidate.id === itemId)
-        return item ? { x: item.x, y: item.y } : null
-      },
-      { workspaceId: setup.workspaceId, itemId: setup.item.id }
-    )).resolves.toEqual({ x: setup.item.x + 30, y: setup.item.y + 20 })
+    await expectWorkspaceItemPosition(
+      setup.workspaceId,
+      setup.item.id,
+      { x: setup.item.x + 30, y: setup.item.y + 20 }
+    )
   })
 
   test('loads the first PDF page in a workspace paper card', async () => {
@@ -319,15 +441,11 @@ test.describe('Workspace card pointer gestures', () => {
       2
     )
 
-    await expect.poll(() => electronPage.evaluate(
-      async ({ workspaceId, itemId }) => {
-        const electronApi = (window as Window & { api: ElectronApi }).api
-        const item = (await electronApi.workspaceItems.list(workspaceId))
-          .find((candidate) => candidate.id === itemId)
-        return item ? { x: item.x, y: item.y } : null
-      },
-      { workspaceId: setup.workspaceId, itemId: setup.item.id }
-    )).toEqual({ x: setup.item.x + 30, y: setup.item.y + 20 })
+    await expectWorkspaceItemPosition(
+      setup.workspaceId,
+      setup.item.id,
+      { x: setup.item.x + 30, y: setup.item.y + 20 }
+    )
 
     await electronPage.locator('[data-paper-details]').click()
     const summaryReader = electronPage.locator('article.markdown-body')

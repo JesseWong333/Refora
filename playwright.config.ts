@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 60000,
   retries: 0,
   use: {
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
   },
   projects: [
     {

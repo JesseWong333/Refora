@@ -45,6 +45,15 @@ jobs:
       - name: Workspace Card Interaction E2E
         run: npm run test:e2e:workspace-card
 
+      - name: Upload Workspace Card E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Refora-workspace-card-e2e-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Package macOS application
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
