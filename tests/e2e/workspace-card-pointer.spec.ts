@@ -1,4 +1,4 @@
-import { test, expect, _electron as electron } from '@playwright/test'
+import { test, expect, _electron as electron, type Locator } from '@playwright/test'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -174,11 +174,19 @@ test.describe('Workspace card pointer gestures', () => {
     }
   }
 
-  const dragPointer = async (
-    start: { x: number; y: number },
-    end: { x: number; y: number },
+  const dragLocator = async (
+    target: Locator,
+    delta: { x: number; y: number },
     steps = 1
   ) => {
+    await target.hover()
+    const box = await target.boundingBox()
+    if (!box) throw new Error('Pointer target has no bounding box')
+    const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const end = { x: start.x + delta.x, y: start.y + delta.y }
+    await expect.poll(() => target.evaluate((element, point) => (
+      element.contains(document.elementFromPoint(point.x, point.y))
+    ), start)).toBe(true)
     await preparePointerTrace(start, end)
     await electronPage.mouse.move(start.x, start.y)
     await electronPage.mouse.down()
@@ -275,15 +283,7 @@ test.describe('Workspace card pointer gestures', () => {
     const card = electronPage.locator('[data-workspace-card]').filter({ has: noteCard })
     await expect(noteCard).toBeVisible()
 
-    const dragBox = await noteCard.boundingBox()
-    if (!dragBox) throw new Error('Workspace note card has no bounding box')
-    const dragStart = { x: dragBox.x + 40, y: dragBox.y + 90 }
-
-    await dragPointer(
-      dragStart,
-      { x: dragStart.x + 30, y: dragStart.y + 20 },
-      2
-    )
+    await dragLocator(noteCard, { x: 30, y: 20 }, 2)
 
     await expect(card).toBeVisible()
     await expect(electronPage.locator('article.markdown-body')).toHaveCount(0)
@@ -293,11 +293,7 @@ test.describe('Workspace card pointer gestures', () => {
       { x: setup.item.x + 30, y: setup.item.y + 20 }
     )
 
-    const clickBox = await noteCard.boundingBox()
-    if (!clickBox) throw new Error('Moved workspace note card has no bounding box')
-    const clickStart = { x: clickBox.x + 40, y: clickBox.y + 90 }
-
-    await dragPointer(clickStart, { x: clickStart.x + 4, y: clickStart.y })
+    await dragLocator(noteCard, { x: 4, y: 0 })
 
     const reader = electronPage.locator('article.markdown-body')
     await expect(reader).toBeVisible()
@@ -433,11 +429,9 @@ test.describe('Workspace card pointer gestures', () => {
       return count + fs.readdirSync(directoryPath).filter((name) => name.endsWith('.png')).length
     }, 0)).toBe(initialCacheCount + 1)
 
-    const previewBounds = await electronPage.locator('[data-paper-preview]').boundingBox()
-    if (!previewBounds) throw new Error('Paper preview has no bounding box')
-    await dragPointer(
-      { x: previewBounds.x + 40, y: previewBounds.y + 60 },
-      { x: previewBounds.x + 70, y: previewBounds.y + 80 },
+    await dragLocator(
+      electronPage.locator('[data-paper-preview]'),
+      { x: 30, y: 20 },
       2
     )
 
