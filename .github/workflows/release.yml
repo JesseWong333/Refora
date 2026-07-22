@@ -15,7 +15,7 @@ concurrency:
 jobs:
   release:
     name: Verify, package, and publish
-    runs-on: macos-24
+    runs-on: macos-26
     timeout-minutes: 45
     env:
       CSC_LINK: ${{ secrets.CSC_LINK }}
