@@ -66,6 +66,23 @@ test.describe('Workspace card pointer gestures', () => {
   let libraryFolder: string
   const mainLogs: string[] = []
 
+  const waitForRendererFrame = () => electronPage.evaluate(() => (
+    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  ))
+
+  const dragPointer = async (
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    steps = 1
+  ) => {
+    await electronPage.mouse.move(start.x, start.y)
+    await electronPage.mouse.down()
+    await waitForRendererFrame()
+    await electronPage.mouse.move(end.x, end.y, { steps })
+    await waitForRendererFrame()
+    await electronPage.mouse.up()
+  }
+
   test.beforeAll(async () => {
     userDataFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'refora-e2e-user-data-'))
     libraryFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'refora-e2e-pointer-'))
@@ -132,10 +149,11 @@ test.describe('Workspace card pointer gestures', () => {
     if (!dragBox) throw new Error('Workspace note card has no bounding box')
     const dragStart = { x: dragBox.x + 40, y: dragBox.y + 90 }
 
-    await electronPage.mouse.move(dragStart.x, dragStart.y)
-    await electronPage.mouse.down()
-    await electronPage.mouse.move(dragStart.x + 30, dragStart.y + 20, { steps: 2 })
-    await electronPage.mouse.up()
+    await dragPointer(
+      dragStart,
+      { x: dragStart.x + 30, y: dragStart.y + 20 },
+      2
+    )
 
     await expect(card).toBeVisible()
     await expect(electronPage.locator('article.markdown-body')).toHaveCount(0)
@@ -153,10 +171,7 @@ test.describe('Workspace card pointer gestures', () => {
     if (!clickBox) throw new Error('Moved workspace note card has no bounding box')
     const clickStart = { x: clickBox.x + 40, y: clickBox.y + 90 }
 
-    await electronPage.mouse.move(clickStart.x, clickStart.y)
-    await electronPage.mouse.down()
-    await electronPage.mouse.move(clickStart.x + 4, clickStart.y)
-    await electronPage.mouse.up()
+    await dragPointer(clickStart, { x: clickStart.x + 4, y: clickStart.y })
 
     const reader = electronPage.locator('article.markdown-body')
     await expect(reader).toBeVisible()
@@ -298,10 +313,11 @@ test.describe('Workspace card pointer gestures', () => {
 
     const previewBounds = await electronPage.locator('[data-paper-preview]').boundingBox()
     if (!previewBounds) throw new Error('Paper preview has no bounding box')
-    await electronPage.mouse.move(previewBounds.x + 40, previewBounds.y + 60)
-    await electronPage.mouse.down()
-    await electronPage.mouse.move(previewBounds.x + 70, previewBounds.y + 80)
-    await electronPage.mouse.up()
+    await dragPointer(
+      { x: previewBounds.x + 40, y: previewBounds.y + 60 },
+      { x: previewBounds.x + 70, y: previewBounds.y + 80 },
+      2
+    )
 
     await expect.poll(() => electronPage.evaluate(
       async ({ workspaceId, itemId }) => {
