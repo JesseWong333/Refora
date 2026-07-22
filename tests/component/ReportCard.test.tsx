@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react'
-import type { AiReport, Document, WorkspaceNote } from '../../src/shared/ipc-types'
+import type { AiReport, Document, WorkspaceAsset, WorkspaceNote } from '../../src/shared/ipc-types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -115,6 +115,7 @@ const ReportCardModule = await import('../../src/renderer/components/workspace/R
 const ReportCard = ReportCardModule.default
 const PaperCard = (await import('../../src/renderer/components/workspace/PaperCard')).default
 const NoteCard = (await import('../../src/renderer/components/workspace/NoteCard')).default
+const AssetCard = (await import('../../src/renderer/components/workspace/AssetCard')).default
 const StickyNoteCard = (await import('../../src/renderer/components/workspace/StickyNoteCard')).default
 const ResizableCard = (await import('../../src/renderer/components/workspace/ResizableCard')).default
 const WorkspacePanel = (await import('../../src/renderer/components/workspace/WorkspacePanel')).default
@@ -276,6 +277,51 @@ describe('ReportCard', () => {
 })
 
 describe('Workspace card types', () => {
+  it('opens the PDF from the left preview and Markdown reading from the right details', () => {
+    const onOpenPdf = vi.fn()
+    const onOpenSummary = vi.fn()
+    const paper = {
+      id: 'doc / 1',
+      fileName: 'paper.pdf',
+      fileHash: 'hash / 1',
+      updatedAt: 42,
+      fileMissing: 0,
+      title: 'Paper title'
+    } as Document
+    const { container } = render(
+      <PaperCard
+        doc={paper}
+        summary={null}
+        summarizing={false}
+        summaryError={null}
+        onSummarize={() => {}}
+        onOpenPdf={onOpenPdf}
+        onRemove={() => {}}
+        onOpenSummary={onOpenSummary}
+      />
+    )
+
+    const preview = screen.getByRole('button', { name: 'workspace.pdfPreview' })
+    expect(preview.querySelector('img')).toHaveAttribute(
+      'src',
+      'refora-document://preview/doc%20%2F%201?v=hash%20%2F%201-42'
+    )
+    expect(preview).toHaveClass('h-full', 'max-w-[70%]', 'shrink-0')
+    expect(preview).not.toHaveClass('w-[38%]')
+    expect(preview.querySelector('img')).toHaveClass('h-full', 'w-auto')
+    const details = container.querySelector('[data-paper-details]') as HTMLElement
+    expect(details).toContainElement(
+      screen.getByText('Paper title')
+    )
+    expect(details).toHaveClass('cursor-pointer')
+    fireEvent.click(preview)
+    expect(onOpenPdf).toHaveBeenCalledOnce()
+    expect(onOpenSummary).not.toHaveBeenCalled()
+    fireEvent.click(details)
+    expect(onOpenSummary).toHaveBeenCalledOnce()
+    expect(onOpenPdf).toHaveBeenCalledOnce()
+  })
+
   it('copies a paper as Markdown from its context menu', () => {
     const onCopy = vi.fn()
     const paper = { id: 'doc-1', fileName: 'paper.pdf', title: 'Paper title' } as Document
@@ -377,6 +423,20 @@ describe('Workspace card types', () => {
       createdAt: 1,
       updatedAt: 1
     }
+    const asset: WorkspaceAsset = {
+      id: 'asset-1',
+      workspaceId: 'ws-1',
+      fileName: 'Asset title.txt',
+      filePath: '/tmp/Asset title.txt',
+      sourcePath: '/tmp/Asset title.txt',
+      mimeType: 'text/plain',
+      previewKind: 'none',
+      fileSize: 12,
+      fileHash: 'asset-hash',
+      fileMissing: 0,
+      createdAt: 1,
+      updatedAt: 1
+    }
 
     const { container: paperContainer } = render(
       <PaperCard
@@ -395,6 +455,9 @@ describe('Workspace card types', () => {
     const { container: noteContainer } = render(
       <NoteCard note={note} onDelete={() => {}} onUpdate={async () => true} />
     )
+    const { container: assetContainer } = render(
+      <AssetCard asset={asset} onOpen={() => {}} onReveal={() => {}} onDelete={() => {}} />
+    )
     const { container: stickyContainer } = render(
       <StickyNoteCard
         note={{ ...note, id: 'sticky-1', noteType: 'plain', contentMd: 'Sticky text' }}
@@ -406,7 +469,12 @@ describe('Workspace card types', () => {
     expect(paperContainer.querySelector('[data-card-kind="document"]')).toHaveClass('workspace-content-card--document')
     expect(reportContainer.querySelector('[data-card-kind="report"]')).toHaveClass('workspace-content-card--report')
     expect(noteContainer.querySelector('[data-card-kind="note"]')).toHaveClass('workspace-content-card--note')
+    expect(assetContainer.querySelector('[data-card-kind="asset"]')).toHaveClass('workspace-content-card--asset')
     expect(stickyContainer.querySelector('[data-card-kind="sticky"]')).toHaveClass('workspace-content-card--sticky')
+    for (const container of [paperContainer, reportContainer, noteContainer, assetContainer]) {
+      expect(container.querySelector('.workspace-card-title')).toHaveClass('text-base')
+      expect(container.querySelector('.workspace-card-title')).not.toHaveClass('text-sm')
+    }
     expect(paperContainer.querySelector('[data-card-scroll]')).toHaveClass('workspace-card-scroll')
     expect(reportContainer.querySelector('[data-card-scroll]')).toHaveClass('workspace-card-scroll')
     expect(noteContainer.querySelector('[data-card-scroll]')).toHaveClass('workspace-card-scroll')
@@ -721,6 +789,34 @@ describe('ResizableCard', () => {
     expect(onSizeCommit).toHaveBeenCalledWith('item-1', { width: 340, height: 225 })
   })
 
+  it('resizes beyond the former card bounds while keeping dimensions positive', () => {
+    const onSizeChange = vi.fn()
+    const onSizeCommit = vi.fn()
+    const { container } = render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 0, y: 0, zIndex: 0 }}
+        getScale={() => 1}
+        frontZIndex={1}
+        onSizeChange={onSizeChange}
+        onSizeCommit={onSizeCommit}
+        onPositionChange={() => {}}
+        onPositionCommit={() => {}}
+      >
+        <div>Content</div>
+      </ResizableCard>
+    )
+    const corner = container.querySelector('.cursor-nwse-resize') as HTMLElement
+
+    fireEvent.pointerDown(corner, { pointerId: 21, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(document, { pointerId: 21, clientX: 900, clientY: 800 })
+    fireEvent.pointerUp(document, { pointerId: 21 })
+
+    expect(onSizeChange).toHaveBeenLastCalledWith('item-1', { width: 1200, height: 1000 })
+    expect(onSizeCommit).toHaveBeenCalledWith('item-1', { width: 1200, height: 1000 })
+  })
+
   it('previews movement immediately and commits after crossing the drag threshold', async () => {
     const onPositionChange = vi.fn()
     const onPositionCommit = vi.fn()
@@ -921,5 +1017,61 @@ describe('ResizableCard', () => {
     fireEvent.pointerUp(document, { pointerId: 4 })
 
     expect(onPositionChange).not.toHaveBeenCalled()
+  })
+
+  it('uses the card drag threshold for the clickable paper preview', () => {
+    const onOpenPdf = vi.fn()
+    const onPositionChange = vi.fn()
+    const onPositionCommit = vi.fn()
+    const paper = {
+      id: 'doc-1',
+      fileName: 'paper.pdf',
+      fileHash: 'hash-1',
+      updatedAt: 1,
+      fileMissing: 0,
+      title: 'Paper title'
+    } as Document
+    render(
+      <ResizableCard
+        sizeKey="item-1"
+        size={{ width: 300, height: 200 }}
+        position={{ x: 10, y: 20, zIndex: 1 }}
+        getScale={() => 1}
+        frontZIndex={4}
+        onSizeChange={() => {}}
+        onSizeCommit={() => {}}
+        onPositionChange={onPositionChange}
+        onPositionCommit={onPositionCommit}
+      >
+        <PaperCard
+          doc={paper}
+          summary={null}
+          summarizing={false}
+          summaryError={null}
+          onSummarize={() => {}}
+          onOpenPdf={onOpenPdf}
+          onRemove={() => {}}
+        />
+      </ResizableCard>
+    )
+    const preview = screen.getByRole('button', { name: 'workspace.pdfPreview' })
+    preview.setPointerCapture = vi.fn()
+
+    expect(preview).toHaveClass('cursor-pointer')
+    fireEvent.pointerDown(preview, { pointerId: 31, button: 0, clientX: 30, clientY: 40 })
+    fireEvent.pointerUp(document, { pointerId: 31 })
+    fireEvent.click(preview)
+
+    expect(onOpenPdf).toHaveBeenCalledOnce()
+    expect(onPositionCommit).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(preview, { pointerId: 32, button: 0, clientX: 30, clientY: 40 })
+    fireEvent.pointerMove(document, { pointerId: 32, clientX: 60, clientY: 65 })
+    fireEvent.pointerUp(document, { pointerId: 32 })
+    fireEvent.click(preview)
+
+    expect(onPositionChange).toHaveBeenLastCalledWith('item-1', { x: 40, y: 45, zIndex: 4 })
+    expect(onPositionCommit).toHaveBeenCalledWith('item-1', { x: 40, y: 45, zIndex: 4 })
+    expect(onOpenPdf).toHaveBeenCalledOnce()
   })
 })

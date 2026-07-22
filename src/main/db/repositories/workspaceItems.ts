@@ -1,9 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import {
-  WORKSPACE_CARD_MAX_HEIGHT,
-  WORKSPACE_CARD_MAX_WIDTH,
-  WORKSPACE_CARD_MIN_HEIGHT,
-  WORKSPACE_CARD_MIN_WIDTH,
   type WorkspaceItem,
   type WorkspaceItemKind,
   type WorkspaceItemPlacement
@@ -152,12 +148,10 @@ export function createWorkspaceItemsRepository(db: SqliteDb) {
     if (
       !Number.isInteger(width) ||
       !Number.isInteger(height) ||
-      width < WORKSPACE_CARD_MIN_WIDTH ||
-      width > WORKSPACE_CARD_MAX_WIDTH ||
-      height < WORKSPACE_CARD_MIN_HEIGHT ||
-      height > WORKSPACE_CARD_MAX_HEIGHT
+      width <= 0 ||
+      height <= 0
     ) {
-      throw new RepoError('invalid_size', 'workspace card size is out of bounds')
+      throw new RepoError('invalid_size', 'workspace card size must use positive integers')
     }
     const existing = db.prepare('SELECT workspaceId FROM workspace_items WHERE id = ?').get(id) as
       | { workspaceId: string }

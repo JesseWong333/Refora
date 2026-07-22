@@ -161,7 +161,7 @@ export default function ReportCard({
         <div className="flex shrink-0 items-start gap-2">
           <div className="workspace-card-heading min-w-0 flex-1">
             <span className="workspace-card-type-label">{t('workspace.cardTypeReport')}</span>
-            <h3 className="workspace-card-title line-clamp-2 text-sm font-semibold text-foreground">{report.title}</h3>
+            <h3 className="workspace-card-title line-clamp-2 text-base font-semibold text-foreground">{report.title}</h3>
             <p className="mt-0.5 text-xs text-muted">{formatDate(report.createdAt)}</p>
             {report.sourceDocIds.length > 0 && (
               <p className="mt-0.5 text-xs text-muted">

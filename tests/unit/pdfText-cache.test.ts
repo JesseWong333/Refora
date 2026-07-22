@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createPdfTextService } from '../../src/main/services/pdfText'
+import { pdfPreviewCachePath } from '../../src/main/services/pdfPreviewCache'
 import { RepoError } from '../../src/main/db/repositories/errors'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { Document } from '../../src/shared/ipc-types'
@@ -9,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   getFullText: vi.fn(),
   setFullText: vi.fn(),
-  docGet: vi.fn()
+  docGet: vi.fn(),
+  settingGet: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -19,6 +24,10 @@ vi.mock('electron', () => ({
 vi.mock('../../src/main/services/logger', () => ({
   default: {},
   logger: mocks.logger
+}))
+
+vi.mock('../../src/main/services/pdfPath', () => ({
+  resolvePdfFilePath: (filePath: string) => filePath
 }))
 
 function makeDoc(overrides: Partial<Document> = {}): Document {
@@ -68,9 +77,11 @@ function makeWorker(getText: () => string): MockWorker {
     on: vi.fn((event: string, cb: (arg: unknown) => void) => {
       ;(handlers[event] ??= []).push(cb)
     }),
-    postMessage: vi.fn((msg: { correlationId: string }) => {
+    postMessage: vi.fn((msg: { correlationId: string; action?: string }) => {
       for (const cb of handlers['message'] ?? []) {
-        cb({ correlationId: msg.correlationId, text: getText() })
+        cb(msg.action === 'preview'
+          ? { correlationId: msg.correlationId, preview: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]) }
+          : { correlationId: msg.correlationId, text: getText() })
       }
     }),
     kill: vi.fn(),
@@ -98,16 +109,20 @@ function makeAsyncWorker(getText: () => string): MockWorker {
 
 const repos = {
   documents: { get: mocks.docGet },
-  aiSummaries: { getFullText: mocks.getFullText, setFullText: mocks.setFullText }
+  aiSummaries: { getFullText: mocks.getFullText, setFullText: mocks.setFullText },
+  settings: { get: mocks.settingGet }
 } as unknown as Repositories
 
 let extractText = 'fresh-extracted-text'
+let libraryFolder = ''
 let service: ReturnType<typeof createPdfTextService>
 
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getFullText.mockReturnValue(null)
   mocks.docGet.mockReturnValue(makeDoc())
+  libraryFolder = mkdtempSync(join(tmpdir(), 'refora-pdf-preview-'))
+  mocks.settingGet.mockReturnValue(libraryFolder)
   extractText = 'fresh-extracted-text'
   mocks.fork.mockImplementation(() => makeWorker(() => extractText))
   service = createPdfTextService(repos, null)
@@ -115,6 +130,7 @@ beforeEach(() => {
 
 afterEach(() => {
   service.destroy()
+  rmSync(libraryFolder, { recursive: true, force: true })
 })
 
 describe('pdfText getOrExtract cache invalidation', () => {
@@ -189,6 +205,54 @@ describe('pdfText getOrExtract cache invalidation', () => {
     expect((caught as RepoError).code).toBe('not_found')
     expect(mocks.setFullText).not.toHaveBeenCalled()
     expect(mocks.fork).not.toHaveBeenCalled()
+  })
+})
+
+describe('pdfText PDF preview', () => {
+  it('renders a validated document and caches it in the Refora library', async () => {
+    const preview = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1])
+    const pdfPath = join(libraryFolder, 'doc.pdf')
+    writeFileSync(pdfPath, 'pdf')
+    mocks.docGet.mockReturnValue(makeDoc({ filePath: pdfPath }))
+
+    await expect(service.getPreview('d1')).resolves.toEqual(preview)
+    const worker = mocks.fork.mock.results[0].value as MockWorker
+    expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      filePath: pdfPath,
+      action: 'preview'
+    }))
+    const sourceStats = statSync(pdfPath)
+    expect(existsSync(pdfPreviewCachePath(
+      libraryFolder,
+      'd1',
+      `unhashed:${sourceStats.size}:${sourceStats.mtimeMs}`
+    ))).toBe(true)
+  })
+
+  it('reuses a valid cached preview without rendering the PDF again', async () => {
+    const pdfPath = join(libraryFolder, 'doc.pdf')
+    writeFileSync(pdfPath, 'pdf')
+    mocks.docGet.mockReturnValue(makeDoc({ filePath: pdfPath }))
+
+    await service.getPreview('d1')
+    await service.getPreview('d1')
+
+    expect(mocks.fork).toHaveBeenCalledTimes(1)
+    const worker = mocks.fork.mock.results[0].value as MockWorker
+    expect(worker.postMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('regenerates the cached preview when the source PDF changes', async () => {
+    const pdfPath = join(libraryFolder, 'doc.pdf')
+    writeFileSync(pdfPath, 'pdf')
+    mocks.docGet.mockReturnValue(makeDoc({ filePath: pdfPath }))
+
+    await service.getPreview('d1')
+    writeFileSync(pdfPath, 'updated-pdf')
+    await service.getPreview('d1')
+
+    const worker = mocks.fork.mock.results[0].value as MockWorker
+    expect(worker.postMessage).toHaveBeenCalledTimes(2)
   })
 })
 

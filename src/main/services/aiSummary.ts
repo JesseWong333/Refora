@@ -13,6 +13,10 @@ const CHUNK_SIZE = 3000
 const CHUNK_OVERLAP = 200
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 1000
+const SUMMARY_MAX_TOKENS = 450
+const MAX_CORE_CHARS = 480
+const MAX_KEY_POINTS = 5
+const MAX_KEY_POINT_CHARS = 180
 
 const RETRYABLE_NETWORK_CODES = new Set([
   'ECONNRESET',
@@ -126,18 +130,27 @@ function stripCodeFences(raw: string): string {
     .trim()
 }
 
+function compactText(raw: string, maxChars: number): string {
+  const normalized = raw.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxChars) return normalized
+  const slice = normalized.slice(0, maxChars - 1).trimEnd()
+  const lastSpace = slice.lastIndexOf(' ')
+  const shortened = lastSpace >= Math.floor(maxChars * 0.75) ? slice.slice(0, lastSpace) : slice
+  return `${shortened.trimEnd()}…`
+}
+
 function toSummaryContent(parsed: unknown): AiSummaryContent | null {
   if (!parsed || typeof parsed !== 'object') return null
   const obj = parsed as Record<string, unknown>
-  const core = typeof obj.core === 'string' ? obj.core : ''
+  const core = typeof obj.core === 'string' ? compactText(obj.core, MAX_CORE_CHARS) : ''
   const keyPoints = Array.isArray(obj.keyPoints)
-    ? obj.keyPoints.filter((x): x is string => typeof x === 'string')
+    ? obj.keyPoints
+        .filter((x): x is string => typeof x === 'string')
+        .map((point) => compactText(point, MAX_KEY_POINT_CHARS))
+        .filter(Boolean)
+        .slice(0, MAX_KEY_POINTS)
     : []
-  const content: AiSummaryContent = { core, keyPoints }
-  if (typeof obj.methods === 'string' && obj.methods.length > 0) content.methods = obj.methods
-  if (typeof obj.contribution === 'string' && obj.contribution.length > 0)
-    content.contribution = obj.contribution
-  return content
+  return { core, keyPoints }
 }
 
 export function createAiSummaryService(
@@ -177,7 +190,7 @@ export function createAiSummaryService(
     for (const chunk of chunks) {
       if (destroyed) throw new Error('Summary service destroyed')
       const res = await model.invoke(
-        `You are a research assistant. Summarize the key points of the following excerpt from an academic paper. Be concise and factual.\n\nExcerpt:\n${chunk}`
+        `You are a research assistant reading text extracted from a PDF. Capture at most two essential facts from this excerpt in no more than 60 words total. Be concise and factual; do not write a long interpretation.\n\nExtracted PDF text:\n${chunk}`
       )
       chunkSummaries.push(contentToText((res as { content: unknown }).content))
     }
@@ -189,7 +202,7 @@ export function createAiSummaryService(
     }
 
     const finalRes = await model.invoke(
-      `You are a research assistant. Below are summaries of sections from an academic paper. Synthesize them into a single JSON object with exactly these fields: "core" (a 2-3 sentence summary), "keyPoints" (an array of concise strings), "methods" (optional string describing methods), "contribution" (optional string describing contributions). Respond with ONLY the JSON object, no markdown fences, no commentary.\n\nSection summaries:\n${combined}`
+      `You are a research assistant. Create a brief factual overview from the extracted PDF section notes below. Respond in the paper's primary language with ONLY a JSON object containing exactly two fields: "core" (one or two short sentences, at most 80 words) and "keyPoints" (an array of 3 to 5 concise strings, each at most 20 words). Do not add methods, contribution, analysis, markdown, or commentary.\n\nExtracted PDF section notes:\n${combined}`
     )
     const finalText = contentToText((finalRes as { content: unknown }).content)
     let parsed: AiSummaryContent | null
@@ -200,7 +213,10 @@ export function createAiSummaryService(
       logger.warn(`aiSummary:json-parse-failed id=${docId}: ${msg}`)
       parsed = null
     }
-    return parsed ?? { core: finalText.trim() || combined, keyPoints: [] }
+    return parsed ?? {
+      core: compactText(finalText.trim() || combined, MAX_CORE_CHARS),
+      keyPoints: []
+    }
   }
 
   async function processSummary(docId: string): Promise<void> {
@@ -247,7 +263,8 @@ export function createAiSummaryService(
       provider,
       apiKey: key,
       streaming: false,
-      deepThinking: false
+      deepThinking: false,
+      maxTokens: SUMMARY_MAX_TOKENS
     })
 
     let content: AiSummaryContent | null = null

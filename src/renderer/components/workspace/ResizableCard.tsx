@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   WORKSPACE_CARD_DEFAULT_HEIGHT,
-  WORKSPACE_CARD_DEFAULT_WIDTH,
-  WORKSPACE_CARD_MAX_HEIGHT,
-  WORKSPACE_CARD_MAX_WIDTH,
-  WORKSPACE_CARD_MIN_HEIGHT,
-  WORKSPACE_CARD_MIN_WIDTH
+  WORKSPACE_CARD_DEFAULT_WIDTH
 } from '../../../shared/ipc-types'
 import type { WorkspaceConnectionAnchor } from '../../../shared/ipc-types'
 
@@ -138,10 +134,12 @@ export default function ResizableCard({
     if (e.button !== 0) return
     suppressClickUntilRef.current = 0
     const target = e.target as HTMLElement
-    if (target.closest('button, a, input, textarea, select, audio, video, [contenteditable="true"], [role="button"], [role="link"], [data-card-resize]')) return
+    const dragClickTarget = target.closest<HTMLElement>('[data-card-drag-click]')
+    const interactiveTarget = target.closest<HTMLElement>('button, a, input, textarea, select, audio, video, [contenteditable="true"], [role="button"], [role="link"], [data-card-resize]')
+    if (interactiveTarget && interactiveTarget !== dragClickTarget) return
     interactionCleanupRef.current?.()
     const pointerId = e.pointerId
-    const pointerTarget = target.closest<HTMLElement>('[data-card-kind]') ?? e.currentTarget
+    const pointerTarget = dragClickTarget ?? target.closest<HTMLElement>('[data-card-kind]') ?? e.currentTarget
     pointerTarget.setPointerCapture?.(pointerId)
     moveStartRef.current = {
       x: e.clientX,
@@ -262,10 +260,10 @@ export default function ResizableCard({
         let nextW = resizeStartRef.current.w
         let nextH = resizeStartRef.current.h
         if (resizeStartRef.current.edge === 'e' || resizeStartRef.current.edge === 'se') {
-          nextW = Math.max(WORKSPACE_CARD_MIN_WIDTH, Math.min(WORKSPACE_CARD_MAX_WIDTH, Math.round(resizeStartRef.current.w + dx)))
+          nextW = Math.max(1, Math.round(resizeStartRef.current.w + dx))
         }
         if (resizeStartRef.current.edge === 's' || resizeStartRef.current.edge === 'se') {
-          nextH = Math.max(WORKSPACE_CARD_MIN_HEIGHT, Math.min(WORKSPACE_CARD_MAX_HEIGHT, Math.round(resizeStartRef.current.h + dy)))
+          nextH = Math.max(1, Math.round(resizeStartRef.current.h + dy))
         }
         latestSizeRef.current = { width: nextW, height: nextH }
         sizeDirtyRef.current = true
@@ -345,8 +343,6 @@ export default function ResizableCard({
         zIndex: resizing || moving ? Math.max(position.zIndex, frontZIndex) + 100000 : position.zIndex,
         width: size.width,
         height: size.height,
-        minWidth: WORKSPACE_CARD_MIN_WIDTH,
-        minHeight: WORKSPACE_CARD_MIN_HEIGHT,
         touchAction: 'none'
       }}
     >
@@ -395,14 +391,14 @@ export function defaultCardSize(): CardSize {
 }
 
 export function clampCardSize(size: Partial<CardSize> | undefined): CardSize {
+  const width = size?.width
+  const height = size?.height
   return {
-    width: Math.max(
-      WORKSPACE_CARD_MIN_WIDTH,
-      Math.min(WORKSPACE_CARD_MAX_WIDTH, size?.width ?? WORKSPACE_CARD_DEFAULT_WIDTH)
-    ),
-    height: Math.max(
-      WORKSPACE_CARD_MIN_HEIGHT,
-      Math.min(WORKSPACE_CARD_MAX_HEIGHT, size?.height ?? WORKSPACE_CARD_DEFAULT_HEIGHT)
-    )
+    width: typeof width === 'number' && Number.isFinite(width) && width > 0
+      ? Math.round(width)
+      : WORKSPACE_CARD_DEFAULT_WIDTH,
+    height: typeof height === 'number' && Number.isFinite(height) && height > 0
+      ? Math.round(height)
+      : WORKSPACE_CARD_DEFAULT_HEIGHT
   }
 }

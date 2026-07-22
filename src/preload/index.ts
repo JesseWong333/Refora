@@ -144,7 +144,9 @@ const api: ReforaApi = {
     refreshMetadata: (id: string) => invoke<Document>(IpcChannel.DocumentsRefreshMetadata, id),
     relocateFile: (id: string, newPath: string) =>
       invoke<Document>(IpcChannel.DocumentsRelocateFile, id, newPath),
-    restoreFile: (id: string) => invoke<Document>(IpcChannel.DocumentsRestoreFile, id)
+    restoreFile: (id: string) => invoke<Document>(IpcChannel.DocumentsRestoreFile, id),
+    previewUrl: (id: string, version: string | number) =>
+      `refora-document://preview/${encodeURIComponent(id)}?v=${encodeURIComponent(String(version))}`
   },
 
   search: {

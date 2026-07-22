@@ -145,8 +145,8 @@ export default function AssetCard({ asset, onOpen, onReveal, onDelete, onCopy }:
         <span className="workspace-card-type-label">{t('workspace.cardTypeAsset')}</span>
         <h3
           className={mediaOverlay
-            ? 'workspace-card-title truncate text-sm font-medium'
-            : 'workspace-card-title truncate text-sm font-semibold text-foreground'}
+            ? 'workspace-card-title truncate text-base font-medium'
+            : 'workspace-card-title truncate text-base font-semibold text-foreground'}
           title={asset.fileName}
         >
           {asset.fileName}

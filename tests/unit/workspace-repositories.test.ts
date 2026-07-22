@@ -3,11 +3,7 @@ import { createRepositories } from '../../src/main/db/repositories'
 import { RepoError } from '../../src/main/db/repositories/errors'
 import {
   WORKSPACE_CANVAS_MAX_ZOOM,
-  WORKSPACE_CANVAS_MIN_ZOOM,
-  WORKSPACE_CARD_MAX_HEIGHT,
-  WORKSPACE_CARD_MAX_WIDTH,
-  WORKSPACE_CARD_MIN_HEIGHT,
-  WORKSPACE_CARD_MIN_WIDTH
+  WORKSPACE_CANVAS_MIN_ZOOM
 } from '../../src/shared/ipc-types'
 import {
   createMainTestDb,
@@ -130,14 +126,10 @@ describe('workspace repositories', () => {
     expect(reordered.map((item) => item.sortOrder)).toEqual([0, 1])
     expect(repos.workspaceItems.list(workspaceId).map((item) => item.id)).toEqual(orderedIds)
 
-    const resized = repos.workspaceItems.resize(
-      items[0].id,
-      WORKSPACE_CARD_MIN_WIDTH,
-      WORKSPACE_CARD_MAX_HEIGHT
-    )
+    const resized = repos.workspaceItems.resize(items[0].id, 1, 10_000)
     expect(resized).toMatchObject({
-      width: WORKSPACE_CARD_MIN_WIDTH,
-      height: WORKSPACE_CARD_MAX_HEIGHT
+      width: 1,
+      height: 10_000
     })
 
     const moved = repos.workspaceItems.move(items[0].id, -12.5, 48.25, 7)
@@ -159,16 +151,17 @@ describe('workspace repositories', () => {
     expectRepoError(() => repos.workspaceItems.reorder('missing', []), 'not_found')
 
     for (const [width, height] of [
-      [WORKSPACE_CARD_MIN_WIDTH - 1, WORKSPACE_CARD_MIN_HEIGHT],
-      [WORKSPACE_CARD_MAX_WIDTH + 1, WORKSPACE_CARD_MIN_HEIGHT],
-      [WORKSPACE_CARD_MIN_WIDTH, WORKSPACE_CARD_MIN_HEIGHT - 1],
-      [WORKSPACE_CARD_MIN_WIDTH, WORKSPACE_CARD_MAX_HEIGHT + 1],
-      [WORKSPACE_CARD_MIN_WIDTH + 0.5, WORKSPACE_CARD_MIN_HEIGHT]
+      [0, 100],
+      [-1, 100],
+      [100, 0],
+      [100, -1],
+      [100.5, 100],
+      [100, Number.POSITIVE_INFINITY]
     ]) {
       expectRepoError(() => repos.workspaceItems.resize(items[0].id, width, height), 'invalid_size')
     }
     expectRepoError(
-      () => repos.workspaceItems.resize('missing', WORKSPACE_CARD_MIN_WIDTH, WORKSPACE_CARD_MIN_HEIGHT),
+      () => repos.workspaceItems.resize('missing', 1, 1),
       'not_found'
     )
 

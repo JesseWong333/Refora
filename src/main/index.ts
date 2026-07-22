@@ -161,11 +161,21 @@ function registerDocumentProtocol(): void {
     try {
       const url = new URL(request.url)
       const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+      const current = runtime
+      if (!current) return new Response('Runtime unavailable', { status: 503 })
+      if (url.hostname === 'preview' && parts.length === 1) {
+        const png = await current.pdfTextService.getPreview(parts[0])
+        return new Response(new Uint8Array(png), {
+          headers: {
+            'Cache-Control': 'no-store',
+            'Content-Type': 'image/png',
+            'X-Content-Type-Options': 'nosniff'
+          }
+        })
+      }
       if (url.hostname !== 'ocr' || parts.length < 4 || parts[2] !== 'assets') {
         return new Response('Not found', { status: 404 })
       }
-      const current = runtime
-      if (!current) return new Response('Runtime unavailable', { status: 503 })
       const filePath = await current.mineruDocumentService.resolveAsset(
         parts[0],
         parts[1],
@@ -178,7 +188,10 @@ function registerDocumentProtocol(): void {
       const headers = new Headers(response.headers)
       headers.set('X-Content-Type-Options', 'nosniff')
       return new Response(response.body, { status: response.status, headers })
-    } catch {
+    } catch (error) {
+      logger.warn(
+        `document-protocol:failed url=${request.url}: ${error instanceof Error ? error.message : String(error)}`
+      )
       return new Response('Not found', { status: 404 })
     }
   })

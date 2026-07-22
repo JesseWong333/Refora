@@ -171,6 +171,9 @@ describe('preload IPC bridge', () => {
   })
 
   it('builds encoded read-only preview URLs without invoking IPC', () => {
+    expect(api.documents.previewUrl('doc / 1', 'hash / 1')).toBe(
+      'refora-document://preview/doc%20%2F%201?v=hash%20%2F%201'
+    )
     expect(api.workspaceAssets.previewUrl('asset / 1')).toBe('refora-asset://asset/asset%20%2F%201')
     expect(electronMocks.invoke).not.toHaveBeenCalled()
   })

@@ -213,6 +213,12 @@ describe('AiSummaryService', () => {
       expect(model).toBe('gpt-4o')
       expect(content).toEqual({ core: 'Core summary', keyPoints: ['point1', 'point2'] })
       expect(mockEmitUpdated).toHaveBeenCalledWith(expect.anything(), 'doc-1')
+      expect(pdfText.getOrExtract.mock.invocationCallOrder[0]).toBeLessThan(
+        mockInvoke.mock.invocationCallOrder[0]
+      )
+      expect(mockInvoke.mock.calls[0][0]).toContain('text extracted from a PDF')
+      expect(mockInvoke.mock.calls[1][0]).toContain('exactly two fields')
+      expect(mockInvoke.mock.calls[1][0]).toContain('3 to 5 concise strings')
     })
 
     it('JSON parse failure: setSummary called with fallback content (core=raw text, keyPoints=[])', async () => {
@@ -255,20 +261,27 @@ describe('AiSummaryService', () => {
       expect(content).toEqual({ core: 'Array', keyPoints: [] })
     })
 
-    it('optional fields methods and contribution are preserved', async () => {
+    it('keeps new summaries brief and ignores extra interpretation sections', async () => {
       pdfText.getOrExtract.mockResolvedValue('Some text content')
       mockInvoke.mockResolvedValueOnce({ content: 'chunk summary' })
       mockInvoke.mockResolvedValueOnce({
-        content:
-          '{"core":"Core","keyPoints":["a"],"methods":"Survey of methods","contribution":"Key contribution"}'
+        content: JSON.stringify({
+          core: 'x'.repeat(600),
+          keyPoints: ['1', '2', '3', '4', '5', '6'],
+          methods: 'Survey of methods',
+          contribution: 'Key contribution'
+        })
       })
 
       service.summarize('doc-1')
       await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
 
       const content = repos.aiSummaries.setSummary.mock.calls[0][2] as AiSummaryContent
-      expect(content.methods).toBe('Survey of methods')
-      expect(content.contribution).toBe('Key contribution')
+      expect(content.core.length).toBeLessThanOrEqual(480)
+      expect(content.core.endsWith('…')).toBe(true)
+      expect(content.keyPoints).toEqual(['1', '2', '3', '4', '5'])
+      expect(content.methods).toBeUndefined()
+      expect(content.contribution).toBeUndefined()
     })
   })
 

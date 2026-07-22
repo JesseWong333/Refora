@@ -408,6 +408,7 @@
     "summaryMethods": "Methods",
     "summaryContribution": "Contribution",
     "aiSummary": "AI Summary",
+    "pdfPreview": "PDF preview",
     "openPdf": "Open PDF",
     "removeFromWorkspace": "Remove from workspace",
     "summaryFailed": "Summary failed",

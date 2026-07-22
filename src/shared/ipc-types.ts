@@ -233,10 +233,6 @@ export interface IdentifierImportResult {
   message?: string
 }
 
-export const WORKSPACE_CARD_MIN_WIDTH = 220
-export const WORKSPACE_CARD_MIN_HEIGHT = 140
-export const WORKSPACE_CARD_MAX_WIDTH = 640
-export const WORKSPACE_CARD_MAX_HEIGHT = 520
 export const WORKSPACE_CARD_DEFAULT_WIDTH = 300
 export const WORKSPACE_CARD_DEFAULT_HEIGHT = 200
 export const WORKSPACE_CANVAS_MIN_ZOOM = 0.25
@@ -633,6 +629,7 @@ export interface ReforaApi {
     refreshMetadata(id: string): Promise<Document>
     relocateFile(id: string, newPath: string): Promise<Document>
     restoreFile(id: string): Promise<Document>
+    previewUrl(id: string, version: string | number): string
   }
   search: {
     global(q: string): Promise<GlobalSearchResult>

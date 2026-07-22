@@ -52,6 +52,8 @@ const noop = async () => undefined
     refreshMetadata: noop,
     relocateFile: noop,
     restoreFile: noop,
+    previewUrl: (id: string, version: string | number) =>
+      `refora-document://preview/${encodeURIComponent(id)}?v=${encodeURIComponent(String(version))}`,
   },
 
   search: {

@@ -1,14 +1,22 @@
 import { type BrowserWindow, utilityProcess } from 'electron'
+import { existsSync, statSync } from 'node:fs'
 import { join, resolve as resolvePath } from 'node:path'
 import type { Repositories } from '../db/repositories'
 import { RepoError } from '../db/repositories/errors'
 import { newId } from '../db/repositories/documents'
 import { logger } from './logger'
+import {
+  pdfPreviewCachePath,
+  readPdfPreviewCache,
+  writePdfPreviewCache
+} from './pdfPreviewCache'
+import { resolvePdfFilePath } from './pdfPath'
 
 interface WorkerResponse {
   correlationId: string
   error?: { type: string; message: string }
   text?: string
+  preview?: Uint8Array
 }
 
 interface PendingRequest {
@@ -34,6 +42,7 @@ export function createPdfTextService(
   _win: BrowserWindow | (() => BrowserWindow | null)
 ) {
   let destroyed = false
+  const previewRequests = new Map<string, Promise<Uint8Array>>()
   const pool: WorkerSlot[] = Array.from({ length: MAX_WORKERS }, () => ({
     proc: null,
     killed: false,
@@ -127,7 +136,11 @@ export function createPdfTextService(
     return best ?? ensureWorkerSlot(0)
   }
 
-  function requestExtract(slot: WorkerSlot, filePath: string): Promise<WorkerResponse> {
+  function requestWorker(
+    slot: WorkerSlot,
+    filePath: string,
+    payload: { action: 'extract'; maxPages: number } | { action: 'preview' }
+  ): Promise<WorkerResponse> {
     const correlationId = newId()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -135,7 +148,7 @@ export function createPdfTextService(
         reject(new Error(`PDF text worker request timed out: ${filePath}`))
       }, WORKER_TIMEOUT_MS)
       slot.pending.set(correlationId, { resolve, reject, timer })
-      slot.proc!.postMessage({ correlationId, filePath, maxPages: 0 })
+      slot.proc!.postMessage({ correlationId, filePath, ...payload })
     })
   }
 
@@ -161,7 +174,7 @@ export function createPdfTextService(
     const slot = acquireSlot()
     slot.active++
     try {
-      const response = await requestExtract(slot, filePath)
+      const response = await requestWorker(slot, filePath, { action: 'extract', maxPages: 0 })
       if (response.error) {
         throw new Error(response.error.message)
       }
@@ -174,6 +187,50 @@ export function createPdfTextService(
         scheduleIdleKill(slot)
       }
     }
+  }
+
+  async function renderPreview(filePath: string, fileName: string): Promise<Uint8Array> {
+    const slot = acquireSlot()
+    slot.active++
+    try {
+      const response = await requestWorker(slot, filePath, { action: 'preview' })
+      if (response.error) throw new Error(response.error.message)
+      if (!response.preview || response.preview.length === 0) {
+        throw new RepoError('preview_unavailable', `Unable to preview PDF: ${fileName}`)
+      }
+      return response.preview
+    } finally {
+      slot.active--
+      if (slot.active === 0 && slot.pending.size === 0) scheduleIdleKill(slot)
+    }
+  }
+
+  async function getPreview(docId: string): Promise<Uint8Array> {
+    if (destroyed) throw new Error('PDF text service destroyed')
+    const doc = repos.documents.get(docId)
+    if (!doc) throw new RepoError('not_found', `Document ${docId} not found`)
+    const filePath = resolvePdfFilePath(doc.filePath)
+    const configuredLibrary = repos.settings.get<string>('libraryFolderPath', '').trim()
+    const libraryFolder = resolvePath(configuredLibrary)
+    if (!configuredLibrary || !existsSync(libraryFolder) || !statSync(libraryFolder).isDirectory()) {
+      throw new RepoError('invalid_library', 'Library folder is not configured or unavailable')
+    }
+    const sourceStats = statSync(filePath)
+    const sourceIdentity = `${doc.fileHash ?? 'unhashed'}:${sourceStats.size}:${sourceStats.mtimeMs}`
+    const cachePath = pdfPreviewCachePath(libraryFolder, doc.id, sourceIdentity)
+    const cached = await readPdfPreviewCache(cachePath)
+    if (cached) return cached
+
+    const pending = previewRequests.get(cachePath)
+    if (pending) return pending
+    const request = renderPreview(filePath, doc.fileName).then(async (preview) => {
+      await writePdfPreviewCache(cachePath, preview)
+      return preview
+    }).finally(() => {
+      previewRequests.delete(cachePath)
+    })
+    previewRequests.set(cachePath, request)
+    return request
   }
 
   function destroy(): void {
@@ -197,7 +254,7 @@ export function createPdfTextService(
     }
   }
 
-  return { getOrExtract, destroy }
+  return { getOrExtract, getPreview, destroy }
 }
 
 export type PdfTextService = ReturnType<typeof createPdfTextService>

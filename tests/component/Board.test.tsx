@@ -324,7 +324,7 @@ describe('Board card clipboard actions', () => {
 
     const { container } = render(<Board onOpenMarkdownCard={onOpenMarkdownCard} />)
     await waitFor(() => expect(screen.getByText('Paper title')).toBeInTheDocument())
-    fireEvent.click(container.querySelector('[data-card-kind="document"]') as HTMLElement)
+    fireEvent.click(container.querySelector('[data-paper-details]') as HTMLElement)
 
     expect(onOpenMarkdownCard).toHaveBeenCalledWith({
       kind: 'summary',
