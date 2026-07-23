@@ -7,7 +7,6 @@ import { StateBackend } from 'deepagents'
 import { z } from 'zod'
 import type { Repositories } from '../db/repositories'
 import type {
-  AgentTraceStep,
   AgentTraceStepKind,
   AgentTraceStepStatus,
   AgentInterruptAction,
@@ -40,7 +39,7 @@ import { createProviderChatModel } from './providerModel'
 import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
 import { generateThreadTitle } from './generateThreadTitle'
-import { historyToMessages, truncateOutput } from './chatHistoryMessages'
+import { historyToMessages } from './chatHistoryMessages'
 import { resolveDeepThinkingMode, type DeepThinkingMode } from '../../shared/deepThinking'
 import { inferModelCapabilities } from '../../shared/providerCatalog'
 import { openPdf } from './pdfOpen'
@@ -59,12 +58,20 @@ import {
 } from './reforaWorkspaceMemoryBackend'
 import { createReforaDeepAgent } from './reforaDeepAgent'
 import { createReforaAgentPolicyMiddleware } from './reforaAgentPolicy'
+import {
+  createAgentTraceRecorder,
+  extractTokenUsage,
+  extractToolCallId,
+  extractToolInput,
+  extractToolName,
+  extractToolOutput,
+  stringifyTraceValue
+} from './agentTraceRecorder'
 
 const MAX_FULLTEXT_CHARS = 8000
 const HISTORY_TOKEN_BUDGET = 8000
 const HISTORY_MIN_MESSAGES = 2
 const HISTORY_MAX_MESSAGES = 50
-const TRACE_TEXT_LIMIT = 4000
 const WORKSPACE_CONTEXT_DOC_LIMIT = 80
 const WORKSPACE_CONTEXT_CHAR_LIMIT = 6000
 const MAX_RECURSION_LIMIT = 50
@@ -361,11 +368,6 @@ function parseSourceDocIds(raw: string): string[] {
     .filter((s) => s.length > 0)
 }
 
-function truncateTraceText(value: string | null | undefined): string | null {
-  if (value == null) return null
-  return truncateOutput(value, TRACE_TEXT_LIMIT)
-}
-
 function buildAttachmentContext(
   repos: Repositories,
   attachments: ChatAttachment[],
@@ -386,106 +388,6 @@ function buildAttachmentContext(
   return lines.join('\n')
 }
 
-function stringifyTraceValue(value: unknown): string | null {
-  if (value == null) return null
-  if (typeof value === 'string') return truncateTraceText(value)
-  try {
-    return truncateTraceText(JSON.stringify(value))
-  } catch {
-    return truncateTraceText(String(value))
-  }
-}
-
-function extractToolName(event: {
-  name?: string
-  data?: Record<string, unknown>
-}): string | null {
-  if (typeof event.name === 'string' && event.name.length > 0) return event.name
-  const data = event.data
-  if (!data) return null
-  if (typeof data.name === 'string' && data.name.length > 0) return data.name
-  return null
-}
-
-function extractToolInput(data: Record<string, unknown> | undefined): string | null {
-  if (!data) return null
-  if ('input' in data) return stringifyTraceValue(data.input)
-  if ('inputs' in data) return stringifyTraceValue(data.inputs)
-  return null
-}
-
-function extractToolOutput(data: Record<string, unknown> | undefined): string | null {
-  if (!data) return null
-  if ('output' in data) return stringifyTraceValue(data.output)
-  if ('outputs' in data) return stringifyTraceValue(data.outputs)
-  return null
-}
-
-function extractToolCallId(
-  event: { run_id?: string },
-  data: Record<string, unknown> | undefined
-): string {
-  if (data) {
-    if (typeof data.tool_call_id === 'string' && data.tool_call_id) return data.tool_call_id
-    const input = data.input
-    if (input && typeof input === 'object' && 'tool_call_id' in input) {
-      const v = (input as Record<string, unknown>).tool_call_id
-      if (typeof v === 'string' && v) return v
-    }
-    if (typeof data.id === 'string' && data.id) return data.id
-  }
-  if (typeof event.run_id === 'string' && event.run_id) return event.run_id
-  return randomUUID()
-}
-
-interface TokenUsage {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-}
-
-function extractTokenUsage(data: Record<string, unknown> | undefined): TokenUsage | null {
-  if (!data) return null
-  const output = data.output as Record<string, unknown> | undefined
-  if (!output || typeof output !== 'object') return null
-
-  const usageMetadata = output.usage_metadata as Record<string, unknown> | undefined
-  if (usageMetadata && typeof usageMetadata === 'object') {
-    const inputTokens = usageMetadata.input_tokens
-    const outputTokens = usageMetadata.output_tokens
-    const totalTokens = usageMetadata.total_tokens
-    if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
-      return {
-        inputTokens,
-        outputTokens,
-        totalTokens:
-          typeof totalTokens === 'number' ? totalTokens : inputTokens + outputTokens
-      }
-    }
-  }
-
-  const responseMetadata = output.response_metadata as Record<string, unknown> | undefined
-  const tokenUsage = (responseMetadata?.token_usage ??
-    (output.additional_kwargs as Record<string, unknown> | undefined)?.token_usage) as
-    | Record<string, unknown>
-    | undefined
-  if (tokenUsage && typeof tokenUsage === 'object') {
-    const promptTokens = tokenUsage.prompt_tokens
-    const completionTokens = tokenUsage.completion_tokens
-    const totalTokens = tokenUsage.total_tokens
-    if (typeof promptTokens === 'number' && typeof completionTokens === 'number') {
-      return {
-        inputTokens: promptTokens,
-        outputTokens: completionTokens,
-        totalTokens:
-          typeof totalTokens === 'number' ? totalTokens : promptTokens + completionTokens
-      }
-    }
-  }
-
-  return null
-}
-
 export function createAiAgentService(
   repos: Repositories,
   win: () => BrowserWindow | null,
@@ -503,6 +405,16 @@ export function createAiAgentService(
     if (!w || w.isDestroyed()) return null
     return w
   }
+
+  const createTrace = (threadId: string, runId: string) => createAgentTraceRecorder({
+    repos,
+    threadId,
+    runId,
+    emitStep: (step) => {
+      const currentWindow = getWin()
+      if (currentWindow) emitAiChatTrace(currentWindow, { threadId, runId, step })
+    }
+  })
 
   let destroyed = false
   const activeRuns = new Map<string, ActiveAgentRun>()
@@ -1253,164 +1165,6 @@ export function createAiAgentService(
     ]
   }
 
-  function createTraceRecorder(threadId: string, runId: string) {
-    let seq = 0
-    const openByKey = new Map<string, string>()
-
-    function emitStep(step: AgentTraceStep): void {
-      const w = getWin()
-      if (w) emitAiChatTrace(w, { threadId, runId, step })
-    }
-
-    function start(
-      kind: AgentTraceStepKind,
-      name: string | null,
-      input: string | null,
-      keys: string[] = [],
-      context: {
-        parentStepId?: string | null
-        agentName?: string | null
-        namespace?: string | null
-        depth?: number
-        checkpointId?: string | null
-      } = {}
-    ): AgentTraceStep {
-      const step = repos.agentTraces.addStep({
-        threadId,
-        runId,
-        kind,
-        name,
-        input,
-        output: null,
-        status: 'running',
-        startedAt: Date.now(),
-        endedAt: null,
-        seq: seq++,
-        parentStepId: context.parentStepId ?? null,
-        agentName: context.agentName ?? null,
-        namespace: context.namespace ?? null,
-        depth: context.depth ?? 0,
-        checkpointId: context.checkpointId ?? null
-      })
-      for (const key of keys) openByKey.set(key, step.id)
-      emitStep(step)
-      return step
-    }
-
-    function finish(
-      id: string,
-      status: AgentTraceStepStatus,
-      output: string | null,
-      usage?: TokenUsage | null
-    ): AgentTraceStep | null {
-      for (const [k, v] of openByKey) {
-        if (v === id) openByKey.delete(k)
-      }
-      const step = repos.agentTraces.updateStep(id, {
-        status,
-        output,
-        endedAt: Date.now(),
-        ...(usage
-          ? {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              totalTokens: usage.totalTokens
-            }
-          : {})
-      })
-      if (step) emitStep(step)
-      return step
-    }
-
-    function finishByKeys(
-      keys: string[],
-      status: AgentTraceStepStatus,
-      output: string | null,
-      usage?: TokenUsage | null
-    ): AgentTraceStep | null {
-      for (const key of keys) {
-        const id = openByKey.get(key)
-        if (id) return finish(id, status, output, usage)
-      }
-      return null
-    }
-
-    function recordSnapshot(
-      kind: AgentTraceStepKind,
-      name: string | null,
-      status: AgentTraceStepStatus,
-      output: string | null,
-      context: {
-        parentStepId?: string | null
-        agentName?: string | null
-        namespace?: string | null
-        depth?: number
-        checkpointId?: string | null
-      } = {}
-    ): AgentTraceStep {
-      const now = Date.now()
-      const step = repos.agentTraces.addStep({
-        threadId,
-        runId,
-        kind,
-        name,
-        input: null,
-        output,
-        status,
-        startedAt: now,
-        endedAt: now,
-        seq: seq++,
-        parentStepId: context.parentStepId ?? null,
-        agentName: context.agentName ?? null,
-        namespace: context.namespace ?? null,
-        depth: context.depth ?? 0,
-        checkpointId: context.checkpointId ?? null
-      })
-      emitStep(step)
-      return step
-    }
-
-    function finishOpen(status: AgentTraceStepStatus, message: string): void {
-      const ids = [...new Set(openByKey.values())]
-      for (const id of ids) finish(id, status, message)
-    }
-
-    function failOpen(message: string): void {
-      finishOpen('error', message)
-    }
-
-    function contextForEvent(event: Record<string, unknown>): {
-      parentStepId: string | null
-      agentName: string | null
-      namespace: string | null
-      depth: number
-    } {
-      const parentIds = Array.isArray(event.parent_ids)
-        ? event.parent_ids.filter((value): value is string => typeof value === 'string')
-        : []
-      let parentStepId: string | null = null
-      for (let index = parentIds.length - 1; index >= 0; index -= 1) {
-        const stepId = openByKey.get(parentIds[index])
-        if (stepId) {
-          parentStepId = stepId
-          break
-        }
-      }
-      const metadata = event.metadata && typeof event.metadata === 'object'
-        ? event.metadata as Record<string, unknown>
-        : {}
-      const agentName = typeof metadata.lc_agent_name === 'string'
-        ? metadata.lc_agent_name
-        : null
-      const namespace = typeof metadata.langgraph_checkpoint_ns === 'string'
-        ? metadata.langgraph_checkpoint_ns
-        : null
-      return { parentStepId, agentName, namespace, depth: parentIds.length }
-    }
-
-    return { start, finish, finishByKeys, recordSnapshot, finishOpen, failOpen, contextForEvent }
-  }
-
   async function run(req: ChatSendRequest, threadId: string, requestedRunId?: string): Promise<void> {
     if (destroyed || deletingThreads.has(threadId)) return
     const w = getWin()
@@ -1423,7 +1177,7 @@ export function createAiAgentService(
 
     const activeRun = registerActiveRun(threadId, runId)
     const controller = activeRun.controller
-    const trace = createTraceRecorder(threadId, runId)
+    const trace = createTrace(threadId, runId)
     const runStep = trace.start('run', 'agent_run', null)
     emitAiChatRunStatus(w, { threadId, runId, status: 'running' })
 
@@ -2040,7 +1794,7 @@ export function createAiAgentService(
     }
     const activeRun = registerActiveRun(req.threadId, req.runId)
     const controller = activeRun.controller
-    const trace = createTraceRecorder(req.threadId, req.runId)
+    const trace = createTrace(req.threadId, req.runId)
     const runStep = trace.start('run', 'agent_resume', null)
     repos.agentRuns.update(req.runId, { status: 'running', endedAt: null, error: null })
     emitAiChatRunStatus(w, { threadId: req.threadId, runId: req.runId, status: 'running' })
