@@ -558,6 +558,16 @@
     line-height: 1.45;
   }
 
+  .agent-trace-inline-step .agent-trace-step-detail,
+  .agent-trace-inline-step .agent-trace-step-separator {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .agent-trace-inline-step .agent-trace-step-detail {
+    color: var(--color-foreground);
+  }
+
   .agent-trace-inline-step .agent-trace-status-label {
     border-radius: 0;
     background: transparent;

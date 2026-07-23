@@ -19,7 +19,6 @@ import { api } from '../../ipc'
 import { Button as UiButton } from '../ui'
 import { AgentTraceStepItem } from './AgentTrace'
 import AgentTodoList from './AgentTodoList'
-import AgentOcrProgress from './AgentOcrProgress'
 import type { AgentTraceStep, AiProvider, ChatMessage } from '../../../shared/ipc-types'
 
 const MARKDOWN_COMPONENTS = createReforaDocMarkdownComponents(
@@ -274,7 +273,6 @@ export interface ChatMessagesProps {
   streamingText: string
   streamingReasoning: string
   activeRunId: string | null
-  activeOcrDocumentId: string | null
   elapsedSeconds: number
   loadingHistory: boolean
   providers: AiProvider[]
@@ -292,7 +290,6 @@ export default function ChatMessages({
   streamingText,
   streamingReasoning,
   activeRunId,
-  activeOcrDocumentId,
   elapsedSeconds,
   loadingHistory,
   providers,
@@ -388,13 +385,15 @@ export default function ChatMessages({
 
   return (
     <>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-3" style={{ paddingInline: 'clamp(12px, 7cqi, 64px)' }}>
-        {(hasVisibleTodo || activeOcrDocumentId) && (
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto py-3"
+        style={{ paddingInline: 'clamp(12px, 7cqi, 64px)' }}
+        data-testid="chat-message-scroll"
+      >
+        {hasVisibleTodo && (
           <div className="sticky top-0 z-20 mx-auto mb-3 flex w-full max-w-[768px] flex-col gap-2">
             <AgentTodoList steps={traceSteps} activeRunId={visibleTodoRunId} />
-            {activeOcrDocumentId && (
-              <AgentOcrProgress documentId={activeOcrDocumentId} />
-            )}
           </div>
         )}
         {loadingHistory ? (

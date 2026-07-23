@@ -114,6 +114,115 @@ describe('AgentTracePanel', () => {
     expect(screen.getByText('Published artifacts')).toBeInTheDocument()
   })
 
+  it('shows the executed command in the collapsed row and preserves raw JSON details', () => {
+    const input = JSON.stringify({
+      input: JSON.stringify({
+        script: 'echo "PWD: $(pwd)"\nls -la',
+        timeoutSeconds: 10
+      })
+    })
+    render(<AgentTracePanel steps={[
+      step({
+        id: 'execute',
+        kind: 'tool',
+        name: 'execute',
+        input,
+        output: '{"exitCode":0}'
+      })
+    ]} streaming={false} />)
+
+    fireEvent.click(headerButton())
+
+    expect(screen.getByText('Ran command')).toBeInTheDocument()
+    expect(screen.getByText('echo "PWD: $(pwd)" ls -la')).toBeInTheDocument()
+    expect(screen.queryByText(/"timeoutSeconds": 10/)).toBeNull()
+
+    fireEvent.click(screen.getByText('Ran command').closest('button')!)
+
+    const details = document.querySelectorAll('.agent-trace-detail-value')
+    expect(details[0].textContent).toBe(JSON.stringify(JSON.parse(input), null, 2))
+    expect(details[1].textContent).toBe('{\n  "exitCode": 0\n}')
+  })
+
+  it('shows the visited website without exposing URL query data until expanded', () => {
+    const input = JSON.stringify({
+      url: 'https://docs.example.com/guide/?token=secret'
+    })
+    render(<AgentTracePanel steps={[
+      step({
+        id: 'website',
+        kind: 'tool',
+        name: 'fetch_url',
+        input
+      })
+    ]} streaming={false} />)
+
+    fireEvent.click(headerButton())
+
+    expect(screen.getByText('Accessed website')).toBeInTheDocument()
+    expect(screen.getByText('docs.example.com/guide')).toBeInTheDocument()
+    expect(screen.queryByText(/token=secret/)).toBeNull()
+
+    fireEvent.click(screen.getByText('Accessed website').closest('button')!)
+
+    expect(screen.getByText(/token=secret/)).toBeInTheDocument()
+  })
+
+  it('shows built-in filesystem targets and search queries in collapsed rows', () => {
+    render(<AgentTracePanel steps={[
+      step({
+        id: 'read',
+        kind: 'tool',
+        name: 'read_file',
+        input: JSON.stringify({ file_path: 'outputs/report.md', offset: 0, limit: 100 })
+      }),
+      step({
+        id: 'grep',
+        kind: 'tool',
+        name: 'grep',
+        input: JSON.stringify({ pattern: 'citation', path: 'outputs' })
+      }),
+      step({
+        id: 'web-search',
+        kind: 'tool',
+        name: 'web_search',
+        input: JSON.stringify({ query: 'VLA harness latest research' })
+      })
+    ]} streaming={false} />)
+
+    fireEvent.click(headerButton())
+
+    expect(screen.getByText('outputs/report.md')).toBeInTheDocument()
+    expect(screen.getByText('“citation” · outputs')).toBeInTheDocument()
+    expect(screen.getByText('Searched the web')).toBeInTheDocument()
+    expect(screen.getByText('“VLA harness latest research”')).toBeInTheDocument()
+  })
+
+  it('shows known academic research sites without restoring redacted inputs', () => {
+    render(<AgentTracePanel steps={[
+      step({
+        id: 'arxiv',
+        kind: 'tool',
+        name: 'search_arxiv',
+        input: null,
+        output: 'Academic research data kept transient for this run.'
+      }),
+      step({
+        id: 'citations',
+        kind: 'tool',
+        name: 'get_citing_papers',
+        input: null,
+        output: 'Academic research data kept transient for this run.'
+      })
+    ]} streaming={false} />)
+
+    fireEvent.click(headerButton())
+
+    expect(screen.getByText('arxiv.org')).toBeInTheDocument()
+    expect(screen.getByText('semanticscholar.org')).toBeInTheDocument()
+    expect(screen.queryByText(/query/i)).toBeNull()
+  })
+
   it('labels OCR full-text reading separately from regular extraction', () => {
     render(<AgentTracePanel steps={[
       step({
