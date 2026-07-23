@@ -4,6 +4,7 @@ import { Plus, X, ArrowCounterClockwise } from '@phosphor-icons/react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
 import type {
+  AgentInterruptAction,
   AiProvider,
   AiReasoningEffort,
   ProviderModelInfo
@@ -17,6 +18,7 @@ import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
 import ModelSelector from './ModelSelector'
 import ThreadHistory from './ThreadHistory'
+import AgentOcrProgress from './AgentOcrProgress'
 
 export { parseReforaDocLink } from '../../utils/markdown'
 
@@ -58,6 +60,54 @@ function providerAllowsModel(provider: AiProvider, model: string): boolean {
     const parsed = parseModelId(candidate)
     return candidate === model || parsed.baseModel === model
   })
+}
+
+type TFunc = ReturnType<typeof useTranslation>['t']
+
+const APPROVAL_ACTION_COPY = {
+  prepare_paper_ocr: {
+    nameKey: 'workspace.chat.approvalPrepareOcr',
+    nameFallback: 'Run paper OCR',
+    descriptionKey: 'workspace.chat.approvalPrepareOcrDescription',
+    descriptionFallback:
+      'Run balanced local OCR for this paper and prepare a reusable structured full-text cache.'
+  },
+  install_runtime_packages: {
+    nameKey: 'workspace.chat.approvalInstallPackages',
+    nameFallback: 'Install runtime packages',
+    descriptionKey: 'workspace.chat.approvalInstallPackagesDescription',
+    descriptionFallback:
+      'Download and install the requested runtimes and packages in the current sandbox.'
+  },
+  publish_workspace_artifacts: {
+    nameKey: 'workspace.chat.approvalPublishArtifacts',
+    nameFallback: 'Publish workspace artifacts',
+    descriptionKey: 'workspace.chat.approvalPublishArtifactsDescription',
+    descriptionFallback: 'Publish the selected generated files to the current workspace.'
+  },
+  propose_workspace_memory_update: {
+    nameKey: 'workspace.chat.approvalUpdateMemory',
+    nameFallback: 'Update workspace memory',
+    descriptionKey: 'workspace.chat.approvalUpdateMemoryDescription',
+    descriptionFallback: 'Apply the proposed update to workspace memory.'
+  }
+} as const
+
+function approvalActionCopy(
+  action: AgentInterruptAction,
+  t: TFunc
+): { name: string; description?: string } {
+  if (!Object.prototype.hasOwnProperty.call(APPROVAL_ACTION_COPY, action.name)) {
+    return {
+      name: action.name,
+      description: action.description
+    }
+  }
+  const copy = APPROVAL_ACTION_COPY[action.name as keyof typeof APPROVAL_ACTION_COPY]
+  return {
+    name: t(copy.nameKey, copy.nameFallback),
+    description: t(copy.descriptionKey, copy.descriptionFallback)
+  }
 }
 
 interface ChatPanelProps {
@@ -402,7 +452,6 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
         streamingText={chat.streamingText}
         streamingReasoning={chat.streamingReasoning}
         activeRunId={chat.activeRunId}
-        activeOcrDocumentId={chat.activeOcrDocumentId}
         elapsedSeconds={chat.elapsedSeconds}
         loadingHistory={chat.loadingHistory}
         providers={providers}
@@ -413,6 +462,14 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
         stickToBottomRef={chat.stickToBottomRef}
       />
 
+      {chat.activeOcrDocumentId && (
+        <AgentOcrProgress
+          documentId={chat.activeOcrDocumentId}
+          className="shrink-0 pb-2"
+          style={{ paddingInline: 'clamp(12px, 7cqi, 64px)' }}
+        />
+      )}
+
       {chat.pendingInterrupt && (
         <div className="shrink-0 px-3 pb-2">
           <div className="rounded-lg border border-border bg-panel-2 px-3 py-2">
@@ -420,31 +477,37 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
               {t('workspace.chat.approvalRequired', 'Approval required')}
             </div>
             <div className="mt-1 space-y-1 text-xs text-muted">
-              {chat.pendingInterrupt.actions.map((action, index) => (
-                <div key={`${action.name}-${index}`} className="space-y-1 break-words">
-                  <div>
-                    <span className="font-medium text-foreground">{action.name}</span>
-                    {action.description ? ` — ${action.description}` : ''}
+              {chat.pendingInterrupt.actions.map((action, index) => {
+                const copy = approvalActionCopy(action, t)
+                return (
+                  <div key={`${action.name}-${index}`} className="space-y-1 break-words">
+                    <div>
+                      <span className="font-medium text-foreground">{copy.name}</span>
+                      {copy.description ? ` — ${copy.description}` : ''}
+                    </div>
+                    {approvalEditing ? (
+                      <textarea
+                        aria-label={t('workspace.chat.approvalActionArguments', {
+                          action: copy.name,
+                          defaultValue: '{{action}} arguments'
+                        })}
+                        className="min-h-24 w-full resize-y rounded border border-border bg-background px-2 py-1 font-mono text-label text-foreground outline-none focus:border-accent"
+                        value={approvalDrafts[index] ?? ''}
+                        maxLength={70_000}
+                        onChange={(event) => setApprovalDrafts((current) => {
+                          const next = [...current]
+                          next[index] = event.target.value
+                          return next
+                        })}
+                      />
+                    ) : (
+                      <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-background px-2 py-1 font-mono text-label text-muted">
+                        {JSON.stringify(action.args, null, 2)}
+                      </pre>
+                    )}
                   </div>
-                  {approvalEditing ? (
-                    <textarea
-                      aria-label={`${action.name} arguments`}
-                      className="min-h-24 w-full resize-y rounded border border-border bg-background px-2 py-1 font-mono text-label text-foreground outline-none focus:border-accent"
-                      value={approvalDrafts[index] ?? ''}
-                      maxLength={70_000}
-                      onChange={(event) => setApprovalDrafts((current) => {
-                        const next = [...current]
-                        next[index] = event.target.value
-                        return next
-                      })}
-                    />
-                  ) : (
-                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-background px-2 py-1 font-mono text-label text-muted">
-                      {JSON.stringify(action.args, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
             <div className="mt-2 flex justify-end gap-2">
               <UiButton

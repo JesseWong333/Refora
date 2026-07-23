@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
   OcrCompletedEvent,
@@ -10,7 +10,15 @@ import { IpcChannel } from '../../../shared/ipc-channels'
 import { api } from '../../ipc'
 import OcrProgressCard from '../OcrProgressCard'
 
-export default function AgentOcrProgress({ documentId }: { documentId: string }) {
+export default function AgentOcrProgress({
+  documentId,
+  className,
+  style
+}: {
+  documentId: string
+  className?: string
+  style?: CSSProperties
+}) {
   const { t } = useTranslation()
   const [job, setJob] = useState<OcrJob | null>(null)
 
@@ -56,10 +64,14 @@ export default function AgentOcrProgress({ documentId }: { documentId: string })
 
   if (!job) return null
   return (
-    <section aria-label={t('workspace.chat.ocrProgress', 'OCR progress')}>
+    <section
+      className={className}
+      style={style}
+      aria-label={t('workspace.chat.ocrProgress', 'OCR progress')}
+    >
       <OcrProgressCard
         job={job}
-        className="border border-border bg-panel shadow-lg"
+        className="mx-auto w-full max-w-[768px] border border-border bg-panel shadow-lg"
       />
     </section>
   )

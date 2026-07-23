@@ -76,4 +76,31 @@ describe('initI18n and changeLanguage', () => {
     expect(zh).not.toBe('common.delete')
     expect(en).not.toBe(zh)
   })
+
+  it('translates approval action names and descriptions across languages', async () => {
+    const approvalKeys = [
+      'workspace.chat.approvalPrepareOcr',
+      'workspace.chat.approvalPrepareOcrDescription',
+      'workspace.chat.approvalInstallPackages',
+      'workspace.chat.approvalInstallPackagesDescription',
+      'workspace.chat.approvalPublishArtifacts',
+      'workspace.chat.approvalPublishArtifactsDescription',
+      'workspace.chat.approvalUpdateMemory',
+      'workspace.chat.approvalUpdateMemoryDescription'
+    ] as const
+
+    initI18n('en')
+    const english = approvalKeys.map((key) => i18n.t(key))
+    await changeLanguage('zh')
+    const chinese = approvalKeys.map((key) => i18n.t(key))
+
+    for (let index = 0; index < approvalKeys.length; index++) {
+      expect(english[index]).not.toBe(approvalKeys[index])
+      expect(chinese[index]).not.toBe(approvalKeys[index])
+      expect(chinese[index]).not.toBe(english[index])
+    }
+    expect(i18n.t('workspace.chat.approvalActionArguments', {
+      action: '运行论文 OCR'
+    })).toBe('运行论文 OCR 的参数')
+  })
 })

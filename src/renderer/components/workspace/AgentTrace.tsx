@@ -15,7 +15,8 @@ import {
   FolderOpen,
   TerminalWindow,
   Package,
-  UploadSimple
+  UploadSimple,
+  GlobeHemisphereWest
 } from '@phosphor-icons/react'
 import type { AgentTraceStep } from '../../../shared/ipc-types'
 
@@ -24,6 +25,7 @@ type TFunc = ReturnType<typeof useTranslation>['t']
 interface ToolLabelResult {
   icon: string
   text: string
+  detail?: string
 }
 
 function formatTokenCount(value: number): string {
@@ -39,6 +41,94 @@ function formatTraceValue(value: string): string {
   } catch {
     return value
   }
+}
+
+function parseToolInput(value: string | null): unknown {
+  let current: unknown = value
+  for (let depth = 0; depth < 4; depth++) {
+    if (typeof current === 'string') {
+      try {
+        current = JSON.parse(current) as unknown
+        continue
+      } catch {
+        return current
+      }
+    }
+    if (current && typeof current === 'object' && !Array.isArray(current)) {
+      const record = current as Record<string, unknown>
+      const keys = Object.keys(record)
+      if (
+        'input' in record &&
+        keys.every((key) => ['input', 'tool_call_id', 'id', 'name'].includes(key))
+      ) {
+        current = record.input
+        continue
+      }
+    }
+    return current
+  }
+  return current
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function firstString(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+function stringList(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key]
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && !!item.trim())
+    : []
+}
+
+function compactDetail(value: string, maxLength = 260): string {
+  const compact = value.replace(/\s+/g, ' ').trim()
+  return compact.length > maxLength
+    ? `${compact.slice(0, maxLength - 1)}…`
+    : compact
+}
+
+function quotedDetail(value: string): string | undefined {
+  const compact = compactDetail(value)
+  return compact ? `“${compact}”` : undefined
+}
+
+function websiteDetail(value: string): string | undefined {
+  try {
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol)) return compactDetail(value) || undefined
+    const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '')
+    return `${url.hostname}${path}`
+  } catch {
+    return compactDetail(value) || undefined
+  }
+}
+
+function inferredToolDetail(parsed: unknown): string | undefined {
+  if (typeof parsed === 'string') return compactDetail(parsed) || undefined
+  const record = asRecord(parsed)
+  const command = firstString(record, ['command', 'script', 'cmd'])
+  if (command) return compactDetail(command)
+  const url = firstString(record, ['url', 'uri', 'href'])
+  if (url) return websiteDetail(url)
+  const query = firstString(record, ['query', 'q', 'search_query'])
+  if (query) return quotedDetail(query)
+  const path = firstString(record, ['file_path', 'path'])
+  if (path) return compactDetail(path)
+  const pattern = firstString(record, ['pattern', 'glob'])
+  if (pattern) return quotedDetail(pattern)
+  const identifier = firstString(record, ['title', 'docId', 'arxivId', 'paperId'])
+  return compactDetail(identifier) || undefined
 }
 
 function humanizeIdentifier(value: string): string {
@@ -60,18 +150,12 @@ function formatToolLabel(
 ): ToolLabelResult | null {
   if (step.kind !== 'tool' || !step.name) return null
   const name = step.name
-
-  let parsed: Record<string, unknown> | string | null = null
-  if (step.input) {
-    try {
-      parsed = JSON.parse(step.input)
-    } catch {
-      parsed = step.input
-    }
-  }
-
-  const objParam = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+  const parsed = parseToolInput(step.input)
+  const objParam = asRecord(parsed)
+  const stringParam = typeof parsed === 'string' ? parsed.trim() : ''
   const running = step.status === 'running'
+  const query = stringParam || firstString(objParam, ['query', 'q', 'search_query'])
+  const docId = firstString(objParam, ['docId', 'documentId'])
 
   switch (name) {
     case 'search_workspace_docs':
@@ -79,7 +163,8 @@ function formatToolLabel(
         icon: 'search',
         text: running
           ? t('workspace.chat.toolSearchWorkspace', 'Searching workspace…')
-          : t('workspace.chat.toolSearchWorkspaceDone', 'Searched workspace')
+          : t('workspace.chat.toolSearchWorkspaceDone', 'Searched workspace'),
+        detail: quotedDetail(query)
       }
     case 'list_workspace_context':
       return {
@@ -93,17 +178,18 @@ function formatToolLabel(
         icon: 'search',
         text: running
           ? t('workspace.chat.toolSearchLibrary', 'Searching library…')
-          : t('workspace.chat.toolSearchLibraryDone', 'Searched library')
+          : t('workspace.chat.toolSearchLibraryDone', 'Searched library'),
+        detail: quotedDetail(query)
       }
     case 'find_related_papers':
       return {
         icon: 'search',
         text: running
           ? t('workspace.chat.toolFindRelatedPapers', 'Finding related papers…')
-          : t('workspace.chat.toolFindRelatedPapersDone', 'Found related papers')
+          : t('workspace.chat.toolFindRelatedPapersDone', 'Found related papers'),
+        detail: docId || undefined
       }
     case 'read_paper_fulltext': {
-      const docId = typeof objParam.docId === 'string' ? objParam.docId : ''
       const offset = typeof objParam.offset === 'number' ? objParam.offset : 0
       const limit = typeof objParam.limit === 'number' ? objParam.limit : 8000
       const chunkIdx = Math.floor(offset / limit) + 1
@@ -118,7 +204,8 @@ function formatToolLabel(
             : t('workspace.chat.toolReadingChunkDone', {
                 chunk: chunkIdx,
                 defaultValue: 'Read document (chunk {{chunk}})'
-              })
+              }),
+          detail: docId
         }
       }
       return {
@@ -142,33 +229,38 @@ function formatToolLabel(
           : t('workspace.chat.toolReadingOcrChunkDone', {
               chunk: chunkIdx,
               defaultValue: 'Read OCR cache (chunk {{chunk}})'
-            })
+            }),
+        detail: docId || undefined
       }
     }
     case 'prepare_paper_ocr': {
       if (step.status === 'interrupted') {
         return {
           icon: 'read',
-          text: t('workspace.chat.toolPreparingOcrApproval', 'OCR approval requested')
+          text: t('workspace.chat.toolPreparingOcrApproval', 'OCR approval requested'),
+          detail: docId || undefined
         }
       }
       if (step.status === 'cancelled') {
         return {
           icon: 'read',
-          text: t('workspace.chat.toolPreparingOcrRejected', 'OCR was not run')
+          text: t('workspace.chat.toolPreparingOcrRejected', 'OCR was not run'),
+          detail: docId || undefined
         }
       }
       if (step.status === 'error') {
         return {
           icon: 'read',
-          text: t('workspace.chat.toolPreparingOcrFailed', 'OCR preparation failed')
+          text: t('workspace.chat.toolPreparingOcrFailed', 'OCR preparation failed'),
+          detail: docId || undefined
         }
       }
       return {
         icon: 'read',
         text: running
           ? t('workspace.chat.toolPreparingOcr', 'Running balanced OCR…')
-          : t('workspace.chat.toolPreparingOcrDone', 'Prepared balanced OCR cache')
+          : t('workspace.chat.toolPreparingOcrDone', 'Prepared balanced OCR cache'),
+        detail: docId || undefined
       }
     }
     case 'get_paper_summary':
@@ -176,73 +268,235 @@ function formatToolLabel(
         icon: 'summary',
         text: running
           ? t('workspace.chat.toolGetSummary', 'Getting summary…')
-          : t('workspace.chat.toolGetSummaryDone', 'Retrieved summary')
+          : t('workspace.chat.toolGetSummaryDone', 'Retrieved summary'),
+        detail: (stringParam || docId) || undefined
       }
     case 'get_paper_metadata':
       return {
         icon: 'metadata',
         text: running
           ? t('workspace.chat.toolGetMetadata', 'Fetching metadata…')
-          : t('workspace.chat.toolGetMetadataDone', 'Retrieved metadata')
+          : t('workspace.chat.toolGetMetadataDone', 'Retrieved metadata'),
+        detail: (stringParam || docId) || undefined
       }
     case 'open_paper':
       return {
         icon: 'open',
         text: running
           ? t('workspace.chat.toolOpenPaper', 'Opening paper…')
-          : t('workspace.chat.toolOpenPaperDone', 'Opened paper')
+          : t('workspace.chat.toolOpenPaperDone', 'Opened paper'),
+        detail: (stringParam || docId) || undefined
       }
     case 'generate_report':
       return {
         icon: 'report',
         text: running
           ? t('workspace.chat.toolGenerateReport', 'Generating report…')
-          : t('workspace.chat.toolGenerateReportDone', 'Generated report')
+          : t('workspace.chat.toolGenerateReportDone', 'Generated report'),
+        detail: compactDetail(firstString(objParam, ['title'])) || undefined
       }
     case 'add_docs_to_workspace':
       return {
         icon: 'add',
         text: running
           ? t('workspace.chat.toolAddDocs', 'Adding to workspace…')
-          : t('workspace.chat.toolAddDocsDone', 'Added to workspace')
+          : t('workspace.chat.toolAddDocsDone', 'Added to workspace'),
+        detail: compactDetail(firstString(objParam, ['docIds'])) || undefined
       }
-    case 'create_workspace_connections':
+    case 'create_workspace_connections': {
+      const connections = Array.isArray(objParam.connections)
+        ? objParam.connections.flatMap((value) => {
+            const connection = asRecord(value)
+            const source = firstString(connection, ['sourceItemId'])
+            const target = firstString(connection, ['targetItemId'])
+            return source && target ? [`${source} → ${target}`] : []
+          })
+        : []
       return {
         icon: 'add',
         text: running
           ? t('workspace.chat.toolCreateConnections', 'Connecting workspace cards…')
-          : t('workspace.chat.toolCreateConnectionsDone', 'Connected workspace cards')
+          : t('workspace.chat.toolCreateConnectionsDone', 'Connected workspace cards'),
+        detail: compactDetail(connections.join(', ')) || undefined
       }
+    }
     case 'request_summary':
       return {
         icon: 'summary',
         text: running
           ? t('workspace.chat.toolRequestSummary', 'Requesting summary…')
-          : t('workspace.chat.toolRequestSummaryDone', 'Requested summary')
+          : t('workspace.chat.toolRequestSummaryDone', 'Requested summary'),
+        detail: docId || undefined
       }
+    case 'execute':
     case 'run_bash':
       return {
         icon: 'terminal',
         text: running
           ? t('workspace.chat.toolRunBash', 'Running command…')
-          : t('workspace.chat.toolRunBashDone', 'Ran command')
+          : t('workspace.chat.toolRunBashDone', 'Ran command'),
+        detail: inferredToolDetail(parsed)
+      }
+    case 'ls':
+      return {
+        icon: 'files',
+        text: running
+          ? t('workspace.chat.toolListFiles', 'Listing files…')
+          : t('workspace.chat.toolListFilesDone', 'Listed files'),
+        detail: compactDetail(firstString(objParam, ['path']) || '/') || undefined
+      }
+    case 'read_file':
+      return {
+        icon: 'read',
+        text: running
+          ? t('workspace.chat.toolReadFile', 'Reading file…')
+          : t('workspace.chat.toolReadFileDone', 'Read file'),
+        detail: compactDetail(firstString(objParam, ['file_path', 'path'])) || undefined
+      }
+    case 'write_file':
+      return {
+        icon: 'files',
+        text: running
+          ? t('workspace.chat.toolWriteFile', 'Writing file…')
+          : t('workspace.chat.toolWriteFileDone', 'Wrote file'),
+        detail: compactDetail(firstString(objParam, ['file_path', 'path'])) || undefined
+      }
+    case 'edit_file':
+      return {
+        icon: 'files',
+        text: running
+          ? t('workspace.chat.toolEditFile', 'Editing file…')
+          : t('workspace.chat.toolEditFileDone', 'Edited file'),
+        detail: compactDetail(firstString(objParam, ['file_path', 'path'])) || undefined
+      }
+    case 'glob': {
+      const pattern = firstString(objParam, ['pattern'])
+      const path = firstString(objParam, ['path'])
+      return {
+        icon: 'search',
+        text: running
+          ? t('workspace.chat.toolFindFiles', 'Finding files…')
+          : t('workspace.chat.toolFindFilesDone', 'Found files'),
+        detail: [quotedDetail(pattern), compactDetail(path)].filter(Boolean).join(' · ') || undefined
+      }
+    }
+    case 'grep': {
+      const pattern = firstString(objParam, ['pattern'])
+      const path = firstString(objParam, ['path'])
+      return {
+        icon: 'search',
+        text: running
+          ? t('workspace.chat.toolSearchFiles', 'Searching files…')
+          : t('workspace.chat.toolSearchFilesDone', 'Searched files'),
+        detail: [quotedDetail(pattern), compactDetail(path)].filter(Boolean).join(' · ') || undefined
+      }
+    }
+    case 'web_search':
+    case 'search_web':
+      return {
+        icon: 'web',
+        text: running
+          ? t('workspace.chat.toolSearchWeb', 'Searching the web…')
+          : t('workspace.chat.toolSearchWebDone', 'Searched the web'),
+        detail: quotedDetail(query)
+      }
+    case 'fetch_url':
+    case 'web_fetch':
+    case 'visit_url':
+    case 'open_url':
+      return {
+        icon: 'web',
+        text: running
+          ? t('workspace.chat.toolAccessWebsite', 'Accessing website…')
+          : t('workspace.chat.toolAccessWebsiteDone', 'Accessed website'),
+        detail: websiteDetail(firstString(objParam, ['url', 'uri', 'href']) || stringParam)
+      }
+    case 'search_arxiv':
+      return {
+        icon: 'web',
+        text: running
+          ? t('workspace.chat.toolSearchWeb', 'Searching the web…')
+          : t('workspace.chat.toolSearchWebDone', 'Searched the web'),
+        detail: 'arxiv.org'
+      }
+    case 'get_arxiv_paper':
+      return {
+        icon: 'web',
+        text: running
+          ? t('workspace.chat.toolAccessWebsite', 'Accessing website…')
+          : t('workspace.chat.toolAccessWebsiteDone', 'Accessed website'),
+        detail: 'arxiv.org'
+      }
+    case 'get_citing_papers':
+    case 'get_referenced_papers':
+    case 'get_semantic_recommendations':
+      return {
+        icon: 'web',
+        text: running
+          ? t('workspace.chat.toolAccessWebsite', 'Accessing website…')
+          : t('workspace.chat.toolAccessWebsiteDone', 'Accessed website'),
+        detail: 'semanticscholar.org'
+      }
+    case 'resolve_academic_identity':
+      return {
+        icon: 'metadata',
+        text: running
+          ? t('workspace.chat.toolResolvePaper', 'Resolving paper identity…')
+          : t('workspace.chat.toolResolvePaperDone', 'Resolved paper identity')
+      }
+    case 'explore_research_frontier':
+      return {
+        icon: 'web',
+        text: running
+          ? t('workspace.chat.toolSearchWeb', 'Searching the web…')
+          : t('workspace.chat.toolSearchWebDone', 'Searched the web'),
+        detail: 'arxiv.org · semanticscholar.org'
+      }
+    case 'propose_workspace_memory_update':
+      return {
+        icon: 'files',
+        text: running
+          ? t('workspace.chat.toolUpdateMemory', 'Updating workspace memory…')
+          : t('workspace.chat.toolUpdateMemoryDone', 'Updated workspace memory'),
+        detail: compactDetail(firstString(objParam, ['path'])) || undefined
       }
     case 'install_runtime_packages':
       return {
         icon: 'package',
         text: running
           ? t('workspace.chat.toolInstallPackages', 'Installing packages…')
-          : t('workspace.chat.toolInstallPackagesDone', 'Installed packages')
+          : t('workspace.chat.toolInstallPackagesDone', 'Installed packages'),
+        detail: [
+          ...stringList(objParam, 'runtimes'),
+          ...['python', 'node'].flatMap((key) => {
+            const values = objParam[key]
+            if (!Array.isArray(values)) return []
+            return values.flatMap((value) => {
+              const item = asRecord(value)
+              const packageName = firstString(item, ['name'])
+              const version = firstString(item, ['version'])
+              return packageName ? [`${packageName}${version ? `@${version}` : ''}`] : []
+            })
+          })
+        ].join(', ') || undefined
       }
     case 'publish_workspace_artifacts':
       return {
         icon: 'publish',
         text: running
           ? t('workspace.chat.toolPublishArtifacts', 'Publishing artifacts…')
-          : t('workspace.chat.toolPublishArtifactsDone', 'Published artifacts')
+          : t('workspace.chat.toolPublishArtifactsDone', 'Published artifacts'),
+        detail: stringList(objParam, 'paths').join(', ') || undefined
       }
-    default:
-      return null
+    default: {
+      const detail = inferredToolDetail(parsed)
+      const url = firstString(objParam, ['url', 'uri', 'href'])
+      return {
+        icon: url ? 'web' : 'tool',
+        text: humanizeIdentifier(name),
+        detail
+      }
+    }
   }
 }
 
@@ -256,7 +510,9 @@ const TOOL_ICONS: Record<string, typeof MagnifyingGlass> = {
   add: FilePlus,
   terminal: TerminalWindow,
   package: Package,
-  publish: UploadSimple
+  publish: UploadSimple,
+  files: FileText,
+  web: GlobeHemisphereWest
 }
 
 function TraceStepRow({
@@ -298,7 +554,9 @@ function TraceStepRow({
     : Robot
 
   const displayText = toolLabel
-    ? toolLabel.text
+    ? toolLabel.detail
+      ? toolLabel.text.replace(/(?:…|\.{3})$/, '')
+      : toolLabel.text
     : step.kind === 'llm'
       ? step.status === 'running'
         ? t('workspace.chat.traceLlmCall', 'Model thinking…')
@@ -306,6 +564,7 @@ function TraceStepRow({
       : step.name
         ? humanizeIdentifier(step.name)
         : t('workspace.chat.traceTool', 'Tool')
+  const displayDetail = toolLabel?.detail
 
   const kindLabel = step.kind === 'llm'
     ? t('workspace.chat.traceLlm', 'Model')
@@ -345,7 +604,22 @@ function TraceStepRow({
           )}
           <span className="agent-trace-step-copy min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="agent-trace-step-title truncate text-xs font-medium text-foreground">{displayText}</span>
+              <span className="agent-trace-step-title shrink-0 text-xs font-medium text-foreground">
+                {displayText}
+              </span>
+              {displayDetail && (
+                <>
+                  <span className="agent-trace-step-separator shrink-0 text-muted" aria-hidden="true">
+                    —
+                  </span>
+                  <span
+                    className="agent-trace-step-detail min-w-0 truncate text-xs text-foreground"
+                    title={displayDetail}
+                  >
+                    {displayDetail}
+                  </span>
+                </>
+              )}
               {(!compact || step.status !== 'done') && (
                 <span className={`agent-trace-status-label agent-trace-status-label-${step.status}`}>
                   {statusTitle}

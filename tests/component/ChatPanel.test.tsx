@@ -41,6 +41,9 @@ const ChatInput = (await import('../../src/renderer/components/workspace/ChatInp
 const AgentTodoList = (
   await import('../../src/renderer/components/workspace/AgentTodoList')
 ).default
+const AgentOcrProgress = (
+  await import('../../src/renderer/components/workspace/AgentOcrProgress')
+).default
 
 const mockChatHistory = vi.fn()
 const mockChatSend = vi.fn()
@@ -268,6 +271,88 @@ describe('ChatPanel tab header', () => {
   })
 })
 
+describe('ChatPanel OCR progress placement', () => {
+  it('docks approved OCR progress below the messages and above the input', async () => {
+    setupApi([])
+    const now = Date.now()
+    const job: OcrJob = {
+      id: 'ocr-job',
+      documentId: 'doc-ocr',
+      resultKey: 'result',
+      sourceHash: 'hash',
+      profile: 'balanced',
+      status: 'running',
+      stage: 'parsing',
+      progress: 0.42,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: now,
+      startedAt: now,
+      finishedAt: null,
+      updatedAt: now
+    }
+    const w = window as unknown as { api: Record<string, Record<string, unknown>> }
+    w.api.ocr.getState = vi.fn(async () => ({ activeJob: job }))
+
+    render(<ChatPanel />)
+
+    const input = await screen.findByRole('textbox', {
+      name: 'workspace.chat.inputPlaceholder'
+    })
+    await waitFor(() => expect(input).not.toBeDisabled())
+    fireEvent.change(input, { target: { value: 'Read the scanned paper' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(mockChatSend).toHaveBeenCalledTimes(1))
+
+    const request = mockChatSend.mock.calls[0][0] as ChatSendRequest
+    act(() => {
+      chatInterruptedHandler?.({
+        threadId: 'thread-1',
+        runId: request.runId!,
+        interrupt: {
+          id: 'interrupt-ocr-placement',
+          threadId: 'thread-1',
+          runId: request.runId!,
+          checkpointId: 'checkpoint-ocr-placement',
+          actions: [{
+            name: 'prepare_paper_ocr',
+            args: { docId: 'doc-ocr' },
+            description:
+              'Run balanced local OCR for this paper and prepare a reusable structured full-text cache.',
+            allowedDecisions: ['approve', 'reject']
+          }],
+          status: 'pending',
+          decision: null,
+          createdAt: now,
+          resolvedAt: null
+        }
+      })
+    })
+
+    const approval = await screen.findByText('workspace.chat.approvalRequired')
+    const approvalCard = approval.parentElement
+    expect(approvalCard).toHaveTextContent('workspace.chat.approvalPrepareOcr')
+    expect(approvalCard).toHaveTextContent('workspace.chat.approvalPrepareOcrDescription')
+    expect(approvalCard).not.toHaveTextContent('prepare_paper_ocr')
+    expect(approvalCard).not.toHaveTextContent(
+      'Run balanced local OCR for this paper and prepare a reusable structured full-text cache.'
+    )
+
+    fireEvent.click(await screen.findByRole('button', {
+      name: 'workspace.chat.approveAction'
+    }))
+
+    const progress = await screen.findByLabelText('workspace.chat.ocrProgress')
+    const messageScroll = screen.getByTestId('chat-message-scroll')
+    expect(progress).toHaveClass('shrink-0', 'pb-2')
+    expect(progress.style.paddingInline).toBe('clamp(12px, 7cqi, 64px)')
+    expect(progress.firstElementChild).toHaveClass('mx-auto', 'w-full', 'max-w-[768px]')
+    expect(messageScroll).not.toContainElement(progress)
+    expect(progress.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+  })
+})
+
 describe('ChatPanel citation links', () => {
   it('renders refora://doc/ link as a clickable button', async () => {
     setupApi([makeMessage('See [Test Paper](refora://doc/doc-123) for details.')])
@@ -442,7 +527,6 @@ function renderMessages(overrides: Partial<Parameters<typeof ChatMessages>[0]> =
       streamingText=""
       streamingReasoning=""
       activeRunId={null}
-      activeOcrDocumentId={null}
       elapsedSeconds={4}
       loadingHistory={false}
       providers={[]}
@@ -526,7 +610,7 @@ describe('ChatMessages presentation', () => {
       updatedAt: now
     }
 
-    renderMessages({ activeOcrDocumentId: 'doc-ocr' })
+    render(<AgentOcrProgress documentId="doc-ocr" />)
     act(() => {
       onProgress?.({ job })
     })
@@ -569,7 +653,7 @@ describe('ChatMessages presentation', () => {
       updatedAt: now + 1
     }
 
-    renderMessages({ activeOcrDocumentId: 'doc-ocr' })
+    render(<AgentOcrProgress documentId="doc-ocr" />)
     act(() => {
       onProgress?.({ job: liveJob })
     })
@@ -610,7 +694,7 @@ describe('ChatMessages presentation', () => {
       updatedAt: now
     }
 
-    renderMessages({ activeOcrDocumentId: 'doc-ocr' })
+    render(<AgentOcrProgress documentId="doc-ocr" />)
     act(() => {
       onCompleted?.({
         jobId: staleJob.id,
