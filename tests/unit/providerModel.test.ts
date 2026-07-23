@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { AIMessage, HumanMessage } from '@langchain/core/messages'
+import type { ChatGenerationChunk } from '@langchain/core/outputs'
+import { DynamicStructuredTool } from '@langchain/core/tools'
+import { describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import {
   buildProviderReasoningOptions,
   createProviderChatModel
@@ -21,6 +25,17 @@ const openAiProvider: AiProvider = {
   temperature: null,
   maxTokens: null,
   createdAt: 1
+}
+
+const compatibleProvider: AiProvider = {
+  ...openAiProvider,
+  id: 'provider-compatible',
+  presetId: 'custom',
+  name: 'Compatible provider',
+  baseUrl: 'https://compatible.invalid/v1',
+  apiProtocol: 'openai-compatible',
+  model: 'xopkimik26',
+  baseModel: 'xopkimik26'
 }
 
 describe('provider reasoning request options', () => {
@@ -117,5 +132,92 @@ describe('provider reasoning request options', () => {
     })
 
     expect(model.reasoning).toEqual({ effort: 'low', summary: 'auto' })
+  })
+
+  it('treats roleless compatible streaming deltas as assistant output', async () => {
+    const model = createProviderChatModel({
+      provider: compatibleProvider,
+      apiKey: 'test-key',
+      streaming: true,
+      deepThinking: false
+    })
+    const completionWithRetry = vi.fn(async () => (async function* () {
+      yield {
+        id: 'completion-1',
+        model: 'xopkimik26',
+        choices: [{
+          index: 0,
+          delta: { content: 'Checking OCR cache. ' }
+        }]
+      }
+      yield {
+        id: 'completion-1',
+        model: 'xopkimik26',
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: 'call-1',
+              type: 'function',
+              function: {
+                name: 'read_paper_ocr_fulltext',
+                arguments: '{"docId":"doc-1"}'
+              }
+            }]
+          },
+          finish_reason: 'tool_calls'
+        }]
+      }
+    })())
+    const readOcr = new DynamicStructuredTool({
+      name: 'read_paper_ocr_fulltext',
+      description: 'Read OCR cache',
+      schema: z.object({ docId: z.string() }),
+      func: async () => ''
+    })
+
+    const boundModel = model.bindTools([readOcr])
+    const boundInternals = boundModel as unknown as {
+      completions?: {
+        completionWithRetry: typeof completionWithRetry
+        _streamResponseChunks: (
+          messages: HumanMessage[],
+          options: Record<string, unknown>
+        ) => AsyncGenerator<ChatGenerationChunk>
+      }
+      bound?: {
+        completions?: {
+          completionWithRetry: typeof completionWithRetry
+          _streamResponseChunks: (
+            messages: HumanMessage[],
+            options: Record<string, unknown>
+          ) => AsyncGenerator<ChatGenerationChunk>
+        }
+      }
+    }
+    const completions = boundInternals.completions ?? boundInternals.bound?.completions
+    expect(completions).toBeDefined()
+    if (!completions) throw new Error('Bound completions model is unavailable')
+    completions.completionWithRetry = completionWithRetry
+
+    const chunks: ChatGenerationChunk[] = []
+    for await (const chunk of completions._streamResponseChunks(
+      [new HumanMessage('Check OCR cache.')],
+      {}
+    )) {
+      chunks.push(chunk)
+    }
+    const result = chunks.reduce((combined, chunk) => combined.concat(chunk)).message
+
+    expect(completionWithRetry).toHaveBeenCalledTimes(1)
+    expect(AIMessage.isInstance(result)).toBe(true)
+    expect(result.content).toBe('Checking OCR cache. ')
+    expect(result.tool_calls).toEqual([{
+      name: 'read_paper_ocr_fulltext',
+      args: { docId: 'doc-1' },
+      id: 'call-1',
+      type: 'tool_call'
+    }])
   })
 })

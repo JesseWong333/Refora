@@ -1,4 +1,5 @@
 import { ChatOpenAI, type ChatOpenAIFields } from '@langchain/openai'
+import type { BaseMessageChunk } from '@langchain/core/messages'
 import type { AiProvider, AiReasoningEffort } from '../../shared/ipc-types'
 import { inferModelCapabilities } from '../../shared/providerCatalog'
 
@@ -9,6 +10,34 @@ export interface ProviderReasoningOptions {
     effort: AiReasoningEffort
     summary: 'auto'
   }
+}
+
+interface OpenAiCompletionsInternals {
+  _convertCompletionsDeltaToBaseMessageChunk: (
+    delta: Record<string, unknown>,
+    rawResponse: unknown,
+    defaultRole?: string
+  ) => BaseMessageChunk
+}
+
+function normalizeCompatibleStreamingRoles(model: ChatOpenAI): ChatOpenAI {
+  const internals = model as unknown as {
+    completions?: OpenAiCompletionsInternals
+    fields?: ChatOpenAIFields
+  }
+  const completions = internals.completions
+  if (!completions ||
+      typeof completions._convertCompletionsDeltaToBaseMessageChunk !== 'function') {
+    return model
+  }
+  const convertDelta = completions._convertCompletionsDeltaToBaseMessageChunk.bind(completions)
+  completions._convertCompletionsDeltaToBaseMessageChunk = (delta, rawResponse, defaultRole) =>
+    convertDelta(delta, rawResponse, defaultRole ?? 'assistant')
+  if (internals.fields) {
+    internals.fields.completions =
+      completions as unknown as ChatOpenAIFields['completions']
+  }
+  return model
 }
 
 export function buildProviderReasoningOptions(
@@ -93,5 +122,5 @@ export function createProviderChatModel(input: {
       ? { modelKwargs: reasoningOptions.modelKwargs }
       : {})
   }
-  return new ChatOpenAI(fields)
+  return normalizeCompatibleStreamingRoles(new ChatOpenAI(fields))
 }
