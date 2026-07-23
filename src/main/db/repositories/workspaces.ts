@@ -34,6 +34,13 @@ export function createWorkspacesRepository(db: SqliteDb) {
     return mapWorkspace(row)
   }
 
+  function get(id: string): Workspace | null {
+    const row = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined
+    return row ? mapWorkspace(row) : null
+  }
+
   function searchContent(q: string, limit = 10): WorkspaceContentSearchResult[] {
     const trimmed = q.trim()
     if (!trimmed) return []
@@ -91,5 +98,5 @@ export function createWorkspacesRepository(db: SqliteDb) {
     if (result.changes === 0) throw new RepoError('not_found', `workspace not found: ${id}`)
   }
 
-  return { list, searchContent, create, rename, delete: remove }
+  return { list, get, searchContent, create, rename, delete: remove }
 }

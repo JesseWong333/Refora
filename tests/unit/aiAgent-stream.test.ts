@@ -1,14 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 
 const mocks = vi.hoisted(() => ({
   emitAiChatToken: vi.fn(),
   emitAiChatReasoning: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: vi.fn(),
-  createReactAgent: vi.fn()
+  createReforaDeepAgent: vi.fn()
 }))
 
 vi.mock('@langchain/openai', () => ({
@@ -45,6 +49,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatReasoning: mocks.emitAiChatReasoning,
   emitAiChatDone: mocks.emitAiChatDone,
   emitAiChatError: mocks.emitAiChatError,
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: mocks.emitAiChatTrace,
   emitAiReportCreated: mocks.emitAiReportCreated,
   emitWorkspaceItemsChanged: mocks.emitWorkspaceItemsChanged
@@ -54,8 +61,8 @@ vi.mock('../../src/main/services/logger', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }))
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: mocks.createReactAgent
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: mocks.createReforaDeepAgent
 }))
 
 import { createAiAgentService } from '../../src/main/services/aiAgent'
@@ -64,7 +71,7 @@ import type { AiProvider, ChatSendRequest } from '../../src/shared/ipc-types'
 
 function makeMockRepos(): Repositories {
   let stepCounter = 0
-  return {
+  return withDeepAgentRepositories({
     chat: {
       addMessage: vi.fn(),
       listMessages: vi.fn(() => []),
@@ -127,7 +134,7 @@ function makeMockRepos(): Repositories {
       listByThread: vi.fn(() => []),
       listByRun: vi.fn(() => [])
     }
-  } as unknown as Repositories
+  } as unknown as Repositories)
 }
 
 function makeMockWin() {
@@ -219,7 +226,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('emits string content directly', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([streamEvent({ content: 'Hello' })])
     })
 
@@ -230,7 +237,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('extracts text from array content with text block', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([
         streamEvent({ content: [{ type: 'text', text: 'World' }] })
       ])
@@ -242,7 +249,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('extracts text from array content with reasoning block', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([
         streamEvent({ content: [{ type: 'reasoning', reasoning: 'thinking...' }] })
       ])
@@ -255,7 +262,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('concatenates mixed text and reasoning blocks', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([
         streamEvent({
           content: [
@@ -273,7 +280,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('falls back to additional_kwargs.reasoning_content', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([
         streamEvent({
           content: '',
@@ -289,7 +296,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('does not emit a token for empty string content', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([streamEvent({ content: '' })])
     })
 
@@ -299,7 +306,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('does not emit a token for non-text/non-reasoning array content', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([
         streamEvent({ content: [{ type: 'image_url', image_url: '...' }] })
       ])
@@ -311,7 +318,7 @@ describe('AiAgentService stream content handling', () => {
   })
 
   it('persists reasoning, tool, and answer segments in event order', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([
         { event: 'on_chat_model_start', data: {}, run_id: 'llm-1' },
         streamEvent({ content: [{ type: 'reasoning', reasoning: 'Inspect sources' }] }),

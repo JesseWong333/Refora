@@ -116,6 +116,23 @@ function migrationSchemaPresent(db: SqliteLike, version: number): boolean {
     ])
   }
   if (version === 22) return hasColumns('documents', ['arxivId'])
+  if (version === 24) {
+    return hasColumns('chat_threads', ['headCheckpointId', 'agentStateVersion']) &&
+      hasColumns('agent_trace_steps', [
+        'parentStepId',
+        'agentName',
+        'namespace',
+        'depth',
+        'checkpointId'
+      ]) &&
+      hasObjects([
+        ['table', 'agent_runs'],
+        ['table', 'workspace_agent_memories'],
+        ['table', 'workspace_agent_memory_revisions'],
+        ['table', 'agent_interrupts'],
+        ['table', 'agent_tool_effects']
+      ])
+  }
   return version <= db.getUserVersion()
 }
 

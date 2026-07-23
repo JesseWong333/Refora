@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 import type { ChatMessage, ChatSendRequest } from '../../src/shared/ipc-types'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { AiProvidersService } from '../../src/main/services/aiProviders'
@@ -17,8 +18,8 @@ vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn(class {})
 }))
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: vi.fn(() => ({ streamEvents: mockStreamEvents }))
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: vi.fn(() => ({ streamEvents: mockStreamEvents }))
 }))
 
 vi.mock('@langchain/core/tools', () => ({
@@ -71,6 +72,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: vi.fn()
@@ -96,7 +100,7 @@ function makeMessage(id: number, role: ChatMessage['role'], content: string): Ch
 }
 
 function makeMockRepos(messages: ChatMessage[]): Repositories {
-  return {
+  return withDeepAgentRepositories({
     chat: {
       listMessages: vi.fn(() => messages),
       addMessage: vi.fn(() => makeMessage(999, 'assistant', '')),
@@ -161,7 +165,7 @@ function makeMockRepos(messages: ChatMessage[]): Repositories {
       listByThread: vi.fn(() => []),
       listByRun: vi.fn(() => [])
     }
-  } as unknown as Repositories
+  } as unknown as Repositories)
 }
 
 function makeMockAiProviders(): AiProvidersService {
@@ -215,12 +219,12 @@ async function runAgentWithHistory(messages: ChatMessage[]): Promise<void> {
 
 function getHistoryContents(): string[] {
   if (!lastStreamInput) return []
-  return (lastStreamInput.messages.slice(1) as Array<{ content: string }>).map((m) => m.content)
+  return (lastStreamInput.messages as Array<{ content: string }>).map((m) => m.content)
 }
 
 function getHistoryMessageCount(): number {
   if (!lastStreamInput) return 0
-  return lastStreamInput.messages.length - 1
+  return lastStreamInput.messages.length
 }
 
 beforeEach(() => {

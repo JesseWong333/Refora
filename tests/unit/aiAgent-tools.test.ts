@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { AiProvidersService } from '../../src/main/services/aiProviders'
 import type { PdfTextService } from '../../src/main/services/pdfText'
@@ -12,7 +13,8 @@ interface CapturedTool {
 const mocks = vi.hoisted(() => ({
   openPath: vi.fn<(path: string) => Promise<string>>(),
   tools: [] as CapturedTool[],
-  messages: [] as unknown[]
+  messages: [] as unknown[],
+  systemPrompt: ''
 }))
 
 vi.mock('electron', () => ({
@@ -29,9 +31,10 @@ vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn()
 }))
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: ({ tools }: { tools: CapturedTool[] }) => {
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: ({ tools, systemPrompt }: { tools: CapturedTool[]; systemPrompt: string }) => {
     mocks.tools = tools
+    mocks.systemPrompt = systemPrompt
     return {
       streamEvents: async function* (input: { messages: unknown[] }) {
         mocks.messages = input.messages
@@ -62,6 +65,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: vi.fn(),
@@ -81,7 +87,7 @@ const mockWin = { isDestroyed: () => false }
 
 const mockDocumentsGet = vi.fn<(id: string) => Document | null>()
 
-const repos = {
+const repos = withDeepAgentRepositories({
   documents: { get: mockDocumentsGet, setLastReadAt: vi.fn() },
   chat: {
     addMessage: vi.fn(),
@@ -97,7 +103,7 @@ const repos = {
     addStep: vi.fn(() => ({ id: 'step-1' })),
     updateStep: vi.fn(() => ({ id: 'step-1' }))
   }
-} as unknown as Repositories
+} as unknown as Repositories)
 
 const aiProvidersService = {
   getProvider: vi.fn(
@@ -208,15 +214,14 @@ describe('AI agent tools', () => {
       'get_paper_metadata',
       'open_paper',
       'request_summary',
-      'run_bash',
       'install_runtime_packages',
-      'publish_workspace_artifacts'
+      'publish_workspace_artifacts',
+      'propose_workspace_memory_update'
     ])
     expect(repos.workspaceItems.list).not.toHaveBeenCalled()
-    const systemMessage = mocks.messages[0] as { content: string }
-    expect(systemMessage.content).toContain("user's local library")
-    expect(systemMessage.content).not.toContain('Workspace paper catalog')
-    expect(systemMessage.content).not.toContain('A workspace is selected')
+    expect(mocks.systemPrompt).toContain("user's local library")
+    expect(mocks.systemPrompt).not.toContain('Workspace paper catalog')
+    expect(mocks.systemPrompt).not.toContain('A workspace is selected')
   })
 
   describe('get_paper_metadata', () => {

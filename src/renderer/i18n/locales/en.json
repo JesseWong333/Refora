@@ -215,6 +215,20 @@
         "invalid": "Installation needs repair"
       }
     },
+    "agentMemory": {
+      "title": "Agent Memory",
+      "desc": "Curated memory isolated to the active Workspace",
+      "workspaceDesc": "These files are available only to Agents in the active Workspace.",
+      "globalDesc": "These files are available only to Agents in global chats.",
+      "loadFailed": "Failed to load Agent memory",
+      "saveFailed": "Failed to update Agent memory",
+      "files": {
+        "brief": "Workspace brief",
+        "preferences": "Preferences",
+        "decisions": "Decisions",
+        "glossary": "Glossary"
+      }
+    },
     "aiProviders": {
       "title": "AI Providers",
       "desc": "Configure AI model providers and API keys",
@@ -564,6 +578,16 @@
       "toolPublishArtifacts": "Publishing artifacts…",
       "toolPublishArtifactsDone": "Published artifacts",
       "regenerate": "Regenerate",
+      "approvalRequired": "Approval required",
+      "approveAction": "Approve",
+      "rejectAction": "Reject",
+      "editAction": "Edit",
+      "cancelEditAction": "Cancel edit",
+      "applyEditAction": "Apply and continue",
+      "editActionInvalid": "Action arguments must be valid JSON objects.",
+      "traceSubagent": "Subagent",
+      "traceTodo": "Plan",
+      "traceApproval": "Approval required",
       "exportChat": "Export conversation",
       "cut": "Cut",
       "copy": "Copy",

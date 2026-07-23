@@ -1,16 +1,17 @@
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, type ReactNode } from 'react'
 import { Modal, Button, Select } from '@lobehub/ui'
-import { FolderOpen, HardDrives, Palette, Sparkle } from '@phosphor-icons/react'
+import { Brain, FolderOpen, HardDrives, Palette, Sparkle } from '@phosphor-icons/react'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../ipc'
 import { changeLanguage, type AppLanguage } from '../i18n'
-import { errorMessage } from '../../shared/ipc-types'
+import { errorMessage, type WorkspaceAgentMemory } from '../../shared/ipc-types'
 import { Input as UiInput } from './ui'
 import { AiProvidersSection as ProviderConnectionsSection } from './AiProvidersSection'
 import type { MineruEngineStatus, MineruInstallProgress } from '../../shared/mineru-types'
 import { IpcChannel } from '../../shared/ipc-channels'
 import { formatElapsedClock } from '../utils/format'
+import { useWorkspaceStore } from '../store/workspaceStore'
 
 interface SettingsModalProps {
   open: boolean
@@ -38,7 +39,14 @@ const MINERU_INSTALL_STAGES = [
   'finalizing'
 ] as const
 
-type SettingsPage = 'general' | 'appearance' | 'mineru' | 'aiProviders'
+type SettingsPage = 'general' | 'appearance' | 'mineru' | 'aiProviders' | 'agentMemory'
+
+const AGENT_MEMORY_PATHS = [
+  '/brief.md',
+  '/preferences.md',
+  '/decisions.md',
+  '/glossary.md'
+] as const
 
 function SettingsSection({
   title,
@@ -77,6 +85,119 @@ function formatBytes(bytes: number | null): string {
     unit += 1
   }
   return `${value.toFixed(unit < 2 ? 0 : 1)} ${units[unit]}`
+}
+
+function AgentMemorySettingsSection({ onError }: { onError: (message: string | null) => void }) {
+  const { t } = useTranslation()
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
+  const [memories, setMemories] = useState<WorkspaceAgentMemory[]>([])
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [savingPath, setSavingPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void api.ai.workspaceMemories(activeWorkspaceId).then((entries) => {
+      if (cancelled) return
+      setMemories(entries)
+      setDrafts(Object.fromEntries(AGENT_MEMORY_PATHS.map((path) => [
+        path,
+        entries.find((entry) => entry.path === path)?.content ?? ''
+      ])))
+    }).catch((error) => {
+      if (!cancelled) onError(errorMessage(error, t('settings.agentMemory.loadFailed')))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeWorkspaceId, onError, t])
+
+  const save = async (path: string) => {
+    setSavingPath(path)
+    onError(null)
+    try {
+      const memory = await api.ai.updateWorkspaceMemory(
+        activeWorkspaceId,
+        path,
+        drafts[path] ?? ''
+      )
+      setMemories((current) => [
+        ...current.filter((entry) => entry.path !== path),
+        memory
+      ])
+    } catch (error) {
+      onError(errorMessage(error, t('settings.agentMemory.saveFailed')))
+    } finally {
+      setSavingPath(null)
+    }
+  }
+
+  const clear = async (path: string) => {
+    setSavingPath(path)
+    onError(null)
+    try {
+      await api.ai.deleteWorkspaceMemory(activeWorkspaceId, path)
+      setDrafts((current) => ({ ...current, [path]: '' }))
+      setMemories((current) => current.filter((entry) => entry.path !== path))
+    } catch (error) {
+      onError(errorMessage(error, t('settings.agentMemory.saveFailed')))
+    } finally {
+      setSavingPath(null)
+    }
+  }
+
+  return (
+    <SettingsSection
+      title={t('settings.agentMemory.title')}
+      description={activeWorkspaceId
+        ? t('settings.agentMemory.workspaceDesc')
+        : t('settings.agentMemory.globalDesc')}
+    >
+      {AGENT_MEMORY_PATHS.map((path) => {
+        const memory = memories.find((entry) => entry.path === path)
+        const key = path.slice(1, -3)
+        return (
+          <div key={path} className="rounded-lg border border-border bg-panel p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-medium text-foreground">
+                  {t(`settings.agentMemory.files.${key}`)}
+                </div>
+                <div className="text-label text-muted">
+                  {path}{memory ? ` · v${memory.revision}` : ''}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="small"
+                  disabled={savingPath === path || !(drafts[path] ?? '')}
+                  onClick={() => void clear(path)}
+                >
+                  {t('common.delete')}
+                </Button>
+                <Button
+                  type="primary"
+                  size="small"
+                  loading={savingPath === path}
+                  onClick={() => void save(path)}
+                >
+                  {t('common.save')}
+                </Button>
+              </div>
+            </div>
+            <textarea
+              className="mt-3 min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-accent"
+              value={drafts[path] ?? ''}
+              maxLength={16_384}
+              onChange={(event) => setDrafts((current) => ({
+                ...current,
+                [path]: event.target.value
+              }))}
+            />
+          </div>
+        )
+      })}
+    </SettingsSection>
+  )
 }
 
 function MineruSettingsSection({ onError }: { onError: (message: string | null) => void }) {
@@ -395,6 +516,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       label: t('settings.aiProviders.title'),
       description: t('settings.aiProviders.desc'),
       icon: Sparkle
+    },
+    {
+      id: 'agentMemory' as const,
+      label: t('settings.agentMemory.title'),
+      description: t('settings.agentMemory.desc'),
+      icon: Brain
     }
   ]
 
@@ -535,6 +662,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           {activePage === 'mineru' && <MineruSettingsSection onError={setError} />}
 
           {activePage === 'aiProviders' && <ProviderConnectionsSection />}
+
+          {activePage === 'agentMemory' && <AgentMemorySettingsSection onError={setError} />}
 
           {error && (
             <div className="mt-4 rounded-lg bg-error/10 px-3 py-1.5 text-xs text-error">

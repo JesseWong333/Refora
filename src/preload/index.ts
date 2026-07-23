@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IpcChannel } from '../shared/ipc-channels'
 import type {
+  AgentInterrupt,
+  AgentResumeRequest,
   AgentTraceStep,
   AiProvider,
   AiProviderInput,
@@ -12,8 +14,10 @@ import type {
   Category,
   ChatDoneEvent,
   ChatErrorEvent,
+  ChatInterruptedEvent,
   ChatMessage,
   ChatReasoningEvent,
+  ChatRunStatusEvent,
   ChatSendRequest,
   ChatThread,
   ChatTokenEvent,
@@ -49,7 +53,8 @@ import type {
   WorkspaceNote,
   WorkspaceNotePatch,
   WorkspaceNoteType,
-  WorkspaceItemsChangedEvent
+  WorkspaceItemsChangedEvent,
+  WorkspaceAgentMemory
 } from '../shared/ipc-types'
 import type {
   MineruEngineStatus,
@@ -329,9 +334,18 @@ const api: ReforaApi = {
     chatTraces: (threadId: string) =>
       invoke<AgentTraceStep[]>(IpcChannel.AiChatTraces, threadId),
     chatCancel: (threadId: string) => invoke<void>(IpcChannel.AiChatCancel, threadId),
+    chatResume: (req: AgentResumeRequest) => invoke<void>(IpcChannel.AiChatResume, req),
+    chatPendingInterrupt: (runId: string) =>
+      invoke<AgentInterrupt | null>(IpcChannel.AiChatPendingInterrupt, runId),
     chatDeleteThread: (threadId: string) => invoke<void>(IpcChannel.AiChatDeleteThread, threadId),
     renameThread: (threadId: string, title: string) =>
-      invoke<void>(IpcChannel.AiChatRenameThread, threadId, title)
+      invoke<void>(IpcChannel.AiChatRenameThread, threadId, title),
+    workspaceMemories: (workspaceId: string | null) =>
+      invoke<WorkspaceAgentMemory[]>(IpcChannel.AiWorkspaceMemoriesList, workspaceId),
+    updateWorkspaceMemory: (workspaceId: string | null, path: string, content: string) =>
+      invoke<WorkspaceAgentMemory>(IpcChannel.AiWorkspaceMemoryUpdate, workspaceId, path, content),
+    deleteWorkspaceMemory: (workspaceId: string | null, path: string) =>
+      invoke<void>(IpcChannel.AiWorkspaceMemoryDelete, workspaceId, path)
   },
 
   reports: {
@@ -376,6 +390,10 @@ const api: ReforaApi = {
       subscribe(IpcChannel.EventAiChatError, cb),
     onAiChatTrace: (cb: (payload: ChatTraceEvent) => void) =>
       subscribe(IpcChannel.EventAiChatTrace, cb),
+    onAiChatInterrupted: (cb: (payload: ChatInterruptedEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatInterrupted, cb),
+    onAiChatRunStatus: (cb: (payload: ChatRunStatusEvent) => void) =>
+      subscribe(IpcChannel.EventAiChatRunStatus, cb),
     onAiChatTitleUpdated: (cb: (payload: ChatTitleUpdatedEvent) => void) =>
       subscribe(IpcChannel.EventAiChatTitleUpdated, cb),
     onAiReportCreated: (cb: (report: AiReport) => void) =>

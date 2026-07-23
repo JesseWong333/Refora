@@ -7,6 +7,7 @@ import type {
   AiReasoningEffort,
   ChatDoneEvent,
   ChatErrorEvent,
+  ChatInterruptedEvent,
   ChatMessage,
   ChatReasoningEvent,
   ChatSendRequest,
@@ -36,12 +37,14 @@ const ChatInput = (await import('../../src/renderer/components/workspace/ChatInp
 const mockChatHistory = vi.fn()
 const mockChatSend = vi.fn()
 const mockChatCancel = vi.fn()
+const mockChatResume = vi.fn()
 const mockOpenPdf = vi.fn()
 let chatDoneHandler: ((payload: ChatDoneEvent) => void) | undefined
 let chatErrorHandler: ((payload: ChatErrorEvent) => void) | undefined
 let chatTokenHandler: ((payload: ChatTokenEvent) => void) | undefined
 let chatReasoningHandler: ((payload: ChatReasoningEvent) => void) | undefined
 let chatTraceHandler: ((payload: ChatTraceEvent) => void) | undefined
+let chatInterruptedHandler: ((payload: ChatInterruptedEvent) => void) | undefined
 
 const TEST_PROVIDER: AiProvider = {
   id: 'p1',
@@ -83,6 +86,8 @@ function setupApi(messages: ChatMessage[]): void {
   w.api.ai.chatCancel = mockChatCancel
   w.api.ai.chatTraces = async () => []
   w.api.ai.chatThreads = async () => []
+  w.api.ai.chatPendingInterrupt = async () => null
+  w.api.ai.chatResume = mockChatResume
   w.api.documents.openPdf = mockOpenPdf
   w.api.events.onAiChatDone = (handler: (payload: ChatDoneEvent) => void) => {
     chatDoneHandler = handler
@@ -98,6 +103,9 @@ function setupApi(messages: ChatMessage[]): void {
   }
   w.api.events.onAiChatTrace = (handler: (payload: ChatTraceEvent) => void) => {
     chatTraceHandler = handler
+  }
+  w.api.events.onAiChatInterrupted = (handler: (payload: ChatInterruptedEvent) => void) => {
+    chatInterruptedHandler = handler
   }
   mockChatHistory.mockResolvedValue(messages)
   mockChatSend.mockImplementation(async (req: ChatSendRequest) => ({
@@ -126,12 +134,14 @@ beforeEach(() => {
   mockChatHistory.mockReset()
   mockChatSend.mockReset()
   mockChatCancel.mockReset()
+  mockChatResume.mockReset().mockResolvedValue(undefined)
   mockOpenPdf.mockReset()
   chatDoneHandler = undefined
   chatErrorHandler = undefined
   chatTokenHandler = undefined
   chatReasoningHandler = undefined
   chatTraceHandler = undefined
+  chatInterruptedHandler = undefined
   mockOpenPdf.mockResolvedValue(null)
   setupStore()
 })
@@ -626,6 +636,136 @@ function renderChatStream(
 }
 
 describe('useChatStream lifecycle', () => {
+  it('resumes an interrupted action with user-edited arguments', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+    await act(async () => {
+      await result.current.sendText('Update memory', [], 'thread-1')
+    })
+    const runId = result.current.activeRunId!
+
+    act(() => {
+      chatInterruptedHandler?.({
+        threadId: 'thread-1',
+        runId,
+        interrupt: {
+          id: 'interrupt-1',
+          threadId: 'thread-1',
+          runId,
+          checkpointId: 'checkpoint-1',
+          actions: [{
+            name: 'propose_workspace_memory_update',
+            args: { path: '/brief.md', content: 'Old' },
+            allowedDecisions: ['approve', 'edit', 'reject']
+          }],
+          status: 'pending',
+          decision: null,
+          createdAt: 1,
+          resolvedAt: null
+        }
+      })
+    })
+
+    await act(async () => {
+      await result.current.resolveInterrupt('edit', [{
+        name: 'propose_workspace_memory_update',
+        args: { path: '/brief.md', content: 'Updated' }
+      }])
+    })
+
+    expect(mockChatResume).toHaveBeenCalledWith({
+      threadId: 'thread-1',
+      runId,
+      decisions: [{
+        type: 'edit',
+        editedAction: {
+          name: 'propose_workspace_memory_update',
+          args: { path: '/brief.md', content: 'Updated' }
+        }
+      }]
+    })
+  })
+
+  it('keeps an approval visible when resume fails', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+    await act(async () => {
+      await result.current.sendText('Publish output', [], 'thread-1')
+    })
+    const runId = result.current.activeRunId!
+    act(() => {
+      chatInterruptedHandler?.({
+        threadId: 'thread-1',
+        runId,
+        interrupt: {
+          id: 'interrupt-failed-resume',
+          threadId: 'thread-1',
+          runId,
+          checkpointId: 'checkpoint-1',
+          actions: [{
+            name: 'publish_workspace_artifacts',
+            args: { paths: ['outputs/report.md'] },
+            allowedDecisions: ['approve', 'reject']
+          }],
+          status: 'pending',
+          decision: null,
+          createdAt: 1,
+          resolvedAt: null
+        }
+      })
+    })
+    mockChatResume.mockRejectedValueOnce(new Error('Provider unavailable'))
+
+    await act(async () => {
+      await result.current.resolveInterrupt('approve')
+    })
+
+    expect(result.current.pendingInterrupt).toMatchObject({ id: 'interrupt-failed-resume' })
+    expect(result.current.error).toContain('Provider unavailable')
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('keeps a follow-up approval emitted while resume is completing', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+    await act(async () => {
+      await result.current.sendText('Run two reviewed actions', [], 'thread-1')
+    })
+    const runId = result.current.activeRunId!
+    const interrupt = (id: string, name: string): ChatInterruptedEvent => ({
+      threadId: 'thread-1',
+      runId,
+      interrupt: {
+        id,
+        threadId: 'thread-1',
+        runId,
+        checkpointId: `checkpoint-${id}`,
+        actions: [{
+          name,
+          args: { paths: ['outputs/report.md'] },
+          allowedDecisions: ['approve', 'reject']
+        }],
+        status: 'pending',
+        decision: null,
+        createdAt: 1,
+        resolvedAt: null
+      }
+    })
+    act(() => {
+      chatInterruptedHandler?.(interrupt('interrupt-first', 'publish_workspace_artifacts'))
+    })
+    mockChatResume.mockImplementationOnce(async () => {
+      chatInterruptedHandler?.(interrupt('interrupt-second', 'install_runtime_packages'))
+    })
+
+    await act(async () => {
+      await result.current.resolveInterrupt('approve')
+    })
+
+    expect(result.current.pendingInterrupt).toMatchObject({ id: 'interrupt-second' })
+    expect(result.current.streaming).toBe(false)
+  })
+
   it('sends a new chat with a null workspace scope', async () => {
     const { result } = renderChatStream(null, undefined, null)
     await waitFor(() => expect(result.current.loadingHistory).toBe(false))

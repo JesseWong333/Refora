@@ -4,7 +4,9 @@ import type {
   AiReport,
   ChatDoneEvent,
   ChatErrorEvent,
+  ChatInterruptedEvent,
   ChatReasoningEvent,
+  ChatRunStatusEvent,
   ChatTokenEvent,
   ChatTraceEvent,
   ChatTitleUpdatedEvent,
@@ -78,6 +80,18 @@ export function emitAiChatError(win: BrowserWindow, payload: ChatErrorEvent): vo
 export function emitAiChatTrace(win: BrowserWindow, payload: ChatTraceEvent): void {
   if (!win.isDestroyed()) {
     win.webContents.send(IpcChannel.EventAiChatTrace, payload)
+  }
+}
+
+export function emitAiChatInterrupted(win: BrowserWindow, payload: ChatInterruptedEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiChatInterrupted, payload)
+  }
+}
+
+export function emitAiChatRunStatus(win: BrowserWindow, payload: ChatRunStatusEvent): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(IpcChannel.EventAiChatRunStatus, payload)
   }
 }
 

@@ -215,6 +215,20 @@
         "invalid": "安装需要修复"
       }
     },
+    "agentMemory": {
+      "title": "Agent 记忆",
+      "desc": "与当前 Workspace 隔离的精选记忆",
+      "workspaceDesc": "这些文件仅对当前 Workspace 中的 Agent 可用。",
+      "globalDesc": "这些文件仅对全局聊天中的 Agent 可用。",
+      "loadFailed": "无法读取 Agent 记忆",
+      "saveFailed": "无法更新 Agent 记忆",
+      "files": {
+        "brief": "Workspace 简介",
+        "preferences": "偏好",
+        "decisions": "决策",
+        "glossary": "术语表"
+      }
+    },
     "aiProviders": {
       "title": "AI 服务商",
       "desc": "配置 AI 模型服务商与 API 密钥",
@@ -564,6 +578,16 @@
       "toolPublishArtifacts": "正在发布产物…",
       "toolPublishArtifactsDone": "已发布产物",
       "regenerate": "重新生成",
+      "approvalRequired": "需要批准",
+      "approveAction": "批准",
+      "rejectAction": "拒绝",
+      "editAction": "编辑",
+      "cancelEditAction": "取消编辑",
+      "applyEditAction": "应用并继续",
+      "editActionInvalid": "操作参数必须是有效的 JSON 对象。",
+      "traceSubagent": "子 Agent",
+      "traceTodo": "计划",
+      "traceApproval": "需要批准",
       "exportChat": "导出对话",
       "cut": "剪切",
       "copy": "复制",

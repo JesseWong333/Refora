@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 
 const mocks = vi.hoisted(() => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: vi.fn(),
-  createReactAgent: vi.fn()
+  createReforaDeepAgent: vi.fn()
 }))
 
 vi.mock('@langchain/openai', () => ({
@@ -43,6 +47,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: mocks.emitAiChatToken,
   emitAiChatDone: mocks.emitAiChatDone,
   emitAiChatError: mocks.emitAiChatError,
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: mocks.emitAiChatTrace,
   emitAiReportCreated: mocks.emitAiReportCreated,
   emitWorkspaceItemsChanged: mocks.emitWorkspaceItemsChanged
@@ -52,8 +59,8 @@ vi.mock('../../src/main/services/logger', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }))
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: mocks.createReactAgent
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: mocks.createReforaDeepAgent
 }))
 
 import { createAiAgentService } from '../../src/main/services/aiAgent'
@@ -62,7 +69,7 @@ import type { AiProvider, ChatSendRequest } from '../../src/shared/ipc-types'
 
 function makeMockRepos(): Repositories {
   let stepCounter = 0
-  return {
+  return withDeepAgentRepositories({
     chat: {
       addMessage: vi.fn(),
       listMessages: vi.fn(() => []),
@@ -125,7 +132,7 @@ function makeMockRepos(): Repositories {
       listByThread: vi.fn(() => []),
       listByRun: vi.fn(() => [])
     }
-  } as unknown as Repositories
+  } as unknown as Repositories)
 }
 
 function makeMockWin() {
@@ -228,7 +235,7 @@ describe('AiAgentService cancellation', () => {
   })
 
   it('cancel(threadId) causes the stream to abort', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeCancellableStream(['Partial'])
     })
 
@@ -248,7 +255,7 @@ describe('AiAgentService cancellation', () => {
   })
 
   it('preserves partial text without appending cancellation marker', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeCancellableStream(['Partial response'])
     })
 
@@ -264,7 +271,7 @@ describe('AiAgentService cancellation', () => {
   })
 
   it('emitAiChatDone is called (not emitAiChatError) on cancel', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeCancellableStream([])
     })
 
@@ -280,7 +287,7 @@ describe('AiAgentService cancellation', () => {
 
   it('destroy() aborts all active runs', async () => {
     let signalWasAborted = false
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: async function* (
         _input: unknown,
         options: { signal?: AbortSignal } | undefined
@@ -304,10 +311,131 @@ describe('AiAgentService cancellation', () => {
     expect(signalWasAborted).toBe(true)
     expect(mocks.emitAiChatDone).not.toHaveBeenCalled()
     expect(mocks.emitAiChatError).not.toHaveBeenCalled()
+    expect(repos.agentRuns.update).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        status: 'cancelled',
+        error: 'Cancelled because Refora closed'
+      })
+    )
+  })
+
+  it('marks a superseded run cancelled without persisting a replacement response', async () => {
+    mocks.createReforaDeepAgent
+      .mockReturnValueOnce({ streamEvents: makeCancellableStream(['Old partial']) })
+      .mockReturnValueOnce({ streamEvents: makeNormalStream(['New response']) })
+
+    const firstRun = service.run(mockReq, 'thread-1', 'run-old')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    const secondRun = service.run({ ...mockReq, text: 'New request' }, 'thread-1', 'run-new')
+    await Promise.all([firstRun, secondRun])
+
+    expect(repos.agentRuns.update).toHaveBeenCalledWith(
+      'run-old',
+      expect.objectContaining({
+        status: 'cancelled',
+        error: 'Cancelled because a newer run replaced this run'
+      })
+    )
+    expect(mocks.emitAiChatDone).toHaveBeenCalledTimes(1)
+    expect(mocks.emitAiChatDone).toHaveBeenCalledWith(
+      mockWin,
+      expect.objectContaining({ runId: 'run-new', finalText: 'New response' })
+    )
+  })
+
+  it('does not persist a superseded response while checkpoint lookup is pending', async () => {
+    let resolveOldCheckpoint: ((checkpointId: string) => void) | undefined
+    const getHead = vi.fn()
+      .mockImplementationOnce(() => new Promise<string>((resolve) => {
+        resolveOldCheckpoint = resolve
+      }))
+      .mockResolvedValueOnce('checkpoint-new')
+    service = createAiAgentService(
+      repos,
+      () => mockWin as never,
+      aiProvidersService as never,
+      pdfTextService as never,
+      { summarize: vi.fn(), destroy: vi.fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { checkpointer: {}, getHead } as never
+    )
+    mocks.createReforaDeepAgent
+      .mockReturnValueOnce({ streamEvents: makeNormalStream(['Old response']) })
+      .mockReturnValueOnce({ streamEvents: makeNormalStream(['New response']) })
+
+    const firstRun = service.run(mockReq, 'thread-1', 'run-old')
+    await vi.waitFor(() => expect(getHead).toHaveBeenCalledTimes(1))
+    const secondRun = service.run({ ...mockReq, text: 'New request' }, 'thread-1', 'run-new')
+    await secondRun
+    resolveOldCheckpoint?.('checkpoint-old')
+    await firstRun
+
+    const persistedContent = (repos.chat.addMessage as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[2])
+    expect(persistedContent).not.toContain('Old response')
+    expect(persistedContent).toContain('New response')
+  })
+
+  it('waits for an active run to stop before deleting its checkpoints', async () => {
+    let streamFinished = false
+    mocks.createReforaDeepAgent.mockReturnValue({
+      streamEvents: async function* (
+        _input: unknown,
+        options: { signal?: AbortSignal } | undefined
+      ) {
+        yield { event: 'on_chat_model_start', data: {}, run_id: 'llm-delete' }
+        await new Promise<void>((resolve) => {
+          if (options?.signal?.aborted) {
+            resolve()
+            return
+          }
+          options?.signal?.addEventListener('abort', () => resolve(), { once: true })
+        })
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        streamFinished = true
+        yield {
+          event: 'on_chat_model_stream',
+          data: { chunk: { content: 'Late response' } },
+          run_id: 'llm-delete'
+        }
+      }
+    })
+    const deleteCheckpoint = vi.fn(async () => undefined)
+    service = createAiAgentService(
+      repos,
+      () => mockWin as never,
+      aiProvidersService as never,
+      pdfTextService as never,
+      { summarize: vi.fn(), destroy: vi.fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        checkpointer: {},
+        deleteThread: deleteCheckpoint
+      } as never
+    )
+
+    const runPromise = service.run(mockReq, 'thread-1', 'run-delete')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    const deletePromise = service.deleteThread('thread-1')
+
+    expect(deleteCheckpoint).not.toHaveBeenCalled()
+    expect(streamFinished).toBe(false)
+    await deletePromise
+    await runPromise
+    expect(streamFinished).toBe(true)
+    expect(deleteCheckpoint).toHaveBeenCalledWith('thread-1')
+    expect(repos.chat.addMessage).toHaveBeenCalledTimes(1)
   })
 
   it('activeRuns is cleaned up after run completes normally', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeNormalStream(['Done'])
     })
 
@@ -321,7 +449,7 @@ describe('AiAgentService cancellation', () => {
   })
 
   it('normal completion without cancel produces expected output', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeNormalStream(['Hello', ' world'])
     })
 

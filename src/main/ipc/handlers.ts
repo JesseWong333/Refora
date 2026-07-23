@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { resolve as resolvePath, parse as parsePath } from 'node:path'
 import { IpcChannel } from '../../shared/ipc-channels'
 import type {
+  AgentInterrupt,
+  AgentResumeRequest,
   AgentTraceStep,
   AiProvider,
   AiProviderInput,
@@ -40,7 +42,8 @@ import type {
   WorkspaceItemPlacement,
   WorkspaceNote,
   WorkspaceNotePatch,
-  WorkspaceNoteType
+  WorkspaceNoteType,
+  WorkspaceAgentMemory
 } from '../../shared/ipc-types'
 import type { Repositories } from '../db/repositories'
 import type { SqliteDb } from '../db/types'
@@ -83,6 +86,7 @@ import {
   writeMarkdownFileToClipboard,
   writeTextToClipboard
 } from '../services/clipboard'
+import { updateWorkspaceMemory } from '../services/reforaWorkspaceMemoryBackend'
 
 type IpcChannelValue = (typeof IpcChannel)[keyof typeof IpcChannel]
 type HandlerChannel = Exclude<
@@ -104,6 +108,8 @@ type HandlerChannel = Exclude<
   | typeof IpcChannel.EventAiChatDone
   | typeof IpcChannel.EventAiChatError
   | typeof IpcChannel.EventAiChatTrace
+  | typeof IpcChannel.EventAiChatInterrupted
+  | typeof IpcChannel.EventAiChatRunStatus
   | typeof IpcChannel.EventAiChatTitleUpdated
   | typeof IpcChannel.EventAiReportCreated
   | typeof IpcChannel.EventWorkspaceItemsChanged
@@ -699,6 +705,10 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
     [IpcChannel.WorkspacesDelete]: (id: string): Promise<Result<void>> =>
       asyncWrap(async () => {
         const rt = deps.getRuntime()
+        const threadIds = repos().chat.listThreads(id).map((thread) => thread.id)
+        for (const threadId of threadIds) {
+          await rt?.aiAgentService?.deleteThread(threadId)
+        }
         await deleteWorkspaceWithAssets(repos(), id)
         try {
           await rt?.agentSandboxService?.deleteWorkspace(id)
@@ -931,16 +941,61 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
         rt.aiAgentService.cancel(threadId)
         return undefined
       }),
-    [IpcChannel.AiChatDeleteThread]: (threadId: string): Result<void> =>
-      wrap(() => {
+    [IpcChannel.AiChatResume]: (req: AgentResumeRequest): Promise<Result<void>> =>
+      asyncWrap(async () => {
         const rt = deps.getRuntime()
-        rt?.aiAgentService?.cancel(threadId)
+        if (!rt?.aiAgentService) throw new RepoError('not_ready', 'Agent service not ready')
+        await rt.aiAgentService.resume(req)
+      }),
+    [IpcChannel.AiChatPendingInterrupt]: (runId: string): Result<AgentInterrupt | null> =>
+      wrap(() => repos().agentInterrupts.getPendingByRun(runId)),
+    [IpcChannel.AiChatDeleteThread]: (threadId: string): Promise<Result<void>> =>
+      asyncWrap(async () => {
+        const rt = deps.getRuntime()
+        await rt?.aiAgentService?.deleteThread(threadId)
         repos().agentTraces.deleteByThread(threadId)
         repos().chat.deleteThread(threadId)
-        return undefined
       }),
     [IpcChannel.AiChatRenameThread]: (threadId: string, title: string): Result<ChatThread> =>
       wrap(() => repos().chat.updateTitle(threadId, title)),
+    [IpcChannel.AiWorkspaceMemoriesList]: (
+      workspaceId: string | null
+    ): Result<WorkspaceAgentMemory[]> =>
+      wrap(() => {
+        if (workspaceId && !repos().workspaces.get(workspaceId)) {
+          throw new RepoError('not_found', 'Workspace not found')
+        }
+        return repos().agentMemories.list(
+          workspaceId ? 'workspace' : 'global',
+          workspaceId ?? 'global'
+        )
+      }),
+    [IpcChannel.AiWorkspaceMemoryUpdate]: (
+      workspaceId: string | null,
+      path: string,
+      content: string
+    ): Result<WorkspaceAgentMemory> =>
+      wrap(() => {
+        if (workspaceId && !repos().workspaces.get(workspaceId)) {
+          throw new RepoError('not_found', 'Workspace not found')
+        }
+        return repos().transaction(() => updateWorkspaceMemory(repos(), {
+          workspaceId,
+          path,
+          content
+        }))
+      }),
+    [IpcChannel.AiWorkspaceMemoryDelete]: (
+      workspaceId: string | null,
+      path: string
+    ): Result<void> =>
+      wrap(() => {
+        repos().agentMemories.remove(
+          workspaceId ? 'workspace' : 'global',
+          workspaceId ?? 'global',
+          path
+        )
+      }),
 
     [IpcChannel.AiReportsList]: (workspaceId: string): Result<AiReport[]> =>
       wrap(() => repos().aiReports.list(workspaceId)),

@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 
 const mocks = vi.hoisted(() => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: vi.fn(),
-  createReactAgent: vi.fn()
+  createReforaDeepAgent: vi.fn()
 }))
 
 vi.mock('@langchain/openai', () => ({
@@ -29,6 +33,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: mocks.emitAiChatToken,
   emitAiChatDone: mocks.emitAiChatDone,
   emitAiChatError: mocks.emitAiChatError,
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: mocks.emitAiChatTrace,
   emitAiReportCreated: mocks.emitAiReportCreated,
   emitWorkspaceItemsChanged: mocks.emitWorkspaceItemsChanged
@@ -38,8 +45,8 @@ vi.mock('../../src/main/services/logger', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }))
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: mocks.createReactAgent
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: mocks.createReforaDeepAgent
 }))
 
 import { createAiAgentService } from '../../src/main/services/aiAgent'
@@ -49,7 +56,7 @@ import type { AiProvider, ChatSendRequest } from '../../src/shared/ipc-types'
 
 function makeMockRepos(): Repositories {
   let stepCounter = 0
-  return {
+  return withDeepAgentRepositories({
     chat: {
       addMessage: vi.fn(),
       listMessages: vi.fn(() => []),
@@ -100,7 +107,7 @@ function makeMockRepos(): Repositories {
       listByThread: vi.fn(() => []),
       listByRun: vi.fn(() => [])
     }
-  } as unknown as Repositories
+  } as unknown as Repositories)
 }
 
 function makeMockWin() {
@@ -166,7 +173,7 @@ describe('AiAgentService error handling', () => {
   })
 
   it('logs trace-cleanup-failed when trace.finish throws during outer catch', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: async function* () {
         yield { event: 'on_chat_model_start', data: {}, run_id: 'llm-1' }
         throw new Error('Network error')
@@ -184,7 +191,7 @@ describe('AiAgentService error handling', () => {
   })
 
   it('still emits emitAiChatError when trace cleanup fails', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: async function* () {
         yield { event: 'on_chat_model_start', data: {}, run_id: 'llm-1' }
         throw new Error('Network error')
@@ -203,7 +210,7 @@ describe('AiAgentService error handling', () => {
   })
 
   it('run completes without throwing when trace cleanup fails', async () => {
-    mocks.createReactAgent.mockReturnValue({
+    mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: async function* () {
         yield { event: 'on_chat_model_start', data: {}, run_id: 'llm-1' }
         throw new Error('Network error')

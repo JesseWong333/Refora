@@ -101,10 +101,10 @@ describe('db migrations + schema', () => {
     expect(userVersion(db)).toBe(0)
     const result = runMigrations(adapt(db))
     expect(result.from).toBe(0)
-    expect(result.to).toBe(23)
-    expect(userVersion(db)).toBe(23)
+    expect(result.to).toBe(24)
+    expect(userVersion(db)).toBe(24)
 
-    for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps', 'workspace_connections', 'workspace_assets', 'document_ocr_jobs', 'document_ocr_results']) {
+    for (const table of ['documents', 'categories', 'document_categories', 'watch_folders', 'settings', 'docs_fts', 'agent_trace_steps', 'agent_runs', 'agent_interrupts', 'agent_tool_effects', 'workspace_agent_memories', 'workspace_agent_memory_revisions', 'workspace_connections', 'workspace_assets', 'document_ocr_jobs', 'document_ocr_results']) {
       const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)
       expect(row?.name).toBe(table)
     }
@@ -148,9 +148,9 @@ describe('db migrations + schema', () => {
   it('is idempotent: running migrations twice does not error or change version', () => {
     runMigrations(adapt(db))
     const second = runMigrations(adapt(db))
-    expect(second.from).toBe(23)
-    expect(second.to).toBe(23)
-    expect(userVersion(db)).toBe(23)
+    expect(second.from).toBe(24)
+    expect(second.to).toBe(24)
+    expect(userVersion(db)).toBe(24)
   })
 
   it('repairs a missing OCR job status index at the current schema version', () => {
@@ -159,8 +159,8 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.from).toBe(23)
-    expect(result.to).toBe(23)
+    expect(result.from).toBe(24)
+    expect(result.to).toBe(24)
     expect(db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_document_ocr_jobs_status'"
     ).get()).toMatchObject({ name: 'idx_document_ocr_jobs_status' })
@@ -194,7 +194,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(23)
+    expect(result.to).toBe(24)
     expect(db.prepare('SELECT * FROM workspace_connections WHERE id = ?').get('connection-1'))
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('workspace_items') WHERE name = 'assetId'").get())
@@ -225,7 +225,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(23)
+    expect(result.to).toBe(24)
     expect(db.prepare('SELECT * FROM chat_threads WHERE id = ?').get('thread-1'))
       .toMatchObject({ workspaceId: 'ws-1', title: 'Existing chat' })
     expect(db.prepare('SELECT * FROM chat_messages WHERE id = ?').get('message-1'))
@@ -259,7 +259,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(23)
+    expect(result.to).toBe(24)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'presetId'").get())
@@ -280,7 +280,7 @@ describe('db migrations + schema', () => {
 
     const result = runMigrations(adapt(db))
 
-    expect(result.to).toBe(23)
+    expect(result.to).toBe(24)
     expect(db.prepare("SELECT 1 FROM pragma_table_info('documents') WHERE name = 'affiliations'").get())
       .toBeDefined()
     expect(db.prepare("SELECT 1 FROM pragma_table_info('ai_providers') WHERE name = 'reasoningEffort'").get())
@@ -358,7 +358,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 1`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(23)
+    expect(result.to).toBe(24)
     const cols = db.prepare(`PRAGMA table_info(categories)`).all() as Array<{ name: string }>
     expect(cols.map((c) => c.name)).not.toContain('moveToLibrary')
   })
@@ -422,7 +422,7 @@ describe('db migrations + schema', () => {
     `)
     db.exec(`PRAGMA user_version = 3`)
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(23)
+    expect(result.to).toBe(24)
 
     const cols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>
     const names = cols.map((c) => c.name)
@@ -574,7 +574,7 @@ describe('db migrations + schema', () => {
     ).run('outside', '/Users/x/Downloads/other.pdf', '/Users/x/Downloads', 'other.pdf', 1000, 1000)
 
     const result = runMigrations(adapt(db))
-    expect(result.to).toBe(23)
+    expect(result.to).toBe(24)
 
     const inLib = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('in-lib') as { filePath: string }
     const nested = db.prepare(`SELECT filePath FROM documents WHERE id = ?`).get('nested') as { filePath: string }

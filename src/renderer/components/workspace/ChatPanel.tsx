@@ -124,8 +124,36 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
     setChatStreaming,
     fetchThreads
   })
+  const [approvalEditing, setApprovalEditing] = useState(false)
+  const [approvalDrafts, setApprovalDrafts] = useState<string[]>([])
 
-  const canSend = !!activeProviderId && !!input.trim() && !chat.streaming
+  useEffect(() => {
+    setApprovalEditing(false)
+    setApprovalDrafts(
+      chat.pendingInterrupt?.actions.map((action) => JSON.stringify(action.args, null, 2)) ?? []
+    )
+  }, [chat.pendingInterrupt?.id])
+
+  const submitEditedApproval = useCallback(() => {
+    if (!chat.pendingInterrupt) return
+    try {
+      const editedActions = chat.pendingInterrupt.actions.map((action, index) => {
+        const args = JSON.parse(approvalDrafts[index] ?? '{}') as unknown
+        if (!args || typeof args !== 'object' || Array.isArray(args)) {
+          throw new Error(t('workspace.chat.editActionInvalid', 'Action arguments must be a JSON object.'))
+        }
+        return { name: action.name, args: args as Record<string, unknown> }
+      })
+      void chat.resolveInterrupt('edit', editedActions)
+    } catch (approvalError) {
+      chat.setError(errorMessage(
+        approvalError,
+        t('workspace.chat.editActionInvalid', 'Action arguments must be valid JSON objects.')
+      ))
+    }
+  }, [approvalDrafts, chat, t])
+
+  const canSend = !!activeProviderId && !!input.trim() && !chat.streaming && !chat.pendingInterrupt
 
   const loadProviders = useCallback(async () => {
     try {
@@ -383,6 +411,78 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
         inputAreaHeight={inputAreaHeight}
         stickToBottomRef={chat.stickToBottomRef}
       />
+
+      {chat.pendingInterrupt && (
+        <div className="shrink-0 px-3 pb-2">
+          <div className="rounded-lg border border-border bg-panel-2 px-3 py-2">
+            <div className="text-xs font-semibold text-foreground">
+              {t('workspace.chat.approvalRequired', 'Approval required')}
+            </div>
+            <div className="mt-1 space-y-1 text-xs text-muted">
+              {chat.pendingInterrupt.actions.map((action, index) => (
+                <div key={`${action.name}-${index}`} className="space-y-1 break-words">
+                  <div>
+                    <span className="font-medium text-foreground">{action.name}</span>
+                    {action.description ? ` — ${action.description}` : ''}
+                  </div>
+                  {approvalEditing ? (
+                    <textarea
+                      aria-label={`${action.name} arguments`}
+                      className="min-h-24 w-full resize-y rounded border border-border bg-background px-2 py-1 font-mono text-label text-foreground outline-none focus:border-accent"
+                      value={approvalDrafts[index] ?? ''}
+                      maxLength={70_000}
+                      onChange={(event) => setApprovalDrafts((current) => {
+                        const next = [...current]
+                        next[index] = event.target.value
+                        return next
+                      })}
+                    />
+                  ) : (
+                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-background px-2 py-1 font-mono text-label text-muted">
+                      {JSON.stringify(action.args, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex justify-end gap-2">
+              <UiButton
+                variant="ghost"
+                size="sm"
+                disabled={chat.streaming}
+                onClick={() => void chat.resolveInterrupt('reject')}
+              >
+                {t('workspace.chat.rejectAction', 'Reject')}
+              </UiButton>
+              {chat.pendingInterrupt.actions.every((action) =>
+                action.allowedDecisions.includes('edit')) && (
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  disabled={chat.streaming}
+                  onClick={() => setApprovalEditing((current) => !current)}
+                >
+                  {approvalEditing
+                    ? t('workspace.chat.cancelEditAction', 'Cancel edit')
+                    : t('workspace.chat.editAction', 'Edit')}
+                </UiButton>
+              )}
+              <UiButton
+                variant="primary"
+                size="sm"
+                disabled={chat.streaming}
+                onClick={() => approvalEditing
+                  ? submitEditedApproval()
+                  : void chat.resolveInterrupt('approve')}
+              >
+                {approvalEditing
+                  ? t('workspace.chat.applyEditAction', 'Apply and continue')
+                  : t('workspace.chat.approveAction', 'Approve')}
+              </UiButton>
+            </div>
+          </div>
+        </div>
+      )}
 
       {chat.error && (
         <div className="shrink-0 px-3 pb-1">

@@ -236,17 +236,22 @@ function TraceStepRow({
   const duration = formatDuration(step)
   const toolLabel = formatToolLabel(step, t)
 
-  const StatusIcon = step.status === 'running' ? CircleNotch : step.status === 'error' ? XCircle : CheckCircle
-  const statusColor = step.status === 'error' ? 'text-error' : 'text-muted'
+  const failed = step.status === 'error' || step.status === 'cancelled'
+  const StatusIcon = step.status === 'running' ? CircleNotch : failed ? XCircle : CheckCircle
+  const statusColor = failed ? 'text-error' : step.status === 'interrupted' ? 'text-accent' : 'text-muted'
   const statusTitle =
     step.status === 'running'
       ? t('workspace.chat.traceRunning', 'Running')
-      : step.status === 'error'
+      : failed
         ? t('workspace.chat.traceError', 'Error')
+        : step.status === 'interrupted'
+          ? t('workspace.chat.traceApproval', 'Approval required')
         : t('workspace.chat.traceDone', 'Done')
 
   const KindIcon = step.kind === 'tool'
     ? (toolLabel ? (TOOL_ICONS[toolLabel.icon] ?? Wrench) : Wrench)
+    : step.kind === 'todo' || step.kind === 'approval'
+      ? ClipboardText
     : Robot
 
   const displayText = toolLabel
@@ -261,7 +266,13 @@ function TraceStepRow({
 
   const kindLabel = step.kind === 'llm'
     ? t('workspace.chat.traceLlm', 'Model')
-    : t('workspace.chat.traceTool', 'Tool')
+    : step.kind === 'subagent'
+      ? t('workspace.chat.traceSubagent', 'Subagent')
+      : step.kind === 'todo'
+        ? t('workspace.chat.traceTodo', 'Plan')
+        : step.kind === 'approval'
+          ? t('workspace.chat.traceApproval', 'Approval required')
+          : t('workspace.chat.traceTool', 'Tool')
 
   return (
     <div className={`agent-trace-step trace-fade-in ${compact ? 'agent-trace-step-compact' : ''}`}>
@@ -351,7 +362,7 @@ function TraceStepRow({
 }
 
 export function AgentTraceStepItem({ step }: { step: AgentTraceStep }) {
-  if (step.kind !== 'llm' && step.kind !== 'tool') return null
+  if (!['llm', 'tool', 'todo', 'subagent', 'approval'].includes(step.kind)) return null
   return (
     <div className="agent-trace-inline-step" data-timeline-kind={step.kind}>
       <TraceStepRow step={step} isLast compact />
@@ -369,7 +380,9 @@ export function AgentTracePanel({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [expandAll, setExpandAll] = useState<boolean | null>(null)
-  const visible = steps.filter((s) => s.kind === 'llm' || s.kind === 'tool')
+  const visible = steps.filter((s) =>
+    ['llm', 'tool', 'todo', 'subagent', 'approval'].includes(s.kind)
+  )
   const totalTokensSum = visible.reduce((sum, s) => sum + (s.totalTokens ?? 0), 0)
   const hasTokenData = visible.some((s) => s.totalTokens != null)
   const isRunning = streaming || visible.some((s) => s.status === 'running')

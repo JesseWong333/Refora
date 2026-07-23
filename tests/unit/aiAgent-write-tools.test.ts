@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { AiProvidersService } from '../../src/main/services/aiProviders'
 import type { PdfTextService } from '../../src/main/services/pdfText'
@@ -22,8 +23,8 @@ vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn()
 }))
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: ({ tools }: { tools: CapturedTool[] }) => {
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: ({ tools }: { tools: CapturedTool[] }) => {
     mocks.tools = tools
     return {
       streamEvents: async function* () {}
@@ -52,6 +53,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: mocks.emitWorkspaceItemsChanged
@@ -103,7 +107,7 @@ const mockWorkspaceItemsAdd = vi.fn()
 const mockGetSummary = vi.fn<(docId: string) => { content: AiSummaryContent | null } | null>()
 const mockSummarize = vi.fn()
 
-const repos = {
+const repos = withDeepAgentRepositories({
   documents: { get: mockDocumentsGet },
   chat: {
     addMessage: vi.fn(),
@@ -119,7 +123,7 @@ const repos = {
     addStep: vi.fn(() => ({ id: 'step-1' })),
     updateStep: vi.fn(() => ({ id: 'step-1' }))
   }
-} as unknown as Repositories
+} as unknown as Repositories)
 
 const aiProvidersService = {
   getProvider: vi.fn(

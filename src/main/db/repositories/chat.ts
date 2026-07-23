@@ -9,7 +9,9 @@ function mapThread(row: Record<string, unknown>): ChatThread {
     workspaceId: (row.workspaceId as string | null) ?? null,
     providerId: row.providerId as string,
     createdAt: row.createdAt as number,
-    title: (row.title as string | null) ?? null
+    title: (row.title as string | null) ?? null,
+    headCheckpointId: (row.headCheckpointId as string | null) ?? null,
+    agentStateVersion: (row.agentStateVersion as number | null) ?? 0
   }
 }
 
@@ -156,6 +158,21 @@ export function createChatRepository(db: SqliteDb) {
     return mapThread(row)
   }
 
+  function updateAgentState(
+    threadId: string,
+    headCheckpointId: string | null,
+    agentStateVersion: number
+  ): ChatThread {
+    db.prepare(
+      'UPDATE chat_threads SET headCheckpointId = ?, agentStateVersion = ? WHERE id = ?'
+    ).run(headCheckpointId, agentStateVersion, threadId)
+    const row = db.prepare('SELECT * FROM chat_threads WHERE id = ?').get(threadId) as
+      | Record<string, unknown>
+      | undefined
+    if (!row) throw new RepoError('not_found', `thread not found: ${threadId}`)
+    return mapThread(row)
+  }
+
   return {
     createThread,
     listThreads,
@@ -165,6 +182,7 @@ export function createChatRepository(db: SqliteDb) {
     search,
     deleteLastExchange,
     deleteThread,
-    updateTitle
+    updateTitle,
+    updateAgentState
   }
 }

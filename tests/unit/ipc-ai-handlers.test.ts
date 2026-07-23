@@ -109,6 +109,8 @@ function makeMockAiSummaryService() {
 function makeMockAiAgentService() {
   return {
     run: vi.fn(async () => undefined),
+    resume: vi.fn(async () => undefined),
+    deleteThread: vi.fn(async () => undefined),
     cancel: vi.fn(),
     destroy: vi.fn()
   }
@@ -615,16 +617,37 @@ describe('IPC AI Handlers', () => {
     })
   })
 
+  describe('AiChatResume', () => {
+    it('returns an error envelope when agent resume fails', async () => {
+      ;(runtime.aiAgentService!.resume as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('provider unavailable')
+      )
+
+      const result = await callAsync(IpcChannel.AiChatResume, {
+        threadId: 'thread-1',
+        runId: 'run-1',
+        decisions: [{ type: 'approve' }]
+      })
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('internal_error')
+        expect(result.error.message).toBe('provider unavailable')
+      }
+    })
+  })
+
   describe('AiChatDeleteThread', () => {
-    it('deletes thread from repos', () => {
+    it('deletes thread from repos', async () => {
       const thread = repos.chat.createThread('ws-1', 'p1')
-      const result = callSync(IpcChannel.AiChatDeleteThread, thread.id)
+      const result = await callAsync(IpcChannel.AiChatDeleteThread, thread.id)
       expect(result.ok).toBe(true)
       expect(repos.chat.getThread(thread.id)).toBeNull()
+      expect(runtime.aiAgentService!.deleteThread).toHaveBeenCalledWith(thread.id)
     })
 
-    it('returns error when thread not found', () => {
-      const result = callSync(IpcChannel.AiChatDeleteThread, 'nonexistent')
+    it('returns error when thread not found', async () => {
+      const result = await callAsync(IpcChannel.AiChatDeleteThread, 'nonexistent')
       expect(result.ok).toBe(false)
       if (!result.ok) {
         expect(result.error.code).toBe('not_found')
@@ -722,8 +745,8 @@ describe('IPC AI Handlers', () => {
       }
     })
 
-    it('failure returns { ok: false, error: { code, message } }', () => {
-      const result = callSync(IpcChannel.AiChatDeleteThread, 'nonexistent')
+    it('failure returns { ok: false, error: { code, message } }', async () => {
+      const result = await callAsync(IpcChannel.AiChatDeleteThread, 'nonexistent')
       expect(result.ok).toBe(false)
       if (!result.ok) {
         expect(result.error.code).toBeTypeOf('string')

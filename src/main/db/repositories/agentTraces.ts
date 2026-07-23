@@ -17,7 +17,12 @@ function mapStep(row: Record<string, unknown>): AgentTraceStep {
     seq: row.seq as number,
     inputTokens: (row.inputTokens as number | null) ?? null,
     outputTokens: (row.outputTokens as number | null) ?? null,
-    totalTokens: (row.totalTokens as number | null) ?? null
+    totalTokens: (row.totalTokens as number | null) ?? null,
+    parentStepId: (row.parentStepId as string | null) ?? null,
+    agentName: (row.agentName as string | null) ?? null,
+    namespace: (row.namespace as string | null) ?? null,
+    depth: (row.depth as number | null) ?? 0,
+    checkpointId: (row.checkpointId as string | null) ?? null
   }
 }
 
@@ -36,12 +41,18 @@ export function createAgentTracesRepository(db: SqliteDb) {
     inputTokens?: number | null
     outputTokens?: number | null
     totalTokens?: number | null
+    parentStepId?: string | null
+    agentName?: string | null
+    namespace?: string | null
+    depth?: number
+    checkpointId?: string | null
   }): AgentTraceStep {
     const id = randomUUID()
     db.prepare(
       `INSERT INTO agent_trace_steps
-        (id, threadId, runId, kind, name, input, output, status, startedAt, endedAt, seq, inputTokens, outputTokens, totalTokens)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, threadId, runId, kind, name, input, output, status, startedAt, endedAt, seq,
+         inputTokens, outputTokens, totalTokens, parentStepId, agentName, namespace, depth, checkpointId)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.threadId,
@@ -56,7 +67,12 @@ export function createAgentTracesRepository(db: SqliteDb) {
       input.seq,
       input.inputTokens ?? null,
       input.outputTokens ?? null,
-      input.totalTokens ?? null
+      input.totalTokens ?? null,
+      input.parentStepId ?? null,
+      input.agentName ?? null,
+      input.namespace ?? null,
+      input.depth ?? 0,
+      input.checkpointId ?? null
     )
     const row = db.prepare('SELECT * FROM agent_trace_steps WHERE id = ?').get(id) as Record<
       string,
@@ -143,6 +159,14 @@ export function createAgentTracesRepository(db: SqliteDb) {
     return result.changes
   }
 
+  function reconcileRunning(output: string, endedAt = Date.now()): number {
+    return db.prepare(
+      `UPDATE agent_trace_steps
+       SET status = 'cancelled', output = COALESCE(output, ?), endedAt = ?
+       WHERE status = 'running'`
+    ).run(output, endedAt).changes
+  }
+
   return {
     addStep,
     updateStep,
@@ -150,6 +174,7 @@ export function createAgentTracesRepository(db: SqliteDb) {
     listByRun,
     deleteByThread,
     deleteByRun,
-    deleteOlderThan
+    deleteOlderThan,
+    reconcileRunning
   }
 }

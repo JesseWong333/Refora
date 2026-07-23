@@ -42,6 +42,8 @@ import { createAgentExecutionService, createBrokerAgentRunner } from './services
 import type { AgentExecutionService } from './services/agentExecution'
 import { createAgentArtifactPublisher } from './services/agentArtifactPublisher'
 import type { AgentArtifactPublisher } from './services/agentArtifactPublisher'
+import { createAgentCheckpointService } from './services/agentCheckpoint'
+import type { AgentCheckpointService } from './services/agentCheckpoint'
 import { createMineruEngineManager } from './services/mineruEngineManager'
 import type { MineruEngineManager } from './services/mineruEngineManager'
 import { createMineruWorkerProcess } from './services/mineruWorkerProcess'
@@ -89,6 +91,7 @@ interface Runtime extends RuntimeRef {
   agentExecutionService: AgentExecutionService
   agentArtifactPublisher: AgentArtifactPublisher
   agentRuntimeManager: AgentRuntimeManager
+  agentCheckpointService: AgentCheckpointService
   mineruWorker: MineruWorkerProcess
   mineruDocumentService: MineruDocumentService
 }
@@ -438,6 +441,7 @@ function destroyRuntime(target: Runtime): void {
   target.aiSummaryService.destroy()
   target.aiAgentService.destroy()
   target.agentExecutionService.destroy()
+  target.agentCheckpointService.close()
   target.pdfTextService.destroy()
   target.mineruDocumentService.destroy()
   closeDatabase(target.db)
@@ -455,6 +459,18 @@ function buildRuntime(dbPath: string): Runtime {
   try {
     seedSettings(db, detectLanguage())
     const repos = createRepositories(db, { getSearchMode: () => getSearchMode(db) })
+    const recoveredAt = Date.now()
+    const recoveredRuns = repos.agentRuns.reconcileRunning(
+      'Cancelled because Refora exited before the run completed',
+      recoveredAt
+    )
+    const recoveredTraces = repos.agentTraces.reconcileRunning(
+      'Cancelled because Refora exited before the step completed',
+      recoveredAt
+    )
+    if (recoveredRuns > 0 || recoveredTraces > 0) {
+      logger.info(`startup:reconciled ${recoveredRuns} agent runs and ${recoveredTraces} trace steps`)
+    }
     const traceTtlMs = 30 * 24 * 60 * 60 * 1000
     const pruned = repos.agentTraces.deleteOlderThan(Date.now() - traceTtlMs)
     if (pruned > 0) logger.info(`startup:pruned ${pruned} trace steps older than 30 days`)
@@ -524,6 +540,7 @@ function buildRuntime(dbPath: string): Runtime {
       sandboxService: agentSandboxService,
       win: () => win
     })
+    const agentCheckpointService = createAgentCheckpointService(dbPath)
     const aiAgentService = createAiAgentService(
       repos,
       () => win,
@@ -532,7 +549,9 @@ function buildRuntime(dbPath: string): Runtime {
       aiSummaryService,
       agentExecutionService,
       agentArtifactPublisher,
-      agentRuntimeManager
+      agentRuntimeManager,
+      agentSandboxService,
+      agentCheckpointService
     )
     const workerScriptPath = app.isPackaged
       ? join(process.resourcesPath, 'mineru', 'mineru_worker.py')
@@ -624,6 +643,7 @@ function buildRuntime(dbPath: string): Runtime {
       agentExecutionService,
       agentArtifactPublisher,
       agentRuntimeManager,
+      agentCheckpointService,
       mineruWorker,
       mineruDocumentService
     }

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { AiProvidersService } from '../../src/main/services/aiProviders'
 import type { PdfTextService } from '../../src/main/services/pdfText'
@@ -24,8 +25,8 @@ const { capturedTools, createAgentMock } = vi.hoisted(() => {
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn()
 }))
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: createAgentMock
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: createAgentMock
 }))
 vi.mock('../../src/main/services/logger', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() }
@@ -34,6 +35,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: vi.fn()
@@ -78,7 +82,7 @@ describe('aiAgent search_library tool', () => {
   let searchLibraryTool: SearchLibraryTool
 
   function buildRepos(): Repositories {
-    return {
+    return withDeepAgentRepositories({
       documents: { search: mockDocumentsSearch, get: vi.fn(() => null) },
       chat: { addMessage: vi.fn(), listMessages: vi.fn().mockReturnValue([]), getThread: vi.fn(() => null), updateTitle: vi.fn() },
       settings: { get: vi.fn() },
@@ -89,7 +93,7 @@ describe('aiAgent search_library tool', () => {
         addStep: vi.fn().mockReturnValue({ id: 'run-step' }),
         updateStep: vi.fn().mockReturnValue({ id: 'run-step' })
       }
-    } as unknown as Repositories
+    } as unknown as Repositories)
   }
 
   const aiProvidersService = {
@@ -202,7 +206,7 @@ describe('aiAgent search_workspace_docs tool', () => {
   let searchWorkspaceDocsTool: SearchLibraryTool
 
   function buildRepos(): Repositories {
-    return {
+    return withDeepAgentRepositories({
       documents: { search: mockDocumentsSearch, get: mockDocumentsGet },
       chat: { addMessage: vi.fn(), listMessages: vi.fn().mockReturnValue([]), getThread: vi.fn(() => null), updateTitle: vi.fn() },
       settings: { get: vi.fn() },
@@ -213,7 +217,7 @@ describe('aiAgent search_workspace_docs tool', () => {
         addStep: vi.fn().mockReturnValue({ id: 'run-step' }),
         updateStep: vi.fn().mockReturnValue({ id: 'run-step' })
       }
-    } as unknown as Repositories
+    } as unknown as Repositories)
   }
 
   const aiProvidersService = {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 import type { Repositories } from '../../src/main/db/repositories'
 import type { AiProvidersService } from '../../src/main/services/aiProviders'
 import type { PdfTextService } from '../../src/main/services/pdfText'
@@ -28,8 +29,8 @@ vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn()
 }))
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: ({ tools }: { tools: CapturedTool[] }) => {
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: ({ tools }: { tools: CapturedTool[] }) => {
     mocks.tools = tools
     return { streamEvents: async function* () {} }
   }
@@ -40,6 +41,8 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatReasoning: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiChatTitleUpdated: vi.fn(),
   emitAiReportCreated: vi.fn(),
@@ -118,7 +121,7 @@ const assetsList = vi.fn()
 const connectionsList = vi.fn<() => WorkspaceConnection[]>()
 const connectionsCreate = vi.fn()
 
-const repos = {
+const repos = withDeepAgentRepositories({
   documents: { get: documentsGet, list: documentsList },
   chat: {
     addMessage: vi.fn(),
@@ -138,7 +141,7 @@ const repos = {
     updateStep: vi.fn(() => ({ id: 'step-1' }))
   },
   transaction: vi.fn((fn: () => unknown) => fn())
-} as unknown as Repositories
+} as unknown as Repositories)
 
 const provider: AiProvider = {
   id: 'provider-1',

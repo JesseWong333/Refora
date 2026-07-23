@@ -481,6 +481,8 @@ export interface ChatThread {
   providerId: string
   createdAt: number
   title: string | null
+  headCheckpointId: string | null
+  agentStateVersion: number
 }
 
 export interface ChatAttachment {
@@ -512,8 +514,17 @@ export interface ChatSendRequest {
   attachments?: ChatAttachment[]
 }
 
-export type AgentTraceStepKind = 'llm' | 'tool' | 'reasoning' | 'message' | 'run'
-export type AgentTraceStepStatus = 'running' | 'done' | 'error'
+export type AgentTraceStepKind =
+  | 'llm'
+  | 'tool'
+  | 'reasoning'
+  | 'message'
+  | 'run'
+  | 'todo'
+  | 'subagent'
+  | 'approval'
+  | 'checkpoint'
+export type AgentTraceStepStatus = 'running' | 'done' | 'error' | 'interrupted' | 'cancelled'
 
 export interface AgentTraceStep {
   id: string
@@ -530,6 +541,79 @@ export interface AgentTraceStep {
   inputTokens: number | null
   outputTokens: number | null
   totalTokens: number | null
+  parentStepId: string | null
+  agentName: string | null
+  namespace: string | null
+  depth: number
+  checkpointId: string | null
+}
+
+export type AgentRunStatus =
+  | 'queued'
+  | 'running'
+  | 'interrupted'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export interface AgentRun {
+  id: string
+  threadId: string
+  providerId: string
+  modelId: string
+  status: AgentRunStatus
+  checkpointBefore: string | null
+  checkpointAfter: string | null
+  replacesRunId: string | null
+  userMessageId: string | null
+  assistantMessageId: string | null
+  startedAt: number
+  endedAt: number | null
+  error: string | null
+}
+
+export type AgentInterruptDecision = 'approve' | 'reject' | 'edit'
+
+export interface AgentInterruptAction {
+  name: string
+  args: Record<string, unknown>
+  description?: string
+  allowedDecisions: AgentInterruptDecision[]
+}
+
+export interface AgentInterrupt {
+  id: string
+  runId: string
+  threadId: string
+  checkpointId: string | null
+  actions: AgentInterruptAction[]
+  status: 'pending' | 'resolved'
+  decision: AgentInterruptDecision[] | null
+  createdAt: number
+  resolvedAt: number | null
+}
+
+export interface AgentResumeRequest {
+  threadId: string
+  runId: string
+  decisions: Array<{
+    type: AgentInterruptDecision
+    editedAction?: { name: string; args: Record<string, unknown> }
+  }>
+}
+
+export interface WorkspaceAgentMemory {
+  id: string
+  scope: 'workspace' | 'global'
+  scopeId: string
+  workspaceId: string | null
+  path: string
+  content: string
+  revision: number
+  sourceThreadId: string | null
+  sourceRunId: string | null
+  createdAt: number
+  updatedAt: number
 }
 
 export interface ChatTokenEvent {
@@ -550,6 +634,18 @@ export interface ChatDoneEvent {
   threadId: string
   finalText: string
   runId?: string
+}
+
+export interface ChatInterruptedEvent {
+  threadId: string
+  runId: string
+  interrupt: AgentInterrupt
+}
+
+export interface ChatRunStatusEvent {
+  threadId: string
+  runId: string
+  status: AgentRunStatus
 }
 
 export interface ChatErrorEvent {
@@ -601,6 +697,8 @@ export interface DocumentEvents {
   onAiChatDone(cb: (payload: ChatDoneEvent) => void): void
   onAiChatError(cb: (payload: ChatErrorEvent) => void): void
   onAiChatTrace(cb: (payload: ChatTraceEvent) => void): void
+  onAiChatInterrupted(cb: (payload: ChatInterruptedEvent) => void): void
+  onAiChatRunStatus(cb: (payload: ChatRunStatusEvent) => void): void
   onAiChatTitleUpdated(cb: (payload: ChatTitleUpdatedEvent) => void): void
   onAiReportCreated(cb: (report: AiReport) => void): void
   onWorkspaceItemsChanged(cb: (payload: WorkspaceItemsChangedEvent) => void): void
@@ -753,8 +851,17 @@ export interface ReforaApi {
     chatThreads(workspaceId: string | null): Promise<ChatThread[]>
     chatTraces(threadId: string): Promise<AgentTraceStep[]>
     chatCancel(threadId: string): Promise<void>
+    chatResume(req: AgentResumeRequest): Promise<void>
+    chatPendingInterrupt(runId: string): Promise<AgentInterrupt | null>
     chatDeleteThread(threadId: string): Promise<void>
     renameThread(threadId: string, title: string): Promise<void>
+    workspaceMemories(workspaceId: string | null): Promise<WorkspaceAgentMemory[]>
+    updateWorkspaceMemory(
+      workspaceId: string | null,
+      path: string,
+      content: string
+    ): Promise<WorkspaceAgentMemory>
+    deleteWorkspaceMemory(workspaceId: string | null, path: string): Promise<void>
   }
   reports: {
     list(workspaceId: string): Promise<AiReport[]>

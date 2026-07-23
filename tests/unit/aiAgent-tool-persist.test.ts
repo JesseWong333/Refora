@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages'
+import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
+import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 
 const mockStreamEvents = vi.hoisted(() => vi.fn())
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: () => ({ streamEvents: mockStreamEvents })
+vi.mock('../../src/main/services/reforaDeepAgent', () => ({
+  createReforaDeepAgent: () => ({ streamEvents: mockStreamEvents })
 }))
 
 vi.mock('@langchain/openai', () => ({
@@ -15,6 +16,9 @@ vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),
   emitAiChatError: vi.fn(),
+  emitAiChatInterrupted: vi.fn(),
+  emitAiChatRunStatus: vi.fn(),
+  emitAiChatTitleUpdated: vi.fn(),
   emitAiChatTrace: vi.fn(),
   emitAiReportCreated: vi.fn(),
   emitWorkspaceItemsChanged: vi.fn()
@@ -59,7 +63,7 @@ function createService(listMessagesReturn: ChatMessage[] = []) {
   const addMessage = vi.fn()
   const listMessages = vi.fn(() => listMessagesReturn)
 
-  const repos = {
+  const repos = withDeepAgentRepositories({
     chat: {
       addMessage,
       listMessages,
@@ -103,7 +107,7 @@ function createService(listMessagesReturn: ChatMessage[] = []) {
     watchFolders: {},
     workspaces: {},
     transaction: vi.fn((fn: () => unknown) => fn())
-  } as unknown as Repositories
+  } as unknown as Repositories)
 
   const aiProvidersService = {
     getProvider: vi.fn(() => ({
@@ -330,8 +334,7 @@ describe('aiAgent tool call persistence', () => {
       expect(lastStreamInput).not.toBeNull()
       const messages = lastStreamInput!.messages
 
-      expect(messages[0]).toBeInstanceOf(SystemMessage)
-      expect(messages[1]).toBeInstanceOf(HumanMessage)
+      expect(messages[0]).toBeInstanceOf(HumanMessage)
 
       const toolHistoryMsg = messages.find((m) => m instanceof ToolMessage)
       expect(toolHistoryMsg).toBeDefined()

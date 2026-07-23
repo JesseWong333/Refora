@@ -1,6 +1,8 @@
 import { api } from '../ipc'
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type {
+  AgentInterrupt,
+  AgentInterruptDecision,
   AgentTraceStep,
   AiReasoningEffort,
   ChatMessage
@@ -54,6 +56,7 @@ export interface UseChatStreamReturn {
   canRetry: boolean
   loadingHistory: boolean
   displayMessages: ChatMessage[]
+  pendingInterrupt: AgentInterrupt | null
   sendText: (
     text: string,
     attachments: string[],
@@ -63,6 +66,10 @@ export interface UseChatStreamReturn {
   handleCancel: () => void
   handleRetry: () => void
   handleRegenerate: () => void
+  resolveInterrupt: (
+    decision: AgentInterruptDecision,
+    editedActions?: Array<{ name: string; args: Record<string, unknown> }>
+  ) => Promise<void>
   stickToBottomRef: MutableRefObject<boolean>
   threadIdRef: MutableRefObject<string | null>
   hadMessagesRef: MutableRefObject<boolean>

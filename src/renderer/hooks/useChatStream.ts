@@ -3,9 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../ipc'
 import { errorMessage } from '../../shared/ipc-types'
 import type {
+  AgentInterrupt,
+  AgentInterruptDecision,
   AgentTraceStep,
   ChatDoneEvent,
   ChatErrorEvent,
+  ChatInterruptedEvent,
   ChatMessage,
   ChatReasoningEvent,
   ChatTokenEvent,
@@ -47,6 +50,7 @@ export function useChatStream({
   const [error, setError] = useState<string | null>(null)
   const [canRetry, setCanRetry] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [pendingInterrupt, setPendingInterrupt] = useState<AgentInterrupt | null>(null)
 
   const threadIdRef = useRef<string | null>(null)
   const activeRunIdRef = useRef<string | null>(null)
@@ -84,6 +88,7 @@ export function useChatStream({
       activeRunIdRef.current = null
       setActiveRunId(null)
       setError(null)
+      setPendingInterrupt(null)
     }
     stickToBottomRef.current = true
     if (!activeThreadId) {
@@ -109,6 +114,16 @@ export function useChatStream({
         setTraceSteps(traces)
         hadMessagesRef.current = history.length > 0
         setLoadingHistory(false)
+        const runSteps = traces
+          .filter((step) => step.kind === 'run')
+          .sort((left, right) => right.startedAt - left.startedAt || right.seq - left.seq)
+        if (runSteps[0]) {
+          void api.ai.chatPendingInterrupt(runSteps[0].runId).then((interrupt) => {
+            if (!cancelled && threadIdRef.current === activeThreadId) {
+              setPendingInterrupt(interrupt)
+            }
+          }).catch(() => undefined)
+        }
       })
       .catch(() => {
         if (cancelled) return
@@ -144,6 +159,7 @@ export function useChatStream({
     onDone: (payload: ChatDoneEvent) => void
     onError: (payload: ChatErrorEvent) => void
     onTrace: (payload: ChatTraceEvent) => void
+    onInterrupted: (payload: ChatInterruptedEvent) => void
     onTitleUpdated: (payload: ChatTitleUpdatedEvent) => void
   } | null>(null)
 
@@ -201,6 +217,7 @@ export function useChatStream({
         setStreamingText('')
         setStreamingReasoning('')
         setStreaming(false)
+        setPendingInterrupt(null)
       },
       onError: (payload: ChatErrorEvent) => {
         if (payload.runId !== activeRunIdRef.current) return
@@ -242,6 +259,19 @@ export function useChatStream({
         }
         setTraceSteps((prev) => mergeTraceStep(prev, payload.step))
       },
+      onInterrupted: (payload: ChatInterruptedEvent) => {
+        if (payload.runId !== activeRunIdRef.current) return
+        if (threadIdRef.current && payload.threadId !== threadIdRef.current) return
+        if (rafIdRef.current != null) {
+          cancelAnimationFrame(rafIdRef.current)
+          rafIdRef.current = null
+        }
+        isSendingRef.current = false
+        setPendingInterrupt(payload.interrupt)
+        setStreamingText(streamingTextRef.current)
+        setStreamingReasoning(streamingReasoningRef.current)
+        setStreaming(false)
+      },
       onTitleUpdated: (payload: ChatTitleUpdatedEvent) => {
         useWorkspaceStore.setState((s) => ({
           threads: s.threads.map((t2) =>
@@ -259,6 +289,7 @@ export function useChatStream({
     api.events.onAiChatDone(h.onDone)
     api.events.onAiChatError(h.onError)
     api.events.onAiChatTrace(h.onTrace)
+    api.events.onAiChatInterrupted(h.onInterrupted)
     api.events.onAiChatTitleUpdated(h.onTitleUpdated)
     return () => {
       api.events.off('ai:chat:token', h.onToken)
@@ -266,6 +297,7 @@ export function useChatStream({
       api.events.off('ai:chat:done', h.onDone)
       api.events.off('ai:chat:error', h.onError)
       api.events.off('ai:chat:trace', h.onTrace)
+      api.events.off('ai:chat:interrupted', h.onInterrupted)
       api.events.off('ai:chat:titleUpdated', h.onTitleUpdated)
     }
   }, [])
@@ -501,11 +533,41 @@ export function useChatStream({
     })
   }, [displayMessages, activeThreadId, traceSteps, sendText])
 
+  const resolveInterrupt = useCallback(async (
+    decision: AgentInterruptDecision,
+    editedActions?: Array<{ name: string; args: Record<string, unknown> }>
+  ) => {
+    const interrupt = pendingInterrupt
+    if (!interrupt || isSendingRef.current) return
+    isSendingRef.current = true
+    activeRunIdRef.current = interrupt.runId
+    setActiveRunId(interrupt.runId)
+    setStreaming(true)
+    setError(null)
+    try {
+      await api.ai.chatResume({
+        threadId: interrupt.threadId,
+        runId: interrupt.runId,
+        decisions: interrupt.actions.map((action, index) => decision === 'edit'
+          ? {
+              type: 'edit' as const,
+              editedAction: editedActions?.[index] ?? { name: action.name, args: action.args }
+            }
+          : { type: decision })
+      })
+    } catch (resumeError) {
+      isSendingRef.current = false
+      setStreaming(false)
+      setError(errorMessage(resumeError, 'Failed to resume agent'))
+    }
+  }, [pendingInterrupt])
+
   return {
     messages, setMessages, traceSteps, setTraceSteps,
     streaming, streamingText, streamingReasoning, activeRunId, elapsedSeconds,
-    error, setError, clearError, canRetry, loadingHistory, displayMessages,
+    error, setError, clearError, canRetry, loadingHistory, displayMessages, pendingInterrupt,
     sendText, handleCancel, handleRetry, handleRegenerate,
+    resolveInterrupt,
     stickToBottomRef, threadIdRef, hadMessagesRef
   }
 }
