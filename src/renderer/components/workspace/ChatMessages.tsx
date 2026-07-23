@@ -18,6 +18,8 @@ import { useDocumentStore } from '../../store/documentStore'
 import { api } from '../../ipc'
 import { Button as UiButton } from '../ui'
 import { AgentTraceStepItem } from './AgentTrace'
+import AgentTodoList from './AgentTodoList'
+import AgentOcrProgress from './AgentOcrProgress'
 import type { AgentTraceStep, AiProvider, ChatMessage } from '../../../shared/ipc-types'
 
 const MARKDOWN_COMPONENTS = createReforaDocMarkdownComponents(
@@ -142,7 +144,7 @@ function RunTimeline({
     if (streaming) setOpen(true)
   }, [streaming])
   const ordered = [...steps]
-    .filter((step) => step.kind !== 'run')
+    .filter((step) => step.kind !== 'run' && step.kind !== 'todo')
     .sort((a, b) => a.seq - b.seq)
   const hasReasoningStep = ordered.some((step) => step.kind === 'reasoning')
   const messageSteps = ordered.filter((step) => step.kind === 'message')
@@ -272,6 +274,7 @@ export interface ChatMessagesProps {
   streamingText: string
   streamingReasoning: string
   activeRunId: string | null
+  activeOcrDocumentId: string | null
   elapsedSeconds: number
   loadingHistory: boolean
   providers: AiProvider[]
@@ -289,6 +292,7 @@ export default function ChatMessages({
   streamingText,
   streamingReasoning,
   activeRunId,
+  activeOcrDocumentId,
   elapsedSeconds,
   loadingHistory,
   providers,
@@ -303,6 +307,20 @@ export default function ChatMessages({
 
   const displayMessages = useMemo(() => messages.filter((m) => m.role !== 'tool'), [messages])
   const showEmpty = displayMessages.length === 0 && !streaming && !streamingText && !streamingReasoning
+  const visibleTodoRunId = useMemo(() => {
+    if (activeRunId) return activeRunId
+    const orderedRuns = traceSteps
+      .filter((step) => step.kind === 'run')
+      .sort((left, right) => right.startedAt - left.startedAt || right.seq - left.seq)
+    if (orderedRuns[0]) return orderedRuns[0].runId
+    const orderedSteps = [...traceSteps].sort(
+      (left, right) => right.startedAt - left.startedAt || right.seq - left.seq
+    )
+    return orderedSteps[0]?.runId ?? null
+  }, [activeRunId, traceSteps])
+  const hasVisibleTodo = traceSteps.some((step) =>
+    step.kind === 'todo' && step.runId === visibleTodoRunId
+  )
 
   const runTraceGroups = useMemo(() => {
     const sorted = [...traceSteps].sort(
@@ -371,6 +389,14 @@ export default function ChatMessages({
   return (
     <>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-3" style={{ paddingInline: 'clamp(12px, 7cqi, 64px)' }}>
+        {(hasVisibleTodo || activeOcrDocumentId) && (
+          <div className="sticky top-0 z-20 mx-auto mb-3 flex w-full max-w-[768px] flex-col gap-2">
+            <AgentTodoList steps={traceSteps} activeRunId={visibleTodoRunId} />
+            {activeOcrDocumentId && (
+              <AgentOcrProgress documentId={activeOcrDocumentId} />
+            )}
+          </div>
+        )}
         {loadingHistory ? (
           <div className="flex flex-col gap-3">
             {[0, 1, 2].map((i) => (

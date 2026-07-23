@@ -98,9 +98,38 @@ describe('AiAgentService approval resume', () => {
       }))
     }
     const resumedAgent = {
-      invoke: vi.fn(async () => ({ messages: [new AIMessage('Published report.md')] })),
+      streamEvents: vi.fn(async function* () {
+        yield {
+          event: 'on_tool_start',
+          name: 'write_todos',
+          run_id: 'todo-update',
+          data: {
+            input: {
+              todos: [
+                { content: 'Publish the report', status: 'in_progress' }
+              ]
+            }
+          }
+        }
+        yield {
+          event: 'on_tool_end',
+          name: 'write_todos',
+          run_id: 'todo-update',
+          data: {
+            output: JSON.stringify({
+              todos: [
+                { content: 'Publish the report', status: 'in_progress' }
+              ]
+            })
+          }
+        }
+      }),
       getState: vi.fn(async () => ({
         config: { configurable: { checkpoint_id: 'checkpoint-2' } },
+        values: {
+          messages: [new AIMessage('Published report.md')],
+          todos: [{ content: 'Publish the report', status: 'completed' }]
+        },
         tasks: []
       }))
     }
@@ -151,7 +180,13 @@ describe('AiAgentService approval resume', () => {
       decisions: [{ type: 'approve' }]
     })
 
-    expect(resumedAgent.invoke).toHaveBeenCalledTimes(1)
+    expect(resumedAgent.streamEvents).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        version: 'v2',
+        configurable: { thread_id: thread.id }
+      })
+    )
     expect(repos.agentInterrupts.get(pending!.id)).toMatchObject({
       status: 'resolved',
       decision: ['approve']
@@ -164,6 +199,23 @@ describe('AiAgentService approval resume', () => {
       role: 'assistant',
       content: 'Published report.md'
     })
+    const todoSteps = repos.agentTraces
+      .listByThread(thread.id)
+      .filter((step) => step.kind === 'todo')
+    expect(todoSteps).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'write_todos',
+        input: JSON.stringify({
+          todos: [{ content: 'Publish the report', status: 'in_progress' }]
+        })
+      })
+    ]))
+    expect(todoSteps.at(-1)).toMatchObject({
+      name: 'write_todos',
+      output: JSON.stringify({
+        todos: [{ content: 'Publish the report', status: 'completed' }]
+      })
+    })
     expect(mocks.emitAiChatDone).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -173,6 +225,155 @@ describe('AiAgentService approval resume', () => {
       })
     )
     expect(mocks.emitAiChatError).not.toHaveBeenCalled()
+  })
+
+  it('terminalizes an OCR tool trace while waiting for approval', async () => {
+    const workspace = repos.workspaces.create('Research')
+    const thread = repos.chat.createThread(workspace.id, provider.id)
+    mocks.createReforaDeepAgent.mockReturnValue({
+      streamEvents: async function* () {
+        yield {
+          event: 'on_tool_start',
+          name: 'prepare_paper_ocr',
+          run_id: 'ocr-tool-run',
+          data: { input: { docId: 'doc-1' } }
+        }
+      },
+      getState: vi.fn(async () => ({
+        config: { configurable: { checkpoint_id: 'checkpoint-ocr' } },
+        tasks: [{
+          interrupts: [{
+            value: {
+              actionRequests: [{
+                name: 'prepare_paper_ocr',
+                args: { docId: 'doc-1' }
+              }],
+              reviewConfigs: [{ allowedDecisions: ['approve', 'reject'] }]
+            }
+          }]
+        }]
+      }))
+    })
+    const service = createAiAgentService(
+      repos,
+      () => ({ isDestroyed: () => false }) as never,
+      {
+        getProvider: vi.fn(() => provider),
+        getDecryptedKey: vi.fn(() => 'key')
+      } as never,
+      { getOrExtract: vi.fn(async () => '') } as never,
+      { summarize: vi.fn(), destroy: vi.fn() } as never
+    )
+
+    await service.run({
+      workspaceId: workspace.id,
+      threadId: thread.id,
+      text: 'Read the scanned paper',
+      providerId: provider.id,
+      model: provider.model
+    }, thread.id, 'run-ocr-approval')
+
+    const ocrStep = repos.agentTraces
+      .listByRun('run-ocr-approval')
+      .find((step) => step.name === 'prepare_paper_ocr')
+    expect(ocrStep).toMatchObject({
+      status: 'interrupted',
+      output: 'Awaiting user approval'
+    })
+    expect(repos.agentTraces.listByRun('run-ocr-approval'))
+      .not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: 'running' })
+      ]))
+  })
+
+  it('rejects only the current OCR action and keeps OCR available afterward', async () => {
+    const workspace = repos.workspaces.create('Research')
+    const thread = repos.chat.createThread(workspace.id, provider.id)
+    repos.agentRuns.create({
+      id: 'run-ocr-rejected',
+      threadId: thread.id,
+      providerId: provider.id,
+      modelId: provider.model,
+      status: 'interrupted'
+    })
+    repos.agentInterrupts.create({
+      runId: 'run-ocr-rejected',
+      threadId: thread.id,
+      checkpointId: 'checkpoint-ocr-rejected',
+      actions: [{
+        name: 'prepare_paper_ocr',
+        args: { docId: 'doc-1' },
+        allowedDecisions: ['approve', 'reject']
+      }]
+    })
+    let capturedOptions: {
+      systemPrompt: string
+      tools: Array<{ name: string }>
+    } | null = null
+    let resumeCommand: unknown = null
+    mocks.createReforaDeepAgent.mockImplementation((options) => {
+      capturedOptions = options as typeof capturedOptions
+      return {
+        streamEvents: async function* (command: unknown) {
+          resumeCommand = command
+          yield {
+            event: 'on_chain_end',
+            data: {
+              output: { messages: [new AIMessage('Continued without OCR.')] }
+            }
+          }
+        },
+        getState: vi.fn(async () => ({
+          config: { configurable: { checkpoint_id: 'checkpoint-after-rejection' } },
+          values: { messages: [new AIMessage('Continued without OCR.')] },
+          tasks: []
+        }))
+      }
+    })
+    const prepareForAgent = vi.fn()
+    const service = createAiAgentService(
+      repos,
+      () => ({ isDestroyed: () => false }) as never,
+      {
+        getProvider: vi.fn(() => provider),
+        getDecryptedKey: vi.fn(() => 'key')
+      } as never,
+      { getOrExtract: vi.fn(async () => '') } as never,
+      { summarize: vi.fn(), destroy: vi.fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { prepareForAgent } as never
+    )
+
+    await service.resume({
+      threadId: thread.id,
+      runId: 'run-ocr-rejected',
+      decisions: [{ type: 'reject' }]
+    })
+
+    expect(capturedOptions?.systemPrompt).not.toContain(
+      'Do not run or request OCR again'
+    )
+    expect(capturedOptions?.tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'prepare_paper_ocr' })
+    ]))
+    expect(resumeCommand).toMatchObject({
+      resume: {
+        decisions: [{
+          type: 'reject',
+          message: expect.stringContaining('Do not execute this requested OCR action')
+        }]
+      }
+    })
+    expect(prepareForAgent).not.toHaveBeenCalled()
+    expect(repos.chat.listMessages(thread.id).at(-1)).toMatchObject({
+      role: 'assistant',
+      content: 'Continued without OCR.'
+    })
   })
 
   it('exposes academic tools when resuming after service restart', async () => {
@@ -196,9 +397,10 @@ describe('AiAgentService approval resume', () => {
       }]
     })
     mocks.createReforaDeepAgent.mockReturnValue({
-      invoke: vi.fn(async () => ({ messages: [new AIMessage('Resumed')] })),
+      streamEvents: vi.fn(async function* () {}),
       getState: vi.fn(async () => ({
         config: { configurable: { checkpoint_id: 'checkpoint-completed' } },
+        values: { messages: [new AIMessage('Resumed')] },
         tasks: []
       }))
     })
@@ -399,8 +601,8 @@ describe('AiAgentService approval resume', () => {
       }]
     })
     mocks.createReforaDeepAgent.mockReturnValue({
-      invoke: vi.fn(async () => {
-        throw new Error('Provider unavailable')
+      streamEvents: vi.fn(async function* () {
+        yield await Promise.reject(new Error('Provider unavailable'))
       })
     })
     const service = createAiAgentService(

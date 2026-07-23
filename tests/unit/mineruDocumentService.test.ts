@@ -69,6 +69,72 @@ const engineStatus: MineruEngineStatus = {
 }
 
 describe('MinerU document service', () => {
+  it('runs balanced OCR and returns its Markdown for Agent reading', async () => {
+    const library = temporaryDirectory()
+    const pdfPath = join(library, 'paper.pdf')
+    writeFileSync(pdfPath, '%PDF-1.7\n')
+    const repos = repositories(library, pdfPath)
+    const engineManager = {
+      getStatus: vi.fn(async () => engineStatus),
+      getRuntime: vi.fn(async () => ({
+        installPath: engineStatus.installPath as string,
+        pythonPath: engineStatus.pythonPath as string,
+        modelConfigPath: engineStatus.modelConfigPath as string,
+        modelRevision: 'models-1',
+        environment: {}
+      }))
+    } as unknown as MineruEngineManager
+    const worker = {
+      parse: vi.fn(async (_input: string, output: string) => {
+        await mkdir(output, { recursive: true })
+        await Promise.all([
+          writeFile(join(output, 'document.md'), '# Balanced OCR'),
+          writeFile(join(output, 'blocks.jsonl'), '{"type":"text"}\n'),
+          writeFile(join(output, 'middle.json'), '{"pdf_info":[]}')
+        ])
+        return {
+          markdown: 'document.md',
+          blocks: 'blocks.jsonl',
+          middle: 'middle.json',
+          assets: null,
+          pageCount: 1,
+          blockCount: 1
+        }
+      }),
+      cancel: vi.fn(),
+      stop: vi.fn(),
+      destroy: vi.fn()
+    } as unknown as MineruWorkerProcess
+    const service = createMineruDocumentService({
+      repos,
+      engineManager,
+      worker,
+      getLibraryFolder: () => library,
+      emitProgress: vi.fn(),
+      emitCompleted: vi.fn(),
+      emitError: vi.fn()
+    })
+
+    expect(await service.readCachedForAgent('doc-1')).toBeNull()
+    expect(worker.parse).not.toHaveBeenCalled()
+
+    const first = await service.prepareForAgent('doc-1')
+    const cached = await service.readCachedForAgent('doc-1')
+    const second = await service.prepareForAgent('doc-1')
+
+    expect(first.markdown).toBe('# Balanced OCR')
+    expect(first.result.profile).toBe('balanced')
+    expect(cached?.result.resultKey).toBe(first.result.resultKey)
+    expect(second.result.resultKey).toBe(first.result.resultKey)
+    expect(worker.parse).toHaveBeenCalledOnce()
+    expect(worker.parse).toHaveBeenCalledWith(
+      pdfPath,
+      expect.stringContaining('.staging'),
+      'balanced',
+      expect.any(Function)
+    )
+  })
+
   it('publishes normalized results under the Library OCR derived path', async () => {
     const library = temporaryDirectory()
     const pdfPath = join(library, 'paper.pdf')
@@ -137,6 +203,9 @@ describe('MinerU document service', () => {
       modelRevision: 'models-1',
       profile: 'balanced'
     })
+    const cached = await service.readCachedForAgent('doc-1')
+    expect(cached?.result.profile).toBe('balanced')
+    expect(cached?.markdown).toContain('# Parsed')
     expect(repos.documentOcr.getJob(job.id)?.status).toBe('succeeded')
     expect(worker.parse).toHaveBeenCalledWith(pdfPath, expect.stringContaining('.staging'), 'balanced', expect.any(Function))
   })

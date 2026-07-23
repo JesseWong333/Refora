@@ -570,25 +570,6 @@ function buildRuntime(dbPath: string): Runtime {
       arxivClient,
       agentCheckpointService.researchFrontierDirectory
     )
-    const aiAgentService = createAiAgentService(
-      repos,
-      () => win,
-      aiProvidersService,
-      pdfTextService,
-      aiSummaryService,
-      agentExecutionService,
-      agentArtifactPublisher,
-      agentRuntimeManager,
-      agentSandboxService,
-      agentCheckpointService,
-      {
-        arxivClient,
-        arxivPaperService,
-        identityService: academicIdentityService,
-        graphService: academicGraphService,
-        frontierService: researchFrontierService
-      }
-    )
     const workerScriptPath = app.isPackaged
       ? join(process.resourcesPath, 'mineru', 'mineru_worker.py')
       : join(__dirname, '../../resources/mineru_worker.py')
@@ -608,6 +589,26 @@ function buildRuntime(dbPath: string): Runtime {
       emitCompleted: (payload) => send(IpcChannel.EventOcrCompleted, payload),
       emitError: (payload) => send(IpcChannel.EventOcrError, payload)
     })
+    const aiAgentService = createAiAgentService(
+      repos,
+      () => win,
+      aiProvidersService,
+      pdfTextService,
+      aiSummaryService,
+      agentExecutionService,
+      agentArtifactPublisher,
+      agentRuntimeManager,
+      agentSandboxService,
+      agentCheckpointService,
+      {
+        arxivClient,
+        arxivPaperService,
+        identityService: academicIdentityService,
+        graphService: academicGraphService,
+        frontierService: researchFrontierService
+      },
+      mineruDocumentService
+    )
     const watcher = createWatcher({
       importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
       getLibraryFolder: () => repos.settings.get<string>('libraryFolderPath', ''),

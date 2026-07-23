@@ -128,6 +128,49 @@ function formatToolLabel(
           : t('workspace.chat.toolReadingDone', 'Read document')
       }
     }
+    case 'read_paper_ocr_fulltext': {
+      const offset = typeof objParam.offset === 'number' ? objParam.offset : 0
+      const limit = typeof objParam.limit === 'number' ? objParam.limit : 8000
+      const chunkIdx = Math.floor(offset / limit) + 1
+      return {
+        icon: 'read',
+        text: running
+          ? t('workspace.chat.toolReadingOcrChunk', {
+              chunk: chunkIdx,
+              defaultValue: 'Reading OCR cache… (chunk {{chunk}})'
+            })
+          : t('workspace.chat.toolReadingOcrChunkDone', {
+              chunk: chunkIdx,
+              defaultValue: 'Read OCR cache (chunk {{chunk}})'
+            })
+      }
+    }
+    case 'prepare_paper_ocr': {
+      if (step.status === 'interrupted') {
+        return {
+          icon: 'read',
+          text: t('workspace.chat.toolPreparingOcrApproval', 'OCR approval requested')
+        }
+      }
+      if (step.status === 'cancelled') {
+        return {
+          icon: 'read',
+          text: t('workspace.chat.toolPreparingOcrRejected', 'OCR was not run')
+        }
+      }
+      if (step.status === 'error') {
+        return {
+          icon: 'read',
+          text: t('workspace.chat.toolPreparingOcrFailed', 'OCR preparation failed')
+        }
+      }
+      return {
+        icon: 'read',
+        text: running
+          ? t('workspace.chat.toolPreparingOcr', 'Running balanced OCR…')
+          : t('workspace.chat.toolPreparingOcrDone', 'Prepared balanced OCR cache')
+      }
+    }
     case 'get_paper_summary':
       return {
         icon: 'summary',

@@ -22,6 +22,7 @@ import type {
 import type { AiProvidersService } from './aiProviders'
 import type { PdfTextService } from './pdfText'
 import type { AiSummaryService } from './aiSummary'
+import type { MineruDocumentService } from './mineruDocumentService'
 import {
   emitAiChatToken,
   emitAiChatReasoning,
@@ -96,6 +97,7 @@ const READ_ONLY_TOOL_NAMES = new Set([
   'find_related_papers',
   'search_workspace_docs',
   'read_paper_fulltext',
+  'read_paper_ocr_fulltext',
   'get_paper_summary',
   'search_library',
   'get_paper_metadata',
@@ -130,9 +132,16 @@ const FRONTIER_BRANCHES: FrontierBranch[] = [
 const RECURSION_LIMIT_MESSAGE =
   'The agent reached the maximum number of reasoning steps without completing. ' +
   'Please try refining or simplifying your request.'
+const OCR_ACTION_REJECTED_MESSAGE =
+  'The user rejected this OCR action. Do not execute this requested OCR action. ' +
+  'Continue using the available evidence.'
 
 interface AgentStateSnapshotLike {
   config?: { configurable?: { checkpoint_id?: unknown } }
+  values?: {
+    messages?: unknown
+    todos?: unknown
+  }
   tasks?: Array<{
     interrupts?: Array<{
       value?: {
@@ -147,6 +156,29 @@ interface AgentStateSnapshotLike {
       }
     }>
   }>
+}
+
+function todosFromAgentState(
+  state: AgentStateSnapshotLike
+): Array<{ content: string; status: 'pending' | 'in_progress' | 'completed' }> | null {
+  if (!Array.isArray(state.values?.todos)) return null
+  const todos = state.values.todos.flatMap((todo) => {
+    if (!todo || typeof todo !== 'object') return []
+    const content = (todo as { content?: unknown }).content
+    const status = (todo as { status?: unknown }).status
+    if (
+      typeof content !== 'string' ||
+      !content.trim() ||
+      (status !== 'pending' && status !== 'in_progress' && status !== 'completed')
+    ) {
+      return []
+    }
+    return [{
+      content: content.trim(),
+      status: status as 'pending' | 'in_progress' | 'completed'
+    }]
+  })
+  return todos.length > 0 ? todos : null
 }
 
 type AgentRunStopReason = 'cancelled' | 'superseded' | 'deleted' | 'destroyed'
@@ -254,6 +286,7 @@ const SYSTEM_PROMPT =
   'Papers live in the user library and are indexed in the local database (not as a filesystem folder for this chat). ' +
   'Use tools to search, read full text, and retrieve summaries when you need more detail. ' +
   'Prefer get_paper_summary when hasSummary is true; use read_paper_fulltext only when summary is missing or insufficient. ' +
+  'Always try read_paper_fulltext before OCR. Use OCR only when the regular extraction is empty, garbled, structurally ambiguous, or insufficient for exact formulas, tables, multi-column reading order, or scanned pages. Decide from the evidence whether higher precision is necessary; do not use OCR merely because it is available. First call read_paper_ocr_fulltext to reuse any current OCR cache without approval. If no cache exists, or its returned profile is insufficient for the required precision, call prepare_paper_ocr directly. Never ask the user to approve OCR in assistant text; calling prepare_paper_ocr makes the application pause and show its approval UI before execution. After preparation succeeds, paginate the cached OCR Markdown with read_paper_ocr_fulltext. Do not delegate prepare_paper_ocr to a subagent. ' +
   'Use search_library for full-text search across the entire library. ' +
   'Use find_related_papers to find metadata-similar papers that already exist in the local library. ' +
   'When the user asks for a summary or overview, use read_paper_fulltext to read the paper and summarize it yourself. Only call request_summary to pre-generate a cached summary for future use - it returns immediately without the actual summary. ' +
@@ -461,7 +494,8 @@ export function createAiAgentService(
   agentRuntimeManager?: AgentRuntimeManager,
   agentSandboxService?: AgentSandboxService,
   agentCheckpointService?: AgentCheckpointService,
-  academicResearch?: AiAgentAcademicResearchServices
+  academicResearch?: AiAgentAcademicResearchServices,
+  mineruDocumentService?: MineruDocumentService
 ) {
   const getWin = (): BrowserWindow | null => {
     const w = win()
@@ -914,6 +948,143 @@ export function createAiAgentService(
           chunkCount: Math.ceil(totalChars / clampedLimit),
           text: slicedText
         })
+      }
+    })
+
+    const readPaperOcrFulltext = new DynamicStructuredTool({
+      name: 'read_paper_ocr_fulltext',
+      description:
+        'Read a chunk of existing MinerU OCR Markdown for a paper by docId without running OCR or requiring approval. ' +
+        'Always try read_paper_fulltext first and use this only when the regular extraction is empty, garbled, structurally ambiguous, or insufficient for exact formulas, tables, multi-column order, or scanned pages. ' +
+        'The result includes its OCR profile. If no current OCR cache exists, call prepare_paper_ocr directly instead of asking for approval in assistant text; the application handles approval before execution. ' +
+        'Use offset and limit to paginate cached Markdown until nextOffset is null.',
+      schema: z.object({
+        docId: z.string().describe('The docId of the paper to read with OCR'),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .default(0)
+          .describe('Character offset to start reading from'),
+        limit: z
+          .number()
+          .int()
+          .min(500)
+          .max(12000)
+          .optional()
+          .default(MAX_FULLTEXT_CHARS)
+          .describe('Max OCR Markdown characters to return in this chunk')
+      }),
+      func: async ({ docId, offset, limit }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        const id = docId.trim()
+        const doc = repos.documents.get(id)
+        if (!doc) {
+          return JSON.stringify({ error: 'Document not found', docId: id })
+        }
+        if (!mineruDocumentService) {
+          return JSON.stringify({ error: 'OCR service is unavailable', docId: id })
+        }
+        try {
+          const cached = await mineruDocumentService.readCachedForAgent(id)
+          if (!cached) {
+            return JSON.stringify({
+              status: 'ocr_cache_missing',
+              docId: id,
+              nextTool: 'prepare_paper_ocr',
+              approval: 'handled_by_application',
+              instruction:
+                'Call prepare_paper_ocr now. Do not ask for approval in assistant text; the application will show the approval UI.'
+            })
+          }
+          const { result, markdown } = cached
+          if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+          const clampedLimit = Math.min(12000, Math.max(500, limit ?? MAX_FULLTEXT_CHARS))
+          const totalChars = markdown.length
+          const startOffset = offset ?? 0
+          if (startOffset >= totalChars) {
+            return JSON.stringify({
+              docId: id,
+              title: doc.title ?? doc.fileName,
+              source: 'mineru_ocr',
+              profile: result.profile,
+              resultKey: result.resultKey,
+              offset: startOffset,
+              limit: clampedLimit,
+              totalChars,
+              nextOffset: null,
+              chunkIndex: Math.floor(startOffset / clampedLimit),
+              chunkCount: Math.ceil(totalChars / clampedLimit),
+              text: '',
+              message: 'offset past end'
+            })
+          }
+          const text = markdown.slice(startOffset, startOffset + clampedLimit)
+          const nextOffset =
+            startOffset + text.length < totalChars ? startOffset + text.length : null
+          return JSON.stringify({
+            docId: id,
+            title: doc.title ?? doc.fileName,
+            source: 'mineru_ocr',
+            profile: result.profile,
+            resultKey: result.resultKey,
+            offset: startOffset,
+            limit: clampedLimit,
+            totalChars,
+            nextOffset,
+            chunkIndex: Math.floor(startOffset / clampedLimit),
+            chunkCount: Math.ceil(totalChars / clampedLimit),
+            text
+          })
+        } catch (error) {
+          return JSON.stringify({
+            error: 'Failed to read OCR full text',
+            docId: id,
+            message: error instanceof Error ? error.message : String(error)
+          })
+        }
+      }
+    })
+
+    const preparePaperOcr = new DynamicStructuredTool({
+      name: 'prepare_paper_ocr',
+      description:
+        'Run the local MinerU balanced OCR pipeline for a paper and prepare a reusable structured Markdown cache. ' +
+        'Call this only after read_paper_ocr_fulltext reports that no suitable OCR cache exists and OCR is necessary. ' +
+        'Call this tool directly without asking for approval in assistant text. The application pauses and requests explicit user approval before the tool executes.',
+      schema: z.object({
+        docId: z.string().describe('The docId of the paper to process with balanced OCR')
+      }),
+      func: async ({ docId }) => {
+        if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+        const id = docId.trim()
+        const doc = repos.documents.get(id)
+        if (!doc) {
+          return JSON.stringify({ error: 'Document not found', docId: id })
+        }
+        if (!mineruDocumentService) {
+          return JSON.stringify({ error: 'OCR service is unavailable', docId: id })
+        }
+        try {
+          const { result, markdown } = await mineruDocumentService.prepareForAgent(id, signal)
+          if (signal.aborted) return JSON.stringify({ error: 'Cancelled' })
+          return JSON.stringify({
+            docId: id,
+            title: doc.title ?? doc.fileName,
+            source: 'mineru_ocr',
+            profile: result.profile,
+            resultKey: result.resultKey,
+            totalChars: markdown.length,
+            message: 'Balanced OCR cache is ready. Continue with read_paper_ocr_fulltext.'
+          })
+        } catch (error) {
+          return JSON.stringify({
+            error: 'Failed to prepare OCR full text',
+            docId: id,
+            message: error instanceof Error ? error.message : String(error)
+          })
+        }
       }
     })
 
@@ -1406,6 +1577,8 @@ export function createAiAgentService(
       searchLibrary,
       findRelatedPapers,
       readPaperFulltext,
+      readPaperOcrFulltext,
+      preparePaperOcr,
       getPaperSummary,
       getPaperMetadata,
       openPaper,
@@ -1902,6 +2075,7 @@ export function createAiAgentService(
             trace.finish(activeLlmId, 'done', null, null)
             activeLlmId = null
           }
+          trace.finishOpen('interrupted', 'Awaiting user approval')
           const checkpointAfter = checkpointIdFromState(state)
           const interrupt = repos.transaction(() => {
             repos.chat.updateAgentState(threadId, checkpointAfter, AGENT_STATE_VERSION)
@@ -2103,6 +2277,11 @@ export function createAiAgentService(
         : deepThinking
           ? 'native'
           : 'none'
+      const rejectedOcrAction = pending.actions.some(
+        (action, index) =>
+          action.name === 'prepare_paper_ocr' &&
+          req.decisions[index]?.type === 'reject'
+      )
       const systemPrompt = [
         SYSTEM_PROMPT,
         thread.workspaceId ? WORKSPACE_SYSTEM_PROMPT : '',
@@ -2154,7 +2333,7 @@ export function createAiAgentService(
           workspaceId: thread.workspaceId
         })]
       })
-      const decisions = req.decisions.map((decision) => {
+      const decisions = req.decisions.map((decision, index) => {
         if (decision.type === 'edit') {
           return {
             type: 'edit' as const,
@@ -2162,7 +2341,12 @@ export function createAiAgentService(
           }
         }
         if (decision.type === 'reject') {
-          return { type: 'reject' as const, message: 'The user rejected this action.' }
+          return {
+            type: 'reject' as const,
+            message: pending.actions[index]?.name === 'prepare_paper_ocr'
+              ? OCR_ACTION_REJECTED_MESSAGE
+              : 'The user rejected this action.'
+          }
         }
         return { type: 'approve' as const }
       })
@@ -2171,20 +2355,105 @@ export function createAiAgentService(
         recursionLimit: MAX_RECURSION_LIMIT,
         configurable: { thread_id: req.threadId }
       }
-      const result = await agent.invoke(
+      if (rejectedOcrAction) {
+        const interruptedOcrStep = repos.agentTraces
+          .listByRun(req.runId)
+          .filter(
+            (step) =>
+              step.name === 'prepare_paper_ocr' &&
+              step.status === 'interrupted'
+          )
+          .at(-1)
+        if (interruptedOcrStep) {
+          trace.finish(
+            interruptedOcrStep.id,
+            'cancelled',
+            OCR_ACTION_REJECTED_MESSAGE
+          )
+        }
+      }
+      let streamedResult: unknown = null
+      for await (const event of agent.streamEvents(
         new Command({ resume: { decisions } }) as never,
-        config
-      )
+        {
+          version: 'v2',
+          ...config
+        }
+      )) {
+        if (controller.signal.aborted) throw new Error('Agent resume aborted')
+        const eventName = event.event
+        const data = (event.data ?? {}) as Record<string, unknown>
+        if (eventName === 'on_chain_end' && 'output' in data) {
+          streamedResult = data.output
+        }
+        const toolName = extractToolName(event)
+        const runKey = typeof event.run_id === 'string' ? event.run_id : null
+        const keys = [
+          runKey,
+          runKey ? null : `tool-name:${toolName ?? 'unknown'}`
+        ].filter((key): key is string => !!key)
+        if (keys.length === 0) {
+          keys.push(`tool:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+        }
+        const eventContext = trace.contextForEvent(event as unknown as Record<string, unknown>)
+        if (eventName === 'on_tool_start') {
+          const toolInput = toolName && academicResearchToolNames.has(toolName)
+            ? null
+            : extractToolInput(data)
+          const traceKind: AgentTraceStepKind = toolName === 'task'
+            ? 'subagent'
+            : toolName === 'write_todos'
+              ? 'todo'
+              : 'tool'
+          trace.start(traceKind, toolName, toolInput, keys, eventContext)
+        } else if (eventName === 'on_tool_end') {
+          const output = toolName && academicResearchToolNames.has(toolName)
+            ? ACADEMIC_TRACE_REDACTION
+            : extractToolOutput(data)
+          const finished = trace.finishByKeys(keys, 'done', output)
+          if (!finished) {
+            trace.recordSnapshot(
+              toolName === 'task' ? 'subagent' : toolName === 'write_todos' ? 'todo' : 'tool',
+              toolName,
+              'done',
+              output,
+              eventContext
+            )
+          }
+        } else if (eventName === 'on_tool_error') {
+          const message =
+            toolName && academicResearchToolNames.has(toolName)
+              ? ACADEMIC_TRACE_REDACTION
+              : stringifyTraceValue(data.error) ??
+                stringifyTraceValue(data.output) ??
+                'Tool error'
+          const finished = trace.finishByKeys(keys, 'error', message)
+          if (!finished) {
+            trace.recordSnapshot(
+              toolName === 'task' ? 'subagent' : toolName === 'write_todos' ? 'todo' : 'tool',
+              toolName,
+              'error',
+              message,
+              eventContext
+            )
+          }
+        }
+      }
       if (destroyed) return
       if (controller.signal.aborted) throw new Error('Agent resume aborted')
       const state = await readAgentState(agent, config)
       if (destroyed) return
       if (controller.signal.aborted) throw new Error('Agent resume aborted')
+      const todos = todosFromAgentState(state)
+      if (todos) {
+        trace.recordSnapshot('todo', 'write_todos', 'done', JSON.stringify({ todos }))
+      }
       const actions = interruptActionsFromState(state)
       const checkpointAfter = checkpointIdFromState(state)
       repos.agentInterrupts.resolve(pending.id, req.decisions.map((decision) => decision.type))
 
       if (actions.length > 0) {
+        trace.finishOpen('interrupted', 'Awaiting user approval')
         const interrupt = repos.transaction(() => {
           repos.chat.updateAgentState(req.threadId, checkpointAfter, AGENT_STATE_VERSION)
           repos.agentRuns.update(req.runId, {
@@ -2211,7 +2480,10 @@ export function createAiAgentService(
         return
       }
 
-      const finalText = finalMessageText(result) || 'Action reviewed.'
+      const finalText =
+        finalMessageText(state.values) ||
+        finalMessageText(streamedResult) ||
+        'Action reviewed.'
       const assistantMessage = repos.chat.addMessage(req.threadId, 'assistant', finalText)
       repos.transaction(() => {
         repos.chat.updateAgentState(req.threadId, checkpointAfter, AGENT_STATE_VERSION)

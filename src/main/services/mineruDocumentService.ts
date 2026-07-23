@@ -409,6 +409,105 @@ export function createMineruDocumentService(deps: MineruDocumentServiceDeps) {
     return readFile(path, 'utf8')
   }
 
+  async function waitForJob(
+    jobId: string,
+    signal: AbortSignal | undefined,
+    cancelOnAbort: boolean
+  ): Promise<OcrJob> {
+    const current = deps.repos.documentOcr.getJob(jobId)
+    if (!current) throw new RepoError('not_found', `OCR job not found: ${jobId}`)
+    if (!['queued', 'running'].includes(current.status)) {
+      if (current.status !== 'succeeded') {
+        throw new Error(current.errorMessage || `OCR job ended with status ${current.status}`)
+      }
+      return current
+    }
+    const task = runningTask?.jobId === jobId ? runningTask.promise : null
+    if (!task) throw new Error('OCR job is not running in this process')
+
+    let handleAbort: (() => void) | null = null
+    const aborted = signal
+      ? new Promise<void>((_resolve, reject) => {
+          handleAbort = () => {
+            const cancellation = cancelOnAbort ? cancel(jobId).then(() => undefined) : Promise.resolve()
+            void cancellation.then(
+              () => reject(new Error('OCR reading was cancelled')),
+              reject
+            )
+          }
+          signal.addEventListener('abort', handleAbort, { once: true })
+        })
+      : null
+
+    try {
+      if (signal?.aborted) {
+        if (cancelOnAbort) await cancel(jobId)
+        throw new Error('OCR reading was cancelled')
+      }
+      await (aborted ? Promise.race([task, aborted]) : task)
+    } finally {
+      if (signal && handleAbort) signal.removeEventListener('abort', handleAbort)
+    }
+
+    const completed = deps.repos.documentOcr.getJob(jobId)
+    if (!completed) throw new RepoError('not_found', `OCR job not found: ${jobId}`)
+    if (completed.status !== 'succeeded') {
+      throw new Error(completed.errorMessage || `OCR job ended with status ${completed.status}`)
+    }
+    return completed
+  }
+
+  async function readCachedForAgent(
+    documentId: string
+  ): Promise<{ result: OcrResult; markdown: string } | null> {
+    const state = await getState(documentId)
+    if (!state.result || state.result.stale) return null
+    return {
+      result: state.result,
+      markdown: await readMarkdown(documentId, state.result.resultKey)
+    }
+  }
+
+  async function prepareForAgent(
+    documentId: string,
+    signal?: AbortSignal
+  ): Promise<{ result: OcrResult; markdown: string }> {
+    if (signal?.aborted) throw new Error('OCR reading was cancelled')
+    const profile: OcrProfile = 'balanced'
+    const isSuitableProfile = (candidate: OcrProfile) =>
+      candidate === 'balanced' || candidate === 'quality'
+    let state = await getState(documentId)
+    if (state.result && !state.result.stale && isSuitableProfile(state.result.profile)) {
+      return {
+        result: state.result,
+        markdown: await readMarkdown(documentId, state.result.resultKey)
+      }
+    }
+
+    let job = state.activeJob
+    let startedByAgent = false
+    if (job && !isSuitableProfile(job.profile)) {
+      throw new RepoError(
+        'busy',
+        `MinerU is already processing this document with the ${job.profile} profile`
+      )
+    }
+    if (!job) {
+      job = await start(documentId, profile)
+      startedByAgent = true
+    }
+
+    await waitForJob(job.id, signal, startedByAgent)
+    state = await getState(documentId)
+    if (!state.result || state.result.stale || !isSuitableProfile(state.result.profile)) {
+      throw new Error('Balanced OCR result is unavailable')
+    }
+    return {
+      result: state.result,
+      markdown: await readMarkdown(documentId, state.result.resultKey)
+    }
+  }
+
   async function resolveAsset(
     documentId: string,
     resultKey: string,
@@ -456,6 +555,8 @@ export function createMineruDocumentService(deps: MineruDocumentServiceDeps) {
     start,
     cancel,
     readMarkdown,
+    readCachedForAgent,
+    prepareForAgent,
     resolveAsset,
     prepareDocumentDelete,
     stopWorker,

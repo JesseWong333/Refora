@@ -10,7 +10,7 @@ import type { ContextMenuItem } from '@lobehub/ui'
 
 import { useDocumentStore } from '../store/documentStore'
 import { api } from '../ipc'
-import { formatDate, formatElapsedClock, formatFilePath } from '../utils/format'
+import { formatDate, formatFilePath } from '../utils/format'
 import type {
   Document,
   EditableField,
@@ -29,6 +29,7 @@ import type {
 } from '../../shared/mineru-types'
 import { IpcChannel } from '../../shared/ipc-channels'
 import { useOcrReaderStore } from '../store/ocrReaderStore'
+import OcrProgressCard from './OcrProgressCard'
 
 type InlineFieldVariant = 'default' | 'title' | 'year' | 'authors' | 'metadata' | 'abstract'
 
@@ -39,17 +40,8 @@ function OcrSection({ doc }: { doc: Document }) {
   const [profile, setProfile] = useState<OcrProfile>('balanced')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [now, setNow] = useState(Date.now())
   const refreshGeneration = useRef(0)
   const readerFailedMessage = t('ocr.readerFailed')
-  const activeJobId = state?.activeJob?.id ?? null
-
-  useEffect(() => {
-    if (!activeJobId) return
-    setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [activeJobId])
 
   const refresh = useCallback(async () => {
     const generation = refreshGeneration.current + 1
@@ -129,9 +121,6 @@ function OcrSection({ doc }: { doc: Document }) {
   const installed = state?.engine.state === 'installed'
   const job = state?.activeJob
   const result = state?.result
-  const elapsed = job
-    ? formatElapsedClock(now - (job.startedAt ?? job.createdAt))
-    : null
 
   return (
     <div className="mt-5 flex flex-col gap-3 border-t border-border pt-5">
@@ -143,30 +132,7 @@ function OcrSection({ doc }: { doc: Document }) {
       </div>
 
       {job ? (
-        <div className="flex flex-col gap-2 rounded-lg bg-panel-2 px-3 py-2">
-          <div className="flex items-center justify-between gap-2 text-xs text-foreground">
-            <span>{t('ocr.processing', { stage: t(`ocr.stage.${job.stage}`) })}</span>
-            <span className="text-muted">
-              {job.progress != null ? `${Math.round(job.progress * 100)}% · ` : ''}
-              {t('ocr.elapsed', { time: elapsed })}
-            </span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-background">
-            <div
-              className={`h-full rounded-full bg-accent ${
-                job.progress == null
-                  ? 'mineru-progress-indeterminate'
-                  : 'transition-[width] duration-300'
-              }`}
-              style={job.progress == null
-                ? undefined
-                : { width: `${Math.max(2, Math.min(100, job.progress * 100))}%` }}
-            />
-          </div>
-          <Button variant="ghost" size="sm" className="self-start" onClick={() => void cancel()}>
-            {t('ocr.cancel')}
-          </Button>
-        </div>
+        <OcrProgressCard job={job} onCancel={() => void cancel()} />
       ) : (
         <>
           {result && (

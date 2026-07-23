@@ -14,6 +14,11 @@ import type {
   ChatTokenEvent,
   ChatTraceEvent
 } from '../../src/shared/ipc-types'
+import type {
+  OcrCompletedEvent,
+  OcrJob,
+  OcrProgressEvent
+} from '../../src/shared/mineru-types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -33,6 +38,9 @@ const { useChatStream } = await import('../../src/renderer/hooks/useChatStream')
 const { AgentTracePanel } = await import('../../src/renderer/components/workspace/AgentTrace')
 const ChatMessages = (await import('../../src/renderer/components/workspace/ChatMessages')).default
 const ChatInput = (await import('../../src/renderer/components/workspace/ChatInput')).default
+const AgentTodoList = (
+  await import('../../src/renderer/components/workspace/AgentTodoList')
+).default
 
 const mockChatHistory = vi.fn()
 const mockChatSend = vi.fn()
@@ -72,6 +80,34 @@ function makeMessage(content: string): ChatMessage {
     role: 'assistant',
     content,
     createdAt: Date.now()
+  }
+}
+
+function makeTodoStep(
+  id: string,
+  seq: number,
+  todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed' }>
+): AgentTraceStep {
+  return {
+    id,
+    threadId: 'thread-1',
+    runId: 'run-todo',
+    kind: 'todo',
+    name: 'write_todos',
+    input: JSON.stringify({ todos }),
+    output: null,
+    status: 'done',
+    startedAt: seq,
+    endedAt: seq + 1,
+    seq,
+    inputTokens: null,
+    outputTokens: null,
+    totalTokens: null,
+    parentStepId: null,
+    agentName: null,
+    namespace: null,
+    depth: 0,
+    checkpointId: null
   }
 }
 
@@ -406,6 +442,7 @@ function renderMessages(overrides: Partial<Parameters<typeof ChatMessages>[0]> =
       streamingText=""
       streamingReasoning=""
       activeRunId={null}
+      activeOcrDocumentId={null}
       elapsedSeconds={4}
       loadingHistory={false}
       providers={[]}
@@ -420,6 +457,175 @@ function renderMessages(overrides: Partial<Parameters<typeof ChatMessages>[0]> =
 }
 
 describe('ChatMessages presentation', () => {
+  it('shows the latest todo plan at the top and strikes completed items', () => {
+    const todoStep = makeTodoStep('todo-2', 2, [
+      { content: 'Inspect the papers', status: 'completed' },
+      { content: 'Draft the comparison', status: 'in_progress' }
+    ])
+
+    renderMessages({
+      traceSteps: [todoStep],
+      activeRunId: 'run-todo'
+    })
+
+    expect(screen.getByTestId('agent-todo-list')).toBeInTheDocument()
+    expect(screen.getByText('Inspect the papers')).toHaveClass('line-through')
+    expect(screen.getByText('Draft the comparison')).not.toHaveClass('line-through')
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.chat.todoCollapse' }))
+    expect(screen.queryByText('Inspect the papers')).toBeNull()
+  })
+
+  it('keeps a todo plan collapsed when the same run reports another update', () => {
+    const first = makeTodoStep('todo-1', 1, [
+      { content: 'Inspect the papers', status: 'in_progress' },
+      { content: 'Draft the comparison', status: 'pending' }
+    ])
+    const { rerender } = render(
+      <AgentTodoList steps={[first]} activeRunId="run-todo" />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.chat.todoCollapse' }))
+    expect(screen.queryByText('Inspect the papers')).toBeNull()
+
+    const updated = makeTodoStep('todo-2', 2, [
+      { content: 'Inspect the papers', status: 'completed' },
+      { content: 'Draft the comparison', status: 'in_progress' }
+    ])
+    rerender(
+      <AgentTodoList steps={[first, updated]} activeRunId="run-todo" />
+    )
+
+    expect(screen.queryByText('Inspect the papers')).toBeNull()
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'workspace.chat.todoExpand' }))
+      .toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('shows OCR events in the chat with the shared progress card', async () => {
+    let onProgress: ((payload: OcrProgressEvent) => void) | undefined
+    const w = window as unknown as { api: Record<string, Record<string, unknown>> }
+    w.api.ocr.getState = vi.fn(async () => ({ activeJob: null }))
+    w.api.events.onOcrProgress = (handler: (payload: OcrProgressEvent) => void) => {
+      onProgress = handler
+    }
+    const now = Date.now()
+    const job: OcrJob = {
+      id: 'ocr-job',
+      documentId: 'doc-ocr',
+      resultKey: 'result',
+      sourceHash: 'hash',
+      profile: 'balanced',
+      status: 'running',
+      stage: 'parsing',
+      progress: 0.42,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: now,
+      startedAt: now,
+      finishedAt: null,
+      updatedAt: now
+    }
+
+    renderMessages({ activeOcrDocumentId: 'doc-ocr' })
+    act(() => {
+      onProgress?.({ job })
+    })
+
+    expect(await screen.findByLabelText('workspace.chat.ocrProgress')).toBeInTheDocument()
+    expect(screen.getByText(/42%/)).toBeInTheDocument()
+  })
+
+  it('does not let stale OCR state hydration overwrite a live progress event', async () => {
+    let resolveState!: (value: { activeJob: OcrJob }) => void
+    let onProgress: ((payload: OcrProgressEvent) => void) | undefined
+    const w = window as unknown as { api: Record<string, Record<string, unknown>> }
+    w.api.ocr.getState = vi.fn(() => new Promise((resolve) => {
+      resolveState = resolve
+    }))
+    w.api.events.onOcrProgress = (handler: (payload: OcrProgressEvent) => void) => {
+      onProgress = handler
+    }
+    const now = Date.now()
+    const staleJob: OcrJob = {
+      id: 'ocr-job',
+      documentId: 'doc-ocr',
+      resultKey: 'result',
+      sourceHash: 'hash',
+      profile: 'balanced',
+      status: 'running',
+      stage: 'loadingModels',
+      progress: 0.1,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: now,
+      startedAt: now,
+      finishedAt: null,
+      updatedAt: now
+    }
+    const liveJob: OcrJob = {
+      ...staleJob,
+      stage: 'parsing',
+      progress: 0.75,
+      updatedAt: now + 1
+    }
+
+    renderMessages({ activeOcrDocumentId: 'doc-ocr' })
+    act(() => {
+      onProgress?.({ job: liveJob })
+    })
+    await act(async () => {
+      resolveState({ activeJob: staleJob })
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText(/75%/)).toBeInTheDocument()
+    expect(screen.queryByText(/10%/)).toBeNull()
+  })
+
+  it('does not resurrect OCR progress when completion wins the hydration race', async () => {
+    let resolveState!: (value: { activeJob: OcrJob }) => void
+    let onCompleted: ((payload: OcrCompletedEvent) => void) | undefined
+    const w = window as unknown as { api: Record<string, Record<string, unknown>> }
+    w.api.ocr.getState = vi.fn(() => new Promise((resolve) => {
+      resolveState = resolve
+    }))
+    w.api.events.onOcrCompleted = (handler: (payload: OcrCompletedEvent) => void) => {
+      onCompleted = handler
+    }
+    const now = Date.now()
+    const staleJob: OcrJob = {
+      id: 'ocr-job',
+      documentId: 'doc-ocr',
+      resultKey: 'result',
+      sourceHash: 'hash',
+      profile: 'balanced',
+      status: 'running',
+      stage: 'parsing',
+      progress: 0.9,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: now,
+      startedAt: now,
+      finishedAt: null,
+      updatedAt: now
+    }
+
+    renderMessages({ activeOcrDocumentId: 'doc-ocr' })
+    act(() => {
+      onCompleted?.({
+        jobId: staleJob.id,
+        documentId: staleJob.documentId,
+        result: {} as never
+      })
+    })
+    await act(async () => {
+      resolveState({ activeJob: staleJob })
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByLabelText('workspace.chat.ocrProgress')).toBeNull()
+  })
+
   it('renders sanitized HTML in assistant answers', () => {
     const messages: ChatMessage[] = [
       {
@@ -696,6 +902,50 @@ describe('useChatStream lifecycle', () => {
     })
   })
 
+  it('rejects only the pending OCR action without showing OCR progress', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+    await act(async () => {
+      await result.current.sendText('Read the scanned paper', [], 'thread-1')
+    })
+    const runId = result.current.activeRunId!
+
+    act(() => {
+      chatInterruptedHandler?.({
+        threadId: 'thread-1',
+        runId,
+        interrupt: {
+          id: 'interrupt-reject-ocr',
+          threadId: 'thread-1',
+          runId,
+          checkpointId: 'checkpoint-reject-ocr',
+          actions: [{
+            name: 'prepare_paper_ocr',
+            args: { docId: 'doc-ocr' },
+            allowedDecisions: ['approve', 'reject']
+          }],
+          status: 'pending',
+          decision: null,
+          createdAt: 1,
+          resolvedAt: null
+        }
+      })
+    })
+
+    await act(async () => {
+      await result.current.resolveInterrupt('reject')
+    })
+
+    expect(mockChatResume).toHaveBeenCalledWith({
+      threadId: 'thread-1',
+      runId,
+      decisions: [{ type: 'reject' }]
+    })
+    expect(result.current.pendingInterrupt).toBeNull()
+    expect(result.current.activeOcrDocumentId).toBeNull()
+    expect(result.current.streaming).toBe(true)
+  })
+
   it('keeps an approval visible when resume fails', async () => {
     const { result } = renderChatStream()
     await waitFor(() => expect(result.current.loadingHistory).toBe(false))
@@ -774,6 +1024,69 @@ describe('useChatStream lifecycle', () => {
 
     expect(result.current.pendingInterrupt).toMatchObject({ id: 'interrupt-second' })
     expect(result.current.streaming).toBe(false)
+  })
+
+  it('restores an approval after resume fails and retries the reviewed action', async () => {
+    let rejectResume!: (error: Error) => void
+    mockChatResume.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectResume = reject
+    }))
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+    await act(async () => {
+      await result.current.sendText('Read the scanned paper', [], 'thread-1')
+    })
+    const runId = result.current.activeRunId!
+    const interrupted: ChatInterruptedEvent = {
+      threadId: 'thread-1',
+      runId,
+      interrupt: {
+        id: 'interrupt-ocr',
+        threadId: 'thread-1',
+        runId,
+        checkpointId: 'checkpoint-ocr',
+        actions: [{
+          name: 'prepare_paper_ocr',
+          args: { docId: 'doc-ocr' },
+          allowedDecisions: ['approve', 'reject']
+        }],
+        status: 'pending',
+        decision: null,
+        createdAt: 1,
+        resolvedAt: null
+      }
+    }
+    act(() => {
+      chatInterruptedHandler?.(interrupted)
+    })
+
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.pendingInterrupt?.id).toBe('interrupt-ocr')
+
+    let resumePromise!: Promise<void>
+    await act(async () => {
+      resumePromise = result.current.resolveInterrupt('approve')
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(true)
+    expect(result.current.pendingInterrupt).toBeNull()
+    expect(result.current.activeOcrDocumentId).toBe('doc-ocr')
+
+    await act(async () => {
+      rejectResume(new Error('Provider unavailable'))
+      await resumePromise
+    })
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.pendingInterrupt?.id).toBe('interrupt-ocr')
+    expect(result.current.activeOcrDocumentId).toBeNull()
+    expect(result.current.canRetry).toBe(true)
+
+    act(() => {
+      result.current.handleRetry()
+    })
+    await waitFor(() => expect(mockChatResume).toHaveBeenCalledTimes(2))
+    expect(mockChatSend).toHaveBeenCalledTimes(1)
+    expect(mockChatResume.mock.calls[1][0]).toEqual(mockChatResume.mock.calls[0][0])
   })
 
   it('sends a new chat with a null workspace scope', async () => {

@@ -114,4 +114,45 @@ describe('AgentTracePanel', () => {
     expect(screen.getByText('Published artifacts')).toBeInTheDocument()
   })
 
+  it('labels OCR full-text reading separately from regular extraction', () => {
+    render(<AgentTracePanel steps={[
+      step({
+        id: 'ocr-read',
+        kind: 'tool',
+        name: 'read_paper_ocr_fulltext',
+        input: JSON.stringify({ docId: 'doc-1', offset: 8000, limit: 8000 })
+      }),
+      step({
+        id: 'ocr-prepare',
+        kind: 'tool',
+        name: 'prepare_paper_ocr'
+      })
+    ]} streaming={false} />)
+    fireEvent.click(headerButton())
+    expect(screen.getByText('Read OCR cache (chunk 2)')).toBeInTheDocument()
+    expect(screen.getByText('Prepared balanced OCR cache')).toBeInTheDocument()
+  })
+
+  it('distinguishes an OCR approval wait and rejection from active OCR', () => {
+    render(<AgentTracePanel steps={[
+      step({
+        id: 'ocr-approval',
+        kind: 'tool',
+        name: 'prepare_paper_ocr',
+        status: 'interrupted'
+      }),
+      step({
+        id: 'ocr-rejected',
+        kind: 'tool',
+        name: 'prepare_paper_ocr',
+        status: 'cancelled'
+      })
+    ]} streaming={false} />)
+    fireEvent.click(headerButton())
+
+    expect(screen.getByText('OCR approval requested')).toBeInTheDocument()
+    expect(screen.getByText('OCR was not run')).toBeInTheDocument()
+    expect(screen.queryByText('Running balanced OCR…')).toBeNull()
+  })
+
 })

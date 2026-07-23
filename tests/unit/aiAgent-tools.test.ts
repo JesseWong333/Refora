@@ -7,6 +7,7 @@ import type { AiProvider, ChatSendRequest, Document } from '../../src/shared/ipc
 
 interface CapturedTool {
   name: string
+  description: string
   func: (input: unknown) => Promise<string>
   schema?: {
     safeParse: (input: unknown) => { success: boolean }
@@ -16,6 +17,7 @@ interface CapturedTool {
 const mocks = vi.hoisted(() => ({
   openPath: vi.fn<(path: string) => Promise<string>>(),
   tools: [] as CapturedTool[],
+  readOnlyToolNames: [] as string[],
   messages: [] as unknown[],
   systemPrompt: ''
 }))
@@ -35,8 +37,17 @@ vi.mock('@langchain/openai', () => ({
 }))
 
 vi.mock('../../src/main/services/reforaDeepAgent', () => ({
-  createReforaDeepAgent: ({ tools, systemPrompt }: { tools: CapturedTool[]; systemPrompt: string }) => {
+  createReforaDeepAgent: ({
+    tools,
+    readOnlyTools,
+    systemPrompt
+  }: {
+    tools: CapturedTool[]
+    readOnlyTools: CapturedTool[]
+    systemPrompt: string
+  }) => {
     mocks.tools = tools
+    mocks.readOnlyToolNames = readOnlyTools.map((tool) => tool.name)
     mocks.systemPrompt = systemPrompt
     return {
       streamEvents: async function* (input: { messages: unknown[] }) {
@@ -213,6 +224,8 @@ describe('AI agent tools', () => {
       'search_library',
       'find_related_papers',
       'read_paper_fulltext',
+      'read_paper_ocr_fulltext',
+      'prepare_paper_ocr',
       'get_paper_summary',
       'get_paper_metadata',
       'open_paper',
@@ -223,6 +236,16 @@ describe('AI agent tools', () => {
     ])
     expect(repos.workspaceItems.list).not.toHaveBeenCalled()
     expect(mocks.systemPrompt).toContain("user's local library")
+    expect(mocks.systemPrompt).toContain('Always try read_paper_fulltext before OCR')
+    expect(mocks.systemPrompt).toContain(
+      'Never ask the user to approve OCR in assistant text'
+    )
+    expect(getTool('prepare_paper_ocr').description).toContain(
+      'Call this tool directly without asking for approval in assistant text'
+    )
+    expect(mocks.readOnlyToolNames).toContain('read_paper_fulltext')
+    expect(mocks.readOnlyToolNames).toContain('read_paper_ocr_fulltext')
+    expect(mocks.readOnlyToolNames).not.toContain('prepare_paper_ocr')
     expect(mocks.systemPrompt).not.toContain('Workspace paper catalog')
     expect(mocks.systemPrompt).not.toContain('A workspace is selected')
   })
@@ -522,6 +545,145 @@ describe('AI agent tools', () => {
         chunkCount: 3
       })
       expect(parsed.text).toHaveLength(8000)
+    })
+  })
+
+  describe('read_paper_ocr_fulltext pagination', () => {
+    it('reads quality OCR Markdown from cache without starting OCR', async () => {
+      const readCachedForAgent = vi.fn(async () => ({
+        result: {
+          profile: 'quality',
+          resultKey: 'ocr-result-1'
+        },
+        markdown: '# OCR paper\n\n' + 'x'.repeat(15000)
+      }))
+      mockDocumentsGet.mockReturnValue(makeDoc())
+      const { createAiAgentService } = await import('../../src/main/services/aiAgent')
+      const service = createAiAgentService(
+        repos,
+        () => mockWin,
+        aiProvidersService,
+        pdfTextService,
+        aiSummaryService,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { readCachedForAgent } as never
+      )
+      await service.run(req, 'ocr-thread')
+
+      const tool = getTool('read_paper_ocr_fulltext')
+      const parsed = JSON.parse(await tool.func({
+        docId: 'doc-1',
+        offset: 0,
+        limit: 8000
+      }))
+
+      expect(parsed).toMatchObject({
+        docId: 'doc-1',
+        title: 'Test Paper',
+        source: 'mineru_ocr',
+        profile: 'quality',
+        resultKey: 'ocr-result-1',
+        offset: 0,
+        limit: 8000,
+        nextOffset: 8000,
+        chunkIndex: 0,
+        chunkCount: 2
+      })
+      expect(parsed.text).toHaveLength(8000)
+      expect(readCachedForAgent).toHaveBeenCalledWith('doc-1')
+    })
+
+    it('directs the Agent to the approved preparation tool when cache is missing', async () => {
+      const readCachedForAgent = vi.fn(async () => null)
+      mockDocumentsGet.mockReturnValue(makeDoc())
+      const { createAiAgentService } = await import('../../src/main/services/aiAgent')
+      const service = createAiAgentService(
+        repos,
+        () => mockWin,
+        aiProvidersService,
+        pdfTextService,
+        aiSummaryService,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { readCachedForAgent } as never
+      )
+      await service.run(req, 'ocr-cache-miss-thread')
+
+      const result = await getTool('read_paper_ocr_fulltext').func({ docId: 'doc-1' })
+
+      expect(JSON.parse(result)).toEqual({
+        status: 'ocr_cache_missing',
+        docId: 'doc-1',
+        nextTool: 'prepare_paper_ocr',
+        approval: 'handled_by_application',
+        instruction:
+          'Call prepare_paper_ocr now. Do not ask for approval in assistant text; the application will show the approval UI.'
+      })
+      expect(readCachedForAgent).toHaveBeenCalledWith('doc-1')
+    })
+
+    it('returns an unavailable error when OCR is not configured', async () => {
+      mockDocumentsGet.mockReturnValue(makeDoc())
+      const tool = getTool('read_paper_ocr_fulltext')
+      const result = await tool.func({ docId: 'doc-1' })
+
+      expect(JSON.parse(result)).toEqual({
+        error: 'OCR service is unavailable',
+        docId: 'doc-1'
+      })
+    })
+  })
+
+  describe('prepare_paper_ocr', () => {
+    it('runs balanced OCR and returns reusable cache metadata', async () => {
+      const prepareForAgent = vi.fn(async () => ({
+        result: {
+          profile: 'balanced',
+          resultKey: 'ocr-result-2'
+        },
+        markdown: '# Prepared OCR'
+      }))
+      mockDocumentsGet.mockReturnValue(makeDoc())
+      const { createAiAgentService } = await import('../../src/main/services/aiAgent')
+      const service = createAiAgentService(
+        repos,
+        () => mockWin,
+        aiProvidersService,
+        pdfTextService,
+        aiSummaryService,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { prepareForAgent } as never
+      )
+      await service.run(req, 'ocr-prepare-thread')
+
+      const parsed = JSON.parse(
+        await getTool('prepare_paper_ocr').func({ docId: 'doc-1' })
+      )
+
+      expect(parsed).toEqual({
+        docId: 'doc-1',
+        title: 'Test Paper',
+        source: 'mineru_ocr',
+        profile: 'balanced',
+        resultKey: 'ocr-result-2',
+        totalChars: 14,
+        message: 'Balanced OCR cache is ready. Continue with read_paper_ocr_fulltext.'
+      })
+      expect(prepareForAgent).toHaveBeenCalledWith('doc-1', expect.any(AbortSignal))
     })
   })
 })

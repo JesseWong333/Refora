@@ -27,6 +27,23 @@ import {
   type UseChatStreamReturn
 } from '../utils/chatUtils'
 
+interface ResumeRetryContext {
+  interrupt: AgentInterrupt
+  decision: AgentInterruptDecision
+  editedActions?: Array<{ name: string; args: Record<string, unknown> }>
+}
+
+function reviewedOcrDocumentId(context: ResumeRetryContext): string | null {
+  if (context.decision === 'reject') return null
+  const action = context.interrupt.actions.find((candidate) => candidate.name === 'prepare_paper_ocr')
+  if (!action) return null
+  const edited = context.decision === 'edit'
+    ? context.editedActions?.find((candidate) => candidate.name === action.name)
+    : null
+  const docId = (edited?.args ?? action.args).docId
+  return typeof docId === 'string' && docId.trim() ? docId.trim() : null
+}
+
 export function useChatStream({
   activeWorkspaceId,
   activeProviderId,
@@ -51,6 +68,7 @@ export function useChatStream({
   const [canRetry, setCanRetry] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [pendingInterrupt, setPendingInterrupt] = useState<AgentInterrupt | null>(null)
+  const [activeOcrDocumentId, setActiveOcrDocumentId] = useState<string | null>(null)
 
   const threadIdRef = useRef<string | null>(null)
   const activeRunIdRef = useRef<string | null>(null)
@@ -64,6 +82,8 @@ export function useChatStream({
   const rafIdRef = useRef<number | null>(null)
   const isSendingRef = useRef(false)
   const retrySendRef = useRef<ChatSendContext | null>(null)
+  const pendingInterruptRef = useRef<AgentInterrupt | null>(null)
+  const resumeRetryRef = useRef<ResumeRetryContext | null>(null)
   const latestSendRef = useRef<ChatSendContext | null>(null)
   const hadMessagesRef = useRef(false)
   const stickToBottomRef = useRef(true)
@@ -88,7 +108,10 @@ export function useChatStream({
       activeRunIdRef.current = null
       setActiveRunId(null)
       setError(null)
+      pendingInterruptRef.current = null
       setPendingInterrupt(null)
+      resumeRetryRef.current = null
+      setActiveOcrDocumentId(null)
     }
     stickToBottomRef.current = true
     if (!activeThreadId) {
@@ -120,6 +143,7 @@ export function useChatStream({
         if (runSteps[0]) {
           void api.ai.chatPendingInterrupt(runSteps[0].runId).then((interrupt) => {
             if (!cancelled && threadIdRef.current === activeThreadId) {
+              pendingInterruptRef.current = interrupt
               setPendingInterrupt(interrupt)
             }
           }).catch(() => undefined)
@@ -207,6 +231,7 @@ export function useChatStream({
         retrySendRef.current = null
         cancelledThreadRef.current = null
         setCanRetry(false)
+        resumeRetryRef.current = null
         setMessages((prev) => [
           ...prev,
           localMessage(payload.threadId, 'assistant', payload.finalText)
@@ -217,7 +242,9 @@ export function useChatStream({
         setStreamingText('')
         setStreamingReasoning('')
         setStreaming(false)
+        pendingInterruptRef.current = null
         setPendingInterrupt(null)
+        setActiveOcrDocumentId(null)
       },
       onError: (payload: ChatErrorEvent) => {
         if (payload.runId !== activeRunIdRef.current) return
@@ -227,11 +254,16 @@ export function useChatStream({
           rafIdRef.current = null
         }
         isSendingRef.current = false
-        activeRunIdRef.current = null
-        setActiveRunId(null)
+        const resumeRetry = resumeRetryRef.current
+        const failedResume = resumeRetry?.interrupt.runId === payload.runId ? resumeRetry : null
+        activeRunIdRef.current = failedResume?.interrupt.runId ?? null
+        setActiveRunId(failedResume?.interrupt.runId ?? null)
         cancelledRef.current = false
         cancelledThreadRef.current = null
-        if (retrySendRef.current) {
+        if (failedResume) {
+          pendingInterruptRef.current = failedResume.interrupt
+          setPendingInterrupt(failedResume.interrupt)
+        } else if (retrySendRef.current) {
           retrySendRef.current = {
             ...retrySendRef.current,
             threadId: payload.threadId,
@@ -239,7 +271,7 @@ export function useChatStream({
             persisted: true
           }
         }
-        setCanRetry(retrySendRef.current !== null)
+        setCanRetry(failedResume !== null || retrySendRef.current !== null)
         setError(payload.message)
         streamingTextRef.current = ''
         streamingReasoningRef.current = ''
@@ -247,6 +279,7 @@ export function useChatStream({
         setStreamingText('')
         setStreamingReasoning('')
         setStreaming(false)
+        setActiveOcrDocumentId(null)
       },
       onTrace: (payload: ChatTraceEvent) => {
         if (payload.runId !== activeRunIdRef.current) return
@@ -267,7 +300,12 @@ export function useChatStream({
           rafIdRef.current = null
         }
         isSendingRef.current = false
+        resumeRetryRef.current = null
+        pendingInterruptRef.current = payload.interrupt
         setPendingInterrupt(payload.interrupt)
+        setCanRetry(false)
+        setError(null)
+        setActiveOcrDocumentId(null)
         setStreamingText(streamingTextRef.current)
         setStreamingReasoning(streamingReasoningRef.current)
         setStreaming(false)
@@ -381,6 +419,10 @@ export function useChatStream({
     setStreamingReasoning('')
     setError(null)
     setCanRetry(false)
+    pendingInterruptRef.current = null
+    setPendingInterrupt(null)
+    resumeRetryRef.current = null
+    setActiveOcrDocumentId(null)
     hadMessagesRef.current = true
     stickToBottomRef.current = true
     const sendContext: ChatSendContext = {
@@ -442,6 +484,7 @@ export function useChatStream({
       setStreaming(false)
       setStreamingText('')
       setStreamingReasoning('')
+      setActiveOcrDocumentId(null)
     }
   }, [
     activeWorkspaceId,
@@ -456,7 +499,49 @@ export function useChatStream({
     t
   ])
 
+  const resumeInterrupt = useCallback(async (context: ResumeRetryContext) => {
+    if (isSendingRef.current) return
+    resumeRetryRef.current = context
+    isSendingRef.current = true
+    pendingInterruptRef.current = null
+    setPendingInterrupt(null)
+    activeRunIdRef.current = context.interrupt.runId
+    setActiveRunId(context.interrupt.runId)
+    setActiveOcrDocumentId(reviewedOcrDocumentId(context))
+    setStreaming(true)
+    setCanRetry(false)
+    setError(null)
+    try {
+      await api.ai.chatResume({
+        threadId: context.interrupt.threadId,
+        runId: context.interrupt.runId,
+        decisions: context.interrupt.actions.map((action, index) => context.decision === 'edit'
+          ? {
+              type: 'edit' as const,
+              editedAction: context.editedActions?.[index] ?? { name: action.name, args: action.args }
+            }
+          : { type: context.decision })
+      })
+    } catch (resumeError) {
+      if (disposedRef.current) return
+      isSendingRef.current = false
+      pendingInterruptRef.current = context.interrupt
+      setPendingInterrupt(context.interrupt)
+      activeRunIdRef.current = context.interrupt.runId
+      setActiveRunId(context.interrupt.runId)
+      setActiveOcrDocumentId(null)
+      setStreaming(false)
+      setCanRetry(true)
+      setError(errorMessage(resumeError, 'Failed to resume agent'))
+    }
+  }, [])
+
   const handleRetry = useCallback(() => {
+    const resume = resumeRetryRef.current
+    if (resume && pendingInterruptRef.current?.id === resume.interrupt.id) {
+      void resumeInterrupt(resume)
+      return
+    }
     const last = retrySendRef.current
     if (!last) return
     setMessages((prev) => {
@@ -471,10 +556,11 @@ export function useChatStream({
       replaceLastExchange: last.persisted,
       replaceRunId: last.persisted ? last.runId : null
     })
-  }, [sendText])
+  }, [resumeInterrupt, sendText])
 
   const clearError = useCallback(() => {
     retrySendRef.current = null
+    resumeRetryRef.current = null
     setCanRetry(false)
     setError(null)
   }, [])
@@ -537,35 +623,16 @@ export function useChatStream({
     decision: AgentInterruptDecision,
     editedActions?: Array<{ name: string; args: Record<string, unknown> }>
   ) => {
-    const interrupt = pendingInterrupt
-    if (!interrupt || isSendingRef.current) return
-    isSendingRef.current = true
-    activeRunIdRef.current = interrupt.runId
-    setActiveRunId(interrupt.runId)
-    setStreaming(true)
-    setError(null)
-    try {
-      await api.ai.chatResume({
-        threadId: interrupt.threadId,
-        runId: interrupt.runId,
-        decisions: interrupt.actions.map((action, index) => decision === 'edit'
-          ? {
-              type: 'edit' as const,
-              editedAction: editedActions?.[index] ?? { name: action.name, args: action.args }
-            }
-          : { type: decision })
-      })
-    } catch (resumeError) {
-      isSendingRef.current = false
-      setStreaming(false)
-      setError(errorMessage(resumeError, 'Failed to resume agent'))
-    }
-  }, [pendingInterrupt])
+    const interrupt = pendingInterruptRef.current
+    if (!interrupt) return
+    await resumeInterrupt({ interrupt, decision, editedActions })
+  }, [resumeInterrupt])
 
   return {
     messages, setMessages, traceSteps, setTraceSteps,
     streaming, streamingText, streamingReasoning, activeRunId, elapsedSeconds,
     error, setError, clearError, canRetry, loadingHistory, displayMessages, pendingInterrupt,
+    activeOcrDocumentId,
     sendText, handleCancel, handleRetry, handleRegenerate,
     resolveInterrupt,
     stickToBottomRef, threadIdRef, hadMessagesRef

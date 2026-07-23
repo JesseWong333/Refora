@@ -69,6 +69,15 @@ describe('Refora Deep Agent factory', () => {
       prefix: 'Refora prompt',
       suffix: expect.stringContaining('propose_workspace_memory_update')
     })
+    expect(options.systemPrompt.suffix).toContain(
+      'call the tool directly instead of asking for approval in assistant text'
+    )
+    expect(options.systemPrompt.suffix).toContain(
+      'do not immediately resubmit that same action'
+    )
+    expect(options.systemPrompt.suffix).toContain(
+      'A later distinct request may call the tool again'
+    )
     expect(options.subagents.map((agent: { name: string }) => agent.name)).toEqual([
       'general-purpose',
       'researcher',
@@ -80,6 +89,11 @@ describe('Refora Deep Agent factory', () => {
       expect(subagent.middleware).toEqual([{ name: 'FilesystemMiddleware' }])
     }
     expect(options.interruptOn).toEqual({
+      prepare_paper_ocr: {
+        allowedDecisions: ['approve', 'reject'],
+        description:
+          'Run balanced local OCR for this paper and prepare a reusable structured full-text cache.'
+      },
       install_runtime_packages: { allowedDecisions: ['approve', 'reject'] },
       publish_workspace_artifacts: { allowedDecisions: ['approve', 'reject'] },
       propose_workspace_memory_update: {

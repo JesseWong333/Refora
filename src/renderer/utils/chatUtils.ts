@@ -57,6 +57,7 @@ export interface UseChatStreamReturn {
   loadingHistory: boolean
   displayMessages: ChatMessage[]
   pendingInterrupt: AgentInterrupt | null
+  activeOcrDocumentId: string | null
   sendText: (
     text: string,
     attachments: string[],

@@ -402,6 +402,7 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
         streamingText={chat.streamingText}
         streamingReasoning={chat.streamingReasoning}
         activeRunId={chat.activeRunId}
+        activeOcrDocumentId={chat.activeOcrDocumentId}
         elapsedSeconds={chat.elapsedSeconds}
         loadingHistory={chat.loadingHistory}
         providers={providers}
