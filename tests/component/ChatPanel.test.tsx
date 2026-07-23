@@ -220,6 +220,16 @@ describe('ChatPanel tab header', () => {
     fireEvent.click(close)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('does not render a manual academic research switch', () => {
+    setupApi([])
+
+    render(<ChatPanel />)
+
+    expect(screen.queryByRole('button', {
+      name: 'workspace.chat.academicResearch'
+    })).toBeNull()
+  })
 })
 
 describe('ChatPanel citation links', () => {
@@ -818,6 +828,7 @@ describe('useChatStream lifecycle', () => {
     expect(mockChatSend.mock.calls[0][0] as ChatSendRequest).toMatchObject({
       features: { deepThinking: true, reasoningEffort: 'high' }
     })
+    expect(mockChatSend.mock.calls[0][0].features).not.toHaveProperty('academicResearch')
   })
 
   it('merges live reasoning and answer tokens into their timeline steps', async () => {

@@ -41,7 +41,7 @@ describe('Deep Agent runtime repositories', () => {
       content: 'First workspace revision two'
     })
 
-    expect(repos.agentMemories.list('workspace', first.id)).toHaveLength(4)
+    expect(repos.agentMemories.list('workspace', first.id)).toHaveLength(5)
     expect(repos.agentMemories.get('workspace', first.id, '/brief.md')?.content)
       .toBe('First workspace revision two')
     expect(repos.agentMemories.get('workspace', second.id, '/brief.md')?.content).toBe('')

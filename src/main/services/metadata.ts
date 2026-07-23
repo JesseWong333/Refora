@@ -1,6 +1,5 @@
 import { type BrowserWindow, utilityProcess, net } from 'electron'
 import { join } from 'node:path'
-import { XMLParser } from 'fast-xml-parser'
 import type { Repositories } from '../db/repositories'
 import type { Document, DocumentPatch, EditableField, MetadataSource, RemoteValues } from '../../shared/ipc-types'
 import { newId } from '../db/repositories/documents'
@@ -8,6 +7,21 @@ import { RepoError } from '../db/repositories/errors'
 import { emitDocumentUpdated } from '../ipc/events'
 import { logger } from './logger'
 import { normalizeVenue } from './venue-map'
+import {
+  baseArxivId,
+  normalizeArxivId,
+  parseArxivEntries,
+  parseArxivEntry,
+  type ParsedArxivEntry
+} from './arxiv'
+import { waitForArxivRateLimit } from './arxivRateLimit'
+
+export {
+  normalizeArxivId,
+  parseArxivEntries,
+  parseArxivEntry,
+  type ParsedArxivEntry
+} from './arxiv'
 
 interface WorkerResponse {
   correlationId: string
@@ -44,8 +58,6 @@ function isNetworkError(e: unknown): boolean {
 const REFERENCE_HEADINGS = /references|bibliography|参考文献|参考资料|references\s*$/i
 const DOI_REGEX = /10\.\d{4,9}\/[-._;()/:a-zA-Z0-9+]+/g
 const ARXIV_ID_REGEX = /(?:arxiv\s*:?\s*|arxiv\.org\/(?:abs|pdf)\/)((?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[a-z]{2})?\/\d{7})(?:v\d+)?)/i
-const ARXIV_MODERN_ID = /^\d{4}\.\d{4,5}(?:v\d+)?$/i
-const ARXIV_LEGACY_ID = /^[a-z-]+(?:\.[a-z]{2})?\/\d{7}(?:v\d+)?$/i
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
@@ -88,20 +100,6 @@ export function extractDoiFromInfo(info: Record<string, unknown>): string | null
 export function extractArxivFromText(text: string): string | null {
   const match = text.match(ARXIV_ID_REGEX)
   return match ? normalizeArxivId(match[1]) : null
-}
-
-export function normalizeArxivId(input: string): string | null {
-  let value = input.trim()
-  value = value.replace(/^arxiv\s*:\s*/i, '')
-  value = value.replace(/^https?:\/\/(?:export\.)?arxiv\.org\/(?:abs|pdf)\//i, '')
-  value = value.split(/[?#]/, 1)[0] ?? ''
-  value = value.replace(/\.pdf$/i, '')
-  if (!ARXIV_MODERN_ID.test(value) && !ARXIV_LEGACY_ID.test(value)) return null
-  return value.replace(/v(\d+)$/i, 'v$1')
-}
-
-function baseArxivId(arxivId: string): string {
-  return arxivId.replace(/v\d+$/i, '')
 }
 
 export function deriveDoiFromArxivId(arxivId: string): string {
@@ -690,58 +688,6 @@ async function fetchCrossrefByTitle(title: string, mailto: string): Promise<{ da
   return { data: best.data, confidence: best.confidence }
 }
 
-const arxivXmlParser = new XMLParser({ parseTagValue: false, trimValues: true })
-
-export interface ParsedArxivEntry {
-  title: string
-  authors: string | null
-  year: string | null
-  abstract: string | null
-  id: string | null
-  arxivId: string
-  doi: string | null
-}
-
-function asArray<T>(value: T | T[] | undefined): T[] {
-  if (value === undefined) return []
-  return Array.isArray(value) ? value : [value]
-}
-
-export function parseArxivEntries(xml: string): ParsedArxivEntry[] {
-  try {
-    const parsed = arxivXmlParser.parse(xml) as Record<string, unknown>
-    const feed = parsed?.feed
-    if (!feed || typeof feed !== 'object') return []
-    const feedObj = feed as Record<string, unknown>
-    const entries = asArray(feedObj.entry as Record<string, unknown> | Record<string, unknown>[] | undefined)
-    const result: ParsedArxivEntry[] = []
-    for (const e of entries) {
-      const title = typeof e.title === 'string' ? e.title.replace(/\s+/g, ' ').trim() : null
-      const idValue = typeof e.id === 'string' ? e.id.trim() : null
-      const arxivId = idValue ? normalizeArxivId(idValue) : null
-      if (!title || !arxivId) continue
-
-      const rawAuthors = asArray(e.author as Record<string, unknown> | Record<string, unknown>[] | undefined)
-      const authors = rawAuthors
-        .map((a) => (typeof a.name === 'string' ? a.name.trim() : ''))
-        .filter(Boolean)
-        .join('; ') || null
-      const published = typeof e.published === 'string' ? e.published : null
-      const year = published ? published.slice(0, 4) : null
-      const abstract = typeof e.summary === 'string' ? e.summary.replace(/\s+/g, ' ').trim() : null
-      const doi = nonEmptyString(e['arxiv:doi'])
-      result.push({ title, authors, year, abstract, id: idValue, arxivId, doi })
-    }
-    return result
-  } catch {
-    return []
-  }
-}
-
-export function parseArxivEntry(xml: string): ParsedArxivEntry | null {
-  return parseArxivEntries(xml)[0] ?? null
-}
-
 async function fetchArxiv(id: string): Promise<{
   data: Partial<Document>
   confidence: number
@@ -752,6 +698,7 @@ async function fetchArxiv(id: string): Promise<{
 
   let text: string
   try {
+    await waitForArxivRateLimit()
     const url = `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}&max_results=1`
     const response = await net.fetch(url, { signal: controller.signal })
     if (!response.ok) return null
@@ -976,6 +923,7 @@ async function fetchArxivByTitle(title: string): Promise<ArxivTitleResult[]> {
 
   let text: string
   try {
+    await waitForArxivRateLimit()
     const url = `https://export.arxiv.org/api/query?search_query=ti:${encodeURIComponent(`"${title}"`)}&max_results=5`
     const response = await net.fetch(url, { signal: controller.signal })
     if (!response.ok) return []
@@ -1029,9 +977,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
   let activeJobs = 0
   const MAX_CONCURRENT = 3
   let lastCrossrefMs = 0
-  let lastArxivMs = 0
   let lastDblpMs = 0
-  let arxivGateTail: Promise<void> = Promise.resolve()
 
   const getWin = (): BrowserWindow | null => {
     const w = typeof win === 'function' ? win() : win
@@ -1118,15 +1064,7 @@ export function createMetadataService(repos: Repositories, win: BrowserWindow | 
 
   async function rateGate(source: MetadataSource): Promise<void> {
     if (source === 'arxiv') {
-      const turn = arxivGateTail.then(async () => {
-        const elapsed = Date.now() - lastArxivMs
-        if (elapsed < 3000) {
-          await new Promise((r) => setTimeout(r, 3000 - elapsed))
-        }
-        lastArxivMs = Date.now()
-      })
-      arxivGateTail = turn.catch(() => undefined)
-      await turn
+      return
     } else if (source === 'dblp') {
       const now = Date.now()
       const elapsed = now - lastDblpMs

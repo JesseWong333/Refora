@@ -175,6 +175,82 @@ describe('AiAgentService approval resume', () => {
     expect(mocks.emitAiChatError).not.toHaveBeenCalled()
   })
 
+  it('exposes academic tools when resuming after service restart', async () => {
+    const workspace = repos.workspaces.create('Research')
+    const thread = repos.chat.createThread(workspace.id, provider.id)
+    repos.agentRuns.create({
+      id: 'run-restarted',
+      threadId: thread.id,
+      providerId: provider.id,
+      modelId: provider.model,
+      status: 'interrupted'
+    })
+    repos.agentInterrupts.create({
+      runId: 'run-restarted',
+      threadId: thread.id,
+      checkpointId: 'checkpoint-restarted',
+      actions: [{
+        name: 'publish_workspace_artifacts',
+        args: { paths: ['outputs/report.md'] },
+        allowedDecisions: ['approve', 'reject']
+      }]
+    })
+    mocks.createReforaDeepAgent.mockReturnValue({
+      invoke: vi.fn(async () => ({ messages: [new AIMessage('Resumed')] })),
+      getState: vi.fn(async () => ({
+        config: { configurable: { checkpoint_id: 'checkpoint-completed' } },
+        tasks: []
+      }))
+    })
+    const service = createAiAgentService(
+      repos,
+      () => ({ isDestroyed: () => false }) as never,
+      {
+        getProvider: vi.fn(() => provider),
+        getDecryptedKey: vi.fn(() => 'key')
+      } as never,
+      { getOrExtract: vi.fn(async () => '') } as never,
+      { summarize: vi.fn(), destroy: vi.fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { checkpointer: {} } as never,
+      {
+        arxivClient: { search: vi.fn() },
+        arxivPaperService: { getPaper: vi.fn() },
+        identityService: { resolve: vi.fn() },
+        graphService: {
+          getCitingPapers: vi.fn(),
+          getReferencedPapers: vi.fn(),
+          getRecommendations: vi.fn()
+        },
+        frontierService: {
+          start: vi.fn(),
+          expand: vi.fn(),
+          continuePage: vi.fn(),
+          deleteThread: vi.fn()
+        }
+      } as never
+    )
+
+    await service.resume({
+      threadId: thread.id,
+      runId: 'run-restarted',
+      decisions: [{ type: 'approve' }]
+    })
+
+    expect(mocks.createReforaDeepAgent).toHaveBeenCalledWith(expect.objectContaining({
+      systemPrompt: expect.stringContaining(
+        'Bounded arXiv and Semantic Scholar research tools are available'
+      ),
+      tools: expect.arrayContaining([
+        expect.objectContaining({ name: 'search_arxiv' }),
+        expect.objectContaining({ name: 'explore_research_frontier' })
+      ])
+    }))
+  })
+
   it('detects an interrupt from the latest state when a later turn starts from a checkpoint', async () => {
     const workspace = repos.workspaces.create('Research')
     const thread = repos.chat.createThread(workspace.id, provider.id)

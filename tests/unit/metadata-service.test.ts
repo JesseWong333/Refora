@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { resetArxivRateLimitForTests } from '../../src/main/services/arxivRateLimit'
 import type { Document, DocumentPatch, MetadataSource, MetadataStatus, RemoteValues } from '../../src/shared/ipc-types'
 
 // ============================================================
@@ -276,6 +277,7 @@ function makeDblpResponse(opts: {
 // ============================================================
 describe('createMetadataService', () => {
   beforeEach(() => {
+    resetArxivRateLimitForTests()
     vi.useFakeTimers()
     vi.setSystemTime(10000)
     vi.clearAllMocks()

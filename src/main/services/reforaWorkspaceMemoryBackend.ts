@@ -20,7 +20,8 @@ export const WORKSPACE_MEMORY_PATHS = [
   '/brief.md',
   '/preferences.md',
   '/decisions.md',
-  '/glossary.md'
+  '/glossary.md',
+  '/research.md'
 ] as const
 
 export const MAX_WORKSPACE_MEMORY_FILE_CHARS = 16_384
@@ -137,6 +138,7 @@ export function createReforaWorkspaceMemoryBackend(
 export function ensureWorkspaceMemoryFiles(repos: Repositories, workspaceId: string | null): void {
   const scope = scopeFor(workspaceId)
   for (const path of WORKSPACE_MEMORY_PATHS) {
+    if (path === '/research.md' && workspaceId === null) continue
     if (repos.agentMemories.get(scope.scope, scope.scopeId, path)) continue
     repos.agentMemories.upsert({ ...scope, path, content: '' })
   }
@@ -154,6 +156,9 @@ export function updateWorkspaceMemory(
 ) {
   const path = normalizeMemoryPath(input.path)
   if (!path) throw new Error('Unsupported workspace memory path')
+  if (path === '/research.md' && input.workspaceId === null) {
+    throw new Error('Research memory requires a Workspace')
+  }
   if (input.content.length > MAX_WORKSPACE_MEMORY_FILE_CHARS) {
     throw new Error('Workspace memory file is too large')
   }

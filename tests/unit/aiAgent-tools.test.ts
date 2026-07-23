@@ -8,6 +8,9 @@ import type { AiProvider, ChatSendRequest, Document } from '../../src/shared/ipc
 interface CapturedTool {
   name: string
   func: (input: unknown) => Promise<string>
+  schema?: {
+    safeParse: (input: unknown) => { success: boolean }
+  }
 }
 
 const mocks = vi.hoisted(() => ({
@@ -222,6 +225,129 @@ describe('AI agent tools', () => {
     expect(mocks.systemPrompt).toContain("user's local library")
     expect(mocks.systemPrompt).not.toContain('Workspace paper catalog')
     expect(mocks.systemPrompt).not.toContain('A workspace is selected')
+  })
+
+  it('always registers academic tools and lets the Agent decide whether to call them', async () => {
+    const search = vi.fn(async () => ({
+      papers: [],
+      total: 0,
+      fetchedAt: '2026-01-01T00:00:00.000Z',
+      cached: false
+    }))
+    const academicResearch = {
+      arxivClient: { search },
+      arxivPaperService: { getPaper: vi.fn() },
+      identityService: { resolve: vi.fn() },
+      graphService: {
+        getCitingPapers: vi.fn(),
+        getReferencedPapers: vi.fn(),
+        getRecommendations: vi.fn()
+      },
+      frontierService: {
+        start: vi.fn(),
+        expand: vi.fn(),
+        continuePage: vi.fn(),
+        deleteThread: vi.fn()
+      }
+    }
+    const { createAiAgentService } = await import('../../src/main/services/aiAgent')
+    const service = createAiAgentService(
+      repos,
+      () => mockWin,
+      aiProvidersService,
+      pdfTextService,
+      aiSummaryService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      academicResearch as never
+    )
+
+    await service.run({
+      ...req,
+      threadId: 'thread-academic'
+    }, 'thread-academic')
+
+    const toolNames = mocks.tools.map((tool) => tool.name)
+    expect(toolNames).toEqual(expect.arrayContaining([
+      'search_arxiv',
+      'get_arxiv_paper',
+      'resolve_academic_identity',
+      'get_citing_papers',
+      'get_referenced_papers',
+      'get_semantic_recommendations',
+      'explore_research_frontier'
+    ]))
+    expect(mocks.systemPrompt).toContain(
+      'make the semantic relevance judgment yourself'
+    )
+    expect(mocks.systemPrompt).toContain(
+      'Do not turn provider order, citation count, or metadata similarity into a definitive relevance score'
+    )
+    expect(mocks.systemPrompt).toContain(
+      'do not use them for unrelated questions'
+    )
+    expect(mocks.systemPrompt).toContain('/memories/research.md')
+
+    const result = await getTool('search_arxiv').func({
+      query: 'research agents',
+      pageSize: 10,
+      sort: 'submitted_date',
+      categories: []
+    })
+    expect(JSON.parse(result)).toMatchObject({ papers: [], total: 0 })
+    expect(search).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'research agents', pageSize: 10 }),
+      expect.any(AbortSignal)
+    )
+  })
+
+  it('does not expose research memory instructions or paths in global chat', async () => {
+    const academicResearch = {
+      arxivClient: { search: vi.fn() },
+      arxivPaperService: { getPaper: vi.fn() },
+      identityService: { resolve: vi.fn() },
+      graphService: {
+        getCitingPapers: vi.fn(),
+        getReferencedPapers: vi.fn(),
+        getRecommendations: vi.fn()
+      },
+      frontierService: {
+        start: vi.fn(),
+        expand: vi.fn(),
+        continuePage: vi.fn(),
+        deleteThread: vi.fn()
+      }
+    }
+    const { createAiAgentService } = await import('../../src/main/services/aiAgent')
+    const service = createAiAgentService(
+      repos,
+      () => mockWin,
+      aiProvidersService,
+      pdfTextService,
+      aiSummaryService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      academicResearch as never
+    )
+
+    await service.run({
+      ...req,
+      workspaceId: null
+    }, 'global-academic')
+
+    expect(mocks.systemPrompt).not.toContain('/memories/research.md')
+    const memoryTool = getTool('propose_workspace_memory_update')
+    expect(memoryTool.schema?.safeParse({
+      path: '/research.md',
+      content: 'should not be accepted',
+      rationale: 'test'
+    }).success).toBe(false)
   })
 
   describe('get_paper_metadata', () => {

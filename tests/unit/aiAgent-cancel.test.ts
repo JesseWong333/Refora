@@ -448,6 +448,40 @@ describe('AiAgentService cancellation', () => {
     expect(mocks.emitAiChatDone).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps frontier files on cancel and removes them on conversation deletion', async () => {
+    const deleteFrontierThread = vi.fn(async () => undefined)
+    service = createAiAgentService(
+      repos,
+      () => mockWin as never,
+      aiProvidersService as never,
+      pdfTextService as never,
+      { summarize: vi.fn(), destroy: vi.fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        arxivClient: {},
+        arxivPaperService: {},
+        identityService: {},
+        graphService: {},
+        frontierService: {
+          start: vi.fn(),
+          expand: vi.fn(),
+          continuePage: vi.fn(),
+          deleteThread: deleteFrontierThread
+        }
+      } as never
+    )
+
+    service.cancel('thread-1')
+    expect(deleteFrontierThread).not.toHaveBeenCalled()
+
+    await service.deleteThread('thread-1')
+    expect(deleteFrontierThread).toHaveBeenCalledWith('thread-1')
+  })
+
   it('normal completion without cancel produces expected output', async () => {
     mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeNormalStream(['Hello', ' world'])

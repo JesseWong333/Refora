@@ -40,6 +40,7 @@ describe('Refora Deep Agent factory', () => {
       backend: sandboxBackend,
       memoryBackend,
       checkpointer,
+      includeResearchMemory: true,
       middleware
     } as never)
 
@@ -61,7 +62,8 @@ describe('Refora Deep Agent factory', () => {
       '/memories/brief.md',
       '/memories/preferences.md',
       '/memories/decisions.md',
-      '/memories/glossary.md'
+      '/memories/glossary.md',
+      '/memories/research.md'
     ])
     expect(options.systemPrompt).toMatchObject({
       prefix: 'Refora prompt',

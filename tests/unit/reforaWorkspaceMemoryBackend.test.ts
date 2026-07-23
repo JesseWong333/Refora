@@ -28,7 +28,7 @@ describe('Refora Workspace memory backend', () => {
     db.close()
   })
 
-  it('exposes only the four curated Markdown files as read-only data', async () => {
+  it('exposes only the curated Markdown files as read-only data', async () => {
     updateWorkspaceMemory(repos, {
       workspaceId,
       path: '/brief.md',
@@ -38,7 +38,7 @@ describe('Refora Workspace memory backend', () => {
 
     const listing = await backend.ls('/')
     expect('files' in listing ? listing.files.map((entry) => entry.path) : [])
-      .toEqual(['/brief.md', '/decisions.md', '/glossary.md', '/preferences.md'])
+      .toEqual(['/brief.md', '/decisions.md', '/glossary.md', '/preferences.md', '/research.md'])
     expect(await backend.read('/brief.md')).toMatchObject({
       content: '1: Line one\n2: Line two',
       mimeType: 'text/markdown'
@@ -63,5 +63,23 @@ describe('Refora Workspace memory backend', () => {
       content: 'x'.repeat(MAX_WORKSPACE_MEMORY_FILE_CHARS + 1)
     })).toThrow('Workspace memory file is too large')
     expect(repos.agentMemories.get('workspace', workspaceId, '/brief.md')?.content).toBe('')
+  })
+
+  it('keeps research memory scoped to a Workspace', () => {
+    ensureWorkspaceMemoryFiles(repos, null)
+
+    expect(repos.agentMemories.get('global', 'global', '/research.md')).toBeNull()
+    expect(() => updateWorkspaceMemory(repos, {
+      workspaceId: null,
+      path: '/research.md',
+      content: 'Exploration'
+    })).toThrow('Research memory requires a Workspace')
+
+    const updated = updateWorkspaceMemory(repos, {
+      workspaceId,
+      path: '/research.md',
+      content: 'Objective, findings, uncertainties, and next steps.'
+    })
+    expect(updated.content).toBe('Objective, findings, uncertainties, and next steps.')
   })
 })

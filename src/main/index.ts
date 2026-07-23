@@ -44,6 +44,13 @@ import { createAgentArtifactPublisher } from './services/agentArtifactPublisher'
 import type { AgentArtifactPublisher } from './services/agentArtifactPublisher'
 import { createAgentCheckpointService } from './services/agentCheckpoint'
 import type { AgentCheckpointService } from './services/agentCheckpoint'
+import { createAcademicCache } from './services/academicCache'
+import { createArxivClient } from './services/arxivClient'
+import { createArxivPaperService } from './services/arxivPaperService'
+import { createSemanticScholarClient } from './services/semanticScholarClient'
+import { createAcademicIdentityService } from './services/academicIdentityService'
+import { createAcademicGraphService } from './services/academicGraphService'
+import { createResearchFrontierService } from './services/researchFrontierService'
 import { createMineruEngineManager } from './services/mineruEngineManager'
 import type { MineruEngineManager } from './services/mineruEngineManager'
 import { createMineruWorkerProcess } from './services/mineruWorkerProcess'
@@ -541,6 +548,28 @@ function buildRuntime(dbPath: string): Runtime {
       win: () => win
     })
     const agentCheckpointService = createAgentCheckpointService(dbPath)
+    void agentCheckpointService.pruneAcademicArtifacts().catch((error) => {
+      logger.warn(`academic-checkpoint:prune-failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    const academicCache = createAcademicCache(join(app.getPath('userData'), 'academic-cache'))
+    void academicCache.prune().catch((error) => {
+      logger.warn(`academic-cache:prune-failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    const academicFetch = (url: string, init?: RequestInit) => net.fetch(url, init)
+    const arxivClient = createArxivClient(academicFetch, academicCache)
+    const arxivPaperService = createArxivPaperService(arxivClient, academicCache)
+    const semanticScholarClient = createSemanticScholarClient(academicFetch, academicCache)
+    const academicIdentityService = createAcademicIdentityService(repos, semanticScholarClient)
+    const academicGraphService = createAcademicGraphService(
+      academicIdentityService,
+      semanticScholarClient
+    )
+    const researchFrontierService = createResearchFrontierService(
+      academicIdentityService,
+      academicGraphService,
+      arxivClient,
+      agentCheckpointService.researchFrontierDirectory
+    )
     const aiAgentService = createAiAgentService(
       repos,
       () => win,
@@ -551,7 +580,14 @@ function buildRuntime(dbPath: string): Runtime {
       agentArtifactPublisher,
       agentRuntimeManager,
       agentSandboxService,
-      agentCheckpointService
+      agentCheckpointService,
+      {
+        arxivClient,
+        arxivPaperService,
+        identityService: academicIdentityService,
+        graphService: academicGraphService,
+        frontierService: researchFrontierService
+      }
     )
     const workerScriptPath = app.isPackaged
       ? join(process.resourcesPath, 'mineru', 'mineru_worker.py')

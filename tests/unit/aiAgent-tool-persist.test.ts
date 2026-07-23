@@ -62,6 +62,10 @@ function makeStep(overrides: Partial<AgentTraceStep> = {}): AgentTraceStep {
 function createService(listMessagesReturn: ChatMessage[] = []) {
   const addMessage = vi.fn()
   const listMessages = vi.fn(() => listMessagesReturn)
+  const addTraceStep = vi.fn(() => makeStep())
+  const updateTraceStep = vi.fn((id: string, patch: Partial<AgentTraceStep>) =>
+    makeStep({ id, status: patch.status ?? 'done', output: patch.output, endedAt: Date.now() })
+  )
 
   const repos = withDeepAgentRepositories({
     chat: {
@@ -95,10 +99,8 @@ function createService(listMessagesReturn: ChatMessage[] = []) {
       create: vi.fn()
     },
     agentTraces: {
-      addStep: vi.fn(() => makeStep()),
-      updateStep: vi.fn((id: string, patch: Partial<AgentTraceStep>) =>
-        makeStep({ id, status: patch.status ?? 'done', endedAt: Date.now() })
-      ),
+      addStep: addTraceStep,
+      updateStep: updateTraceStep,
       listByThread: vi.fn(() => []),
       listByRun: vi.fn(() => [])
     },
@@ -135,7 +137,7 @@ function createService(listMessagesReturn: ChatMessage[] = []) {
   })) as unknown as Parameters<typeof createAiAgentService>[1]
 
   const service = createAiAgentService(repos, winFn, aiProvidersService, pdfTextService, { summarize: vi.fn(), destroy: vi.fn() } as never)
-  return { service, addMessage, listMessages }
+  return { service, addMessage, listMessages, addTraceStep, updateTraceStep }
 }
 
 function makeReq(overrides: Partial<ChatSendRequest> = {}): ChatSendRequest {
@@ -246,6 +248,59 @@ describe('aiAgent tool call persistence', () => {
       const assistantIndex = roles.indexOf('assistant')
       expect(userIndex).toBeLessThan(toolIndex)
       expect(toolIndex).toBeLessThan(assistantIndex)
+    })
+
+    it('keeps academic tool inputs and results out of chat and trace persistence', async () => {
+      const { service, addMessage, addTraceStep, updateTraceStep } = createService()
+      setupStreamEvents([
+        {
+          event: 'on_chat_model_start',
+          data: {},
+          run_id: 'llm-tool-call-1'
+        },
+        {
+          event: 'on_chat_model_end',
+          data: {
+            output: new AIMessage({
+              content: '',
+              tool_calls: [{
+                id: 'academic-tool-1',
+                name: 'search_arxiv',
+                args: { query: 'secret frontier query' }
+              }]
+            })
+          },
+          run_id: 'llm-tool-call-1'
+        },
+        {
+          event: 'on_tool_start',
+          name: 'search_arxiv',
+          data: { input: { query: 'secret frontier query' } },
+          run_id: 'academic-tool-1'
+        },
+        {
+          event: 'on_tool_end',
+          name: 'search_arxiv',
+          data: { output: '{"papers":[{"title":"secret result"}]}' },
+          run_id: 'academic-tool-1'
+        },
+        {
+          event: 'on_chat_model_stream',
+          data: { chunk: { content: 'A concise answer.' } },
+          run_id: 'llm-run-1'
+        }
+      ])
+
+      await service.run(makeReq(), 't1')
+
+      expect(addMessage.mock.calls.some((call: unknown[]) => call[1] === 'tool')).toBe(false)
+      const persistedTrace = JSON.stringify([
+        addTraceStep.mock.calls,
+        updateTraceStep.mock.calls
+      ])
+      expect(persistedTrace).not.toContain('secret frontier query')
+      expect(persistedTrace).not.toContain('secret result')
+      expect(persistedTrace).toContain('Academic research data kept transient')
     })
   })
 
