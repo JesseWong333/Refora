@@ -279,6 +279,20 @@ describe('AiAgentService stream content handling', () => {
     expect(reasoningCalls()).toEqual(['B'])
   })
 
+  it('extracts Responses reasoning delta blocks', async () => {
+    mocks.createReforaDeepAgent.mockReturnValue({
+      streamEvents: makeStream([
+        streamEvent({
+          content: [{ type: 'reasoning-delta', reasoning: 'thinking...' }]
+        })
+      ])
+    })
+
+    await service.run(mockReq, 'thread-1')
+
+    expect(reasoningCalls()).toEqual(['thinking...'])
+  })
+
   it('falls back to additional_kwargs.reasoning_content', async () => {
     mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([
@@ -293,6 +307,22 @@ describe('AiAgentService stream content handling', () => {
 
     expect(tokenCalls()).toEqual([])
     expect(reasoningCalls()).toEqual(['secret'])
+  })
+
+  it('emits reasoning when the same chunk also contains answer text', async () => {
+    mocks.createReforaDeepAgent.mockReturnValue({
+      streamEvents: makeStream([
+        streamEvent({
+          content: 'answer',
+          additional_kwargs: { reasoning_content: 'thought' }
+        })
+      ])
+    })
+
+    await service.run(mockReq, 'thread-1')
+
+    expect(reasoningCalls()).toEqual(['thought'])
+    expect(tokenCalls()).toEqual(['answer'])
   })
 
   it('does not emit a token for empty string content', async () => {

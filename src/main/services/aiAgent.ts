@@ -2021,6 +2021,7 @@ export function createAiAgentService(
             streamedToolTraces.observe(chunk, runKey, eventContext)
             const content = chunk?.content
             const contentParts: Array<{ kind: 'reasoning' | 'message'; token: string }> = []
+            let hasReasoningPart = false
             if (typeof content === 'string') {
               if (content) contentParts.push({ kind: 'message', token: content })
             } else if (Array.isArray(content)) {
@@ -2032,15 +2033,21 @@ export function createAiAgentService(
                   if (p.type === 'text' && typeof p.text === 'string' && p.text) {
                     contentParts.push({ kind: 'message', token: p.text })
                   }
-                  else if (p.type === 'reasoning' && typeof p.reasoning === 'string')
+                  else if (
+                    (p.type === 'reasoning' || p.type === 'reasoning-delta') &&
+                    typeof p.reasoning === 'string' &&
+                    p.reasoning
+                  ) {
                     contentParts.push({ kind: 'reasoning', token: p.reasoning })
+                    hasReasoningPart = true
+                  }
                 }
               }
             }
-            if (contentParts.length === 0) {
+            if (!hasReasoningPart) {
               const reasoning = chunk?.additional_kwargs?.reasoning_content
               if (typeof reasoning === 'string' && reasoning.length > 0) {
-                contentParts.push({ kind: 'reasoning', token: reasoning })
+                contentParts.unshift({ kind: 'reasoning', token: reasoning })
               }
             }
             if (contentParts.length === 0) continue

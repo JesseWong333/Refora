@@ -1,5 +1,5 @@
 import { ChatOpenAI, type ChatOpenAIFields } from '@langchain/openai'
-import type { BaseMessageChunk } from '@langchain/core/messages'
+import type { BaseMessage, BaseMessageChunk } from '@langchain/core/messages'
 import type { AiProvider, AiReasoningEffort } from '../../shared/ipc-types'
 import { inferModelCapabilities } from '../../shared/providerCatalog'
 
@@ -18,9 +18,57 @@ interface OpenAiCompletionsInternals {
     rawResponse: unknown,
     defaultRole?: string
   ) => BaseMessageChunk
+  _convertCompletionsMessageToBaseMessage: (
+    message: Record<string, unknown>,
+    rawResponse: unknown
+  ) => BaseMessage
 }
 
-function normalizeCompatibleStreamingRoles(model: ChatOpenAI): ChatOpenAI {
+function extractReasoningText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value.map(extractReasoningText).join('')
+  if (!value || typeof value !== 'object') return ''
+  const record = value as Record<string, unknown>
+  for (const key of [
+    'text',
+    'summary',
+    'reasoning_content',
+    'reasoning',
+    'thinking_content',
+    'thinking'
+  ]) {
+    const text = extractReasoningText(record[key])
+    if (text) return text
+  }
+  return ''
+}
+
+function extractCompatibleReasoning(delta: Record<string, unknown>): string {
+  for (const value of [
+    delta.reasoning_content,
+    delta.reasoning,
+    delta.reasoning_details,
+    delta.thinking_content,
+    delta.thinking
+  ]) {
+    const text = extractReasoningText(value)
+    if (text) return text
+  }
+  return ''
+}
+
+function preserveCompatibleReasoning(
+  message: BaseMessage,
+  providerPayload: Record<string, unknown>
+): BaseMessage {
+  const reasoning = extractCompatibleReasoning(providerPayload)
+  if (reasoning && !message.additional_kwargs.reasoning_content) {
+    message.additional_kwargs.reasoning_content = reasoning
+  }
+  return message
+}
+
+function normalizeCompatibleProviderOutput(model: ChatOpenAI): ChatOpenAI {
   const internals = model as unknown as {
     completions?: OpenAiCompletionsInternals
     fields?: ChatOpenAIFields
@@ -32,7 +80,13 @@ function normalizeCompatibleStreamingRoles(model: ChatOpenAI): ChatOpenAI {
   }
   const convertDelta = completions._convertCompletionsDeltaToBaseMessageChunk.bind(completions)
   completions._convertCompletionsDeltaToBaseMessageChunk = (delta, rawResponse, defaultRole) =>
-    convertDelta(delta, rawResponse, defaultRole ?? 'assistant')
+    preserveCompatibleReasoning(
+      convertDelta(delta, rawResponse, defaultRole ?? 'assistant'),
+      delta
+    ) as BaseMessageChunk
+  const convertMessage = completions._convertCompletionsMessageToBaseMessage.bind(completions)
+  completions._convertCompletionsMessageToBaseMessage = (message, rawResponse) =>
+    preserveCompatibleReasoning(convertMessage(message, rawResponse), message)
   if (internals.fields) {
     internals.fields.completions =
       completions as unknown as ChatOpenAIFields['completions']
@@ -54,6 +108,8 @@ export function buildProviderReasoningOptions(
     if (provider.reasoningControl === 'openai') {
       if (provider.apiProtocol === 'openai-responses') {
         reasoning = { effort: provider.reasoningEffort, summary: 'auto' }
+      } else if (provider.presetId === 'openrouter') {
+        modelKwargs.reasoning = { effort: provider.reasoningEffort }
       } else {
         modelKwargs.reasoning_effort = provider.reasoningEffort
       }
@@ -122,5 +178,5 @@ export function createProviderChatModel(input: {
       ? { modelKwargs: reasoningOptions.modelKwargs }
       : {})
   }
-  return normalizeCompatibleStreamingRoles(new ChatOpenAI(fields))
+  return normalizeCompatibleProviderOutput(new ChatOpenAI(fields))
 }

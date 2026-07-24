@@ -109,6 +109,20 @@ describe('provider reasoning request options', () => {
     ).toEqual({ enable_thinking: true })
   })
 
+  it('uses the unified reasoning request for OpenRouter', () => {
+    expect(
+      buildProviderReasoningOptions(
+        {
+          presetId: 'openrouter',
+          apiProtocol: 'openai-compatible',
+          reasoningControl: 'openai',
+          reasoningEffort: 'high'
+        },
+        true
+      ).modelKwargs
+    ).toEqual({ reasoning: { effort: 'high' } })
+  })
+
   it('does not send reasoning parameters to a non-reasoning model', () => {
     const model = createProviderChatModel({
       provider: { ...openAiProvider, model: 'gpt-4o-mini' },
@@ -142,6 +156,35 @@ describe('provider reasoning request options', () => {
       deepThinking: false
     })
     const completionWithRetry = vi.fn(async () => (async function* () {
+      yield {
+        id: 'completion-1',
+        model: 'xopkimik26',
+        choices: [{
+          index: 0,
+          delta: { reasoning: 'Inspect ' }
+        }]
+      }
+      yield {
+        id: 'completion-1',
+        model: 'xopkimik26',
+        choices: [{
+          index: 0,
+          delta: {
+            reasoning_details: [
+              { type: 'reasoning.encrypted', data: 'hidden' },
+              { type: 'reasoning.text', text: 'sources. ' }
+            ]
+          }
+        }]
+      }
+      yield {
+        id: 'completion-1',
+        model: 'xopkimik26',
+        choices: [{
+          index: 0,
+          delta: { thinking: 'Use OCR. ' }
+        }]
+      }
       yield {
         id: 'completion-1',
         model: 'xopkimik26',
@@ -213,6 +256,7 @@ describe('provider reasoning request options', () => {
     expect(completionWithRetry).toHaveBeenCalledTimes(1)
     expect(AIMessage.isInstance(result)).toBe(true)
     expect(result.content).toBe('Checking OCR cache. ')
+    expect(result.additional_kwargs.reasoning_content).toBe('Inspect sources. Use OCR. ')
     expect(result.tool_calls).toEqual([{
       name: 'read_paper_ocr_fulltext',
       args: { docId: 'doc-1' },
