@@ -15,16 +15,29 @@ const { capturedTools, createAgentMock } = vi.hoisted(() => {
   const mockAgent = {
     streamEvents: async function* () {}
   }
-  const createAgentMock = vi.fn((opts: { tools: unknown[] }) => {
-    capturedTools.value = opts.tools
+  const createAgentMock = vi.fn((opts: {
+    enabledToolNames: string[]
+    executeHostOperation: (
+      name: string,
+      args: Record<string, unknown>,
+      toolCallId: string | null
+    ) => Promise<string>
+  }) => {
+    capturedTools.value = opts.enabledToolNames.map((name) => ({
+      name,
+      invoke: (input: unknown) => opts.executeHostOperation(
+        name,
+        typeof input === 'string'
+          ? { [name === 'search_library' || name === 'search_workspace_docs' ? 'query' : 'docId']: input }
+          : input as Record<string, unknown>,
+        null
+      )
+    }))
     return mockAgent
   })
   return { capturedTools, createAgentMock }
 })
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn()
-}))
 vi.mock('../../src/main/services/reforaDeepAgent', () => ({
   createReforaDeepAgent: createAgentMock
 }))

@@ -1,22 +1,21 @@
-import type { AgentHostTool } from './agentHostTool'
 import type {
   AgentPythonProviderConfig,
   AgentPythonRuntime
 } from './agentPythonRuntime'
-import { createAgentToolExecutor } from './agentToolPolicy'
-import type { Repositories } from '../db/repositories'
-import { ACADEMIC_RESEARCH_TOOL_NAMES } from '../../shared/academicResearch'
 
 interface ReforaDeepAgentParams {
   runtime: AgentPythonRuntime
-  repos: Repositories
   runId: string
   threadId: string
   workspaceId: string | null
   provider: AgentPythonProviderConfig
   systemPrompt: string
-  tools: AgentHostTool[]
-  readOnlyTools: AgentHostTool[]
+  enabledToolNames: string[]
+  executeHostOperation: (
+    name: string,
+    args: Record<string, unknown>,
+    toolCallId: string | null
+  ) => Promise<string>
   sandboxRoot: string | null
   memories: Record<string, string>
   checkpointPath: string
@@ -46,12 +45,6 @@ const APPROVAL_PROMPT =
 export function createReforaDeepAgent(params: ReforaDeepAgentParams) {
   let state: Record<string, unknown> = {}
   let result: unknown = null
-  const executeTool = createAgentToolExecutor({
-    repos: params.repos,
-    runId: params.runId,
-    workspaceId: params.workspaceId,
-    tools: params.tools
-  })
 
   async function *streamEvents(
     input: { messages?: Array<Record<string, unknown>>; resume?: { decisions?: Array<Record<string, unknown>> } },
@@ -64,6 +57,7 @@ export function createReforaDeepAgent(params: ReforaDeepAgentParams) {
       : ''
     const request = {
       mode: input.resume ? 'resume' as const : 'run' as const,
+      runId: params.runId,
       threadId: params.threadId,
       workspaceId: params.workspaceId,
       checkpointPath: params.checkpointPath,
@@ -73,15 +67,7 @@ export function createReforaDeepAgent(params: ReforaDeepAgentParams) {
         `${params.systemPrompt}\n\n${MEMORY_PROMPT}${researchMemoryPrompt} ${APPROVAL_PROMPT}`,
       ...(input.messages ? { messages: input.messages } : {}),
       ...(input.resume?.decisions ? { decisions: input.resume.decisions } : {}),
-      tools: params.tools
-        .filter((tool) => !tool.name.startsWith('__'))
-        .map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          schema: tool.jsonSchema
-        })),
-      readOnlyToolNames: params.readOnlyTools.map((tool) => tool.name),
-      academicToolNames: [...ACADEMIC_RESEARCH_TOOL_NAMES],
+      enabledToolNames: params.enabledToolNames,
       sandboxRoot: params.sandboxRoot,
       memories: params.memories,
       includeResearchMemory,
@@ -90,7 +76,7 @@ export function createReforaDeepAgent(params: ReforaDeepAgentParams) {
     yield * params.runtime.stream(
       request,
       {
-        executeTool,
+        executeTool: params.executeHostOperation,
         onComplete: (completion) => {
           state = completion.state
           result = completion.result

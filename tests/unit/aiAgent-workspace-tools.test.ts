@@ -25,13 +25,26 @@ vi.mock('electron', () => ({
   shell: { openPath: vi.fn() }
 }))
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn()
-}))
-
 vi.mock('../../src/main/services/reforaDeepAgent', () => ({
-  createReforaDeepAgent: ({ tools }: { tools: CapturedTool[] }) => {
-    mocks.tools = tools
+  createReforaDeepAgent: ({
+    enabledToolNames,
+    executeHostOperation
+  }: {
+    enabledToolNames: string[]
+    executeHostOperation: (
+      name: string,
+      args: Record<string, unknown>,
+      toolCallId: string | null
+    ) => Promise<string>
+  }) => {
+    mocks.tools = enabledToolNames.map((name) => ({
+      name,
+      invoke: (input: unknown) => executeHostOperation(
+        name,
+        input as Record<string, unknown>,
+        null
+      )
+    }))
     return { streamEvents: async function* () {} }
   }
 }))
@@ -304,7 +317,12 @@ describe('AI agent workspace tools', () => {
     const result = JSON.parse(
       await getTool('create_workspace_connections').invoke({
         connections: [
-          { sourceItemId: 'item-1', targetItemId: 'item-2' },
+          {
+            sourceItemId: 'item-1',
+            targetItemId: 'item-2',
+            sourceAnchor: 'right',
+            targetAnchor: 'left'
+          },
           { sourceItemId: 'item-1', targetItemId: 'item-1' },
           { sourceItemId: 'item-1', targetItemId: 'missing' },
           { sourceItemId: 'item-3', targetItemId: 'item-4' }

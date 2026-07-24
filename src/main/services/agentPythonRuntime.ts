@@ -13,8 +13,9 @@ import {
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { dirname, join } from 'node:path'
+import type { AiSummaryContent } from '../../shared/ipc-types'
 
-export const AGENT_PYTHON_RUNTIME_VERSION = '0.2.0'
+export const AGENT_PYTHON_RUNTIME_VERSION = '0.3.0'
 
 const UV_VERSION = '0.11.16'
 const AGENT_PYTHON_VERSION = '3.12.13'
@@ -75,14 +76,9 @@ export interface AgentPythonProviderConfig {
   maxTokens: number | null
 }
 
-export interface AgentPythonToolSpec {
-  name: string
-  description: string
-  schema: Record<string, unknown>
-}
-
-export interface AgentPythonRequest {
+export interface AgentPythonAgentRequest {
   mode: 'run' | 'resume'
+  runId: string
   threadId: string
   workspaceId: string | null
   checkpointPath: string
@@ -91,14 +87,30 @@ export interface AgentPythonRequest {
   systemPrompt: string
   messages?: Array<Record<string, unknown>>
   decisions?: Array<Record<string, unknown>>
-  tools: AgentPythonToolSpec[]
-  readOnlyToolNames: string[]
-  academicToolNames: string[]
+  enabledToolNames: string[]
   sandboxRoot: string | null
   memories: Record<string, string>
   includeResearchMemory: boolean
   recursionLimit: number
 }
+
+export interface AgentPythonSummaryRequest {
+  mode: 'summary'
+  provider: AgentPythonProviderConfig
+  text: string
+}
+
+export interface AgentPythonTitleRequest {
+  mode: 'title'
+  provider: AgentPythonProviderConfig
+  userMessage: string
+  reasoningModel: boolean
+}
+
+export type AgentPythonRequest =
+  | AgentPythonAgentRequest
+  | AgentPythonSummaryRequest
+  | AgentPythonTitleRequest
 
 export interface AgentPythonEvent {
   event: string
@@ -520,6 +532,12 @@ export function createAgentPythonRuntime(deps: AgentPythonRuntimeDeps) {
             typeof error.message === 'string' ? error.message : 'Agent Python worker failed'
           )
           if (typeof error.name === 'string') failure.name = error.name
+          if (typeof error.status === 'number') {
+            Object.assign(failure, { status: error.status })
+          }
+          if (typeof error.code === 'string') {
+            Object.assign(failure, { code: error.code })
+          }
           throw failure
         }
       }
@@ -538,11 +556,56 @@ export function createAgentPythonRuntime(deps: AgentPythonRuntimeDeps) {
     }
   }
 
+  async function invoke(request: AgentPythonRequest, signal: AbortSignal): Promise<unknown> {
+    let result: unknown
+    for await (const _event of stream(
+      request,
+      {
+        executeTool: async (name) => {
+          throw new Error(`Unexpected host operation during ${request.mode}: ${name}`)
+        },
+        onComplete: (completion) => {
+          result = completion.result
+        }
+      },
+      signal
+    )) {
+      throw new Error(`Unexpected streamed event during ${request.mode}`)
+    }
+    return result
+  }
+
+  async function generateSummary(
+    request: Omit<AgentPythonSummaryRequest, 'mode'>,
+    signal: AbortSignal
+  ): Promise<AiSummaryContent> {
+    const result = await invoke({ mode: 'summary', ...request }, signal)
+    if (!result || typeof result !== 'object') {
+      throw new Error('Agent Python worker returned an invalid summary')
+    }
+    const value = result as Record<string, unknown>
+    if (typeof value.core !== 'string' || !Array.isArray(value.keyPoints)) {
+      throw new Error('Agent Python worker returned an invalid summary')
+    }
+    return {
+      core: value.core,
+      keyPoints: value.keyPoints.filter((item): item is string => typeof item === 'string')
+    }
+  }
+
+  async function generateTitle(
+    request: Omit<AgentPythonTitleRequest, 'mode'>,
+    signal: AbortSignal
+  ): Promise<string | null> {
+    const result = await invoke({ mode: 'title', ...request }, signal)
+    return typeof result === 'string' && result.length > 0 ? result : null
+  }
+
   function destroy(): void {
     lifecycleController.abort()
   }
 
-  return { install, stream, destroy }
+  return { install, stream, generateSummary, generateTitle, destroy }
 }
 
 export type AgentPythonRuntime = ReturnType<typeof createAgentPythonRuntime>

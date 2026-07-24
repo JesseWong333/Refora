@@ -7,17 +7,12 @@ import type { AiProvider, ChatSendRequest, Document } from '../../src/shared/ipc
 
 interface CapturedTool {
   name: string
-  description: string
   func: (input: unknown) => Promise<string>
-  schema?: {
-    safeParse: (input: unknown) => { success: boolean }
-  }
 }
 
 const mocks = vi.hoisted(() => ({
   openPath: vi.fn<(path: string) => Promise<string>>(),
   tools: [] as CapturedTool[],
-  readOnlyToolNames: [] as string[],
   messages: [] as unknown[],
   systemPrompt: ''
 }))
@@ -32,22 +27,34 @@ vi.mock('../../src/main/services/pdfPath', () => ({
   resolvePdfFilePath: (filePath: string) => filePath
 }))
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn()
-}))
-
 vi.mock('../../src/main/services/reforaDeepAgent', () => ({
   createReforaDeepAgent: ({
-    tools,
-    readOnlyTools,
+    enabledToolNames,
+    executeHostOperation,
     systemPrompt
   }: {
-    tools: CapturedTool[]
-    readOnlyTools: CapturedTool[]
+    enabledToolNames: string[]
+    executeHostOperation: (
+      name: string,
+      args: Record<string, unknown>,
+      toolCallId: string | null
+    ) => Promise<string>
     systemPrompt: string
   }) => {
-    mocks.tools = tools
-    mocks.readOnlyToolNames = readOnlyTools.map((tool) => tool.name)
+    mocks.tools = enabledToolNames.map((name) => ({
+      name,
+      func: (input: unknown) => executeHostOperation(
+        name,
+        typeof input === 'string'
+          ? {
+              [name === 'search_library' || name === 'search_workspace_docs'
+                ? 'query'
+                : 'docId']: input
+            }
+          : input as Record<string, unknown>,
+        null
+      )
+    }))
     mocks.systemPrompt = systemPrompt
     return {
       streamEvents: async function* (input: { messages: unknown[] }) {
@@ -57,23 +64,6 @@ vi.mock('../../src/main/services/reforaDeepAgent', () => ({
     }
   }
 }))
-
-vi.mock('@langchain/core/tools', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@langchain/core/tools')>()
-  return {
-    DynamicTool: actual.DynamicTool,
-    DynamicStructuredTool: actual.DynamicStructuredTool
-  }
-})
-
-vi.mock('@langchain/core/messages', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@langchain/core/messages')>()
-  return {
-    SystemMessage: actual.SystemMessage,
-    HumanMessage: actual.HumanMessage,
-    AIMessage: actual.AIMessage
-  }
-})
 
 vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: vi.fn(),
@@ -240,12 +230,6 @@ describe('AI agent tools', () => {
     expect(mocks.systemPrompt).toContain(
       'Never ask the user to approve OCR in assistant text'
     )
-    expect(getTool('prepare_paper_ocr').description).toContain(
-      'Call this tool directly without asking for approval in assistant text'
-    )
-    expect(mocks.readOnlyToolNames).toContain('read_paper_fulltext')
-    expect(mocks.readOnlyToolNames).toContain('read_paper_ocr_fulltext')
-    expect(mocks.readOnlyToolNames).not.toContain('prepare_paper_ocr')
     expect(mocks.systemPrompt).not.toContain('Workspace paper catalog')
     expect(mocks.systemPrompt).not.toContain('A workspace is selected')
   })
@@ -365,12 +349,9 @@ describe('AI agent tools', () => {
     }, 'global-academic')
 
     expect(mocks.systemPrompt).not.toContain('/memories/research.md')
-    const memoryTool = getTool('propose_workspace_memory_update')
-    expect(memoryTool.schema?.safeParse({
-      path: '/research.md',
-      content: 'should not be accepted',
-      rationale: 'test'
-    }).success).toBe(false)
+    expect(mocks.tools.map((tool) => tool.name)).toContain(
+      'propose_workspace_memory_update'
+    )
   })
 
   describe('get_paper_metadata', () => {

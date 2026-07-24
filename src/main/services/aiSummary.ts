@@ -1,22 +1,17 @@
 import { type BrowserWindow } from 'electron'
-import type { ChatOpenAI } from '@langchain/openai'
 import type { Repositories } from '../db/repositories'
 import type { AiSummaryContent } from '../../shared/ipc-types'
 import type { AiProvidersService } from './aiProviders'
 import type { PdfTextService } from './pdfText'
 import { emitAiSummaryUpdated, emitAiSummaryError } from '../ipc/events'
 import { logger } from './logger'
-import { createProviderChatModel } from './providerModel'
+import { createAgentPythonProviderConfig } from './agentProviderConfig'
+import type { AgentPythonRuntime } from './agentPythonRuntime'
 
 const MAX_CONCURRENT = 2
-const CHUNK_SIZE = 3000
-const CHUNK_OVERLAP = 200
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 1000
 const SUMMARY_MAX_TOKENS = 450
-const MAX_CORE_CHARS = 480
-const MAX_KEY_POINTS = 5
-const MAX_KEY_POINT_CHARS = 180
 
 const RETRYABLE_NETWORK_CODES = new Set([
   'ECONNRESET',
@@ -92,72 +87,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function splitText(text: string, chunkSize: number, chunkOverlap: number): string[] {
-  if (text.length === 0) return []
-  if (text.length <= chunkSize) return [text]
-  const chunks: string[] = []
-  let start = 0
-  while (start < text.length) {
-    const end = Math.min(start + chunkSize, text.length)
-    chunks.push(text.slice(start, end))
-    if (end >= text.length) break
-    start += chunkSize - chunkOverlap
-  }
-  return chunks
-}
-
-function contentToText(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === 'string') return part
-        if (part && typeof part === 'object') {
-          const obj = part as Record<string, unknown>
-          if (typeof obj.text === 'string') return obj.text
-        }
-        return ''
-      })
-      .join('')
-  }
-  return ''
-}
-
-function stripCodeFences(raw: string): string {
-  return raw
-    .replace(/^\s*```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim()
-}
-
-function compactText(raw: string, maxChars: number): string {
-  const normalized = raw.replace(/\s+/g, ' ').trim()
-  if (normalized.length <= maxChars) return normalized
-  const slice = normalized.slice(0, maxChars - 1).trimEnd()
-  const lastSpace = slice.lastIndexOf(' ')
-  const shortened = lastSpace >= Math.floor(maxChars * 0.75) ? slice.slice(0, lastSpace) : slice
-  return `${shortened.trimEnd()}…`
-}
-
-function toSummaryContent(parsed: unknown): AiSummaryContent | null {
-  if (!parsed || typeof parsed !== 'object') return null
-  const obj = parsed as Record<string, unknown>
-  const core = typeof obj.core === 'string' ? compactText(obj.core, MAX_CORE_CHARS) : ''
-  const keyPoints = Array.isArray(obj.keyPoints)
-    ? obj.keyPoints
-        .filter((x): x is string => typeof x === 'string')
-        .map((point) => compactText(point, MAX_KEY_POINT_CHARS))
-        .filter(Boolean)
-        .slice(0, MAX_KEY_POINTS)
-    : []
-  return { core, keyPoints }
-}
-
 export function createAiSummaryService(
   repos: Repositories,
   win: BrowserWindow | (() => BrowserWindow | null),
   aiProvidersService: AiProvidersService,
-  pdfTextService: PdfTextService
+  pdfTextService: PdfTextService,
+  agentPythonRuntime: AgentPythonRuntime
 ) {
   let destroyed = false
   const jobQueue: SummaryJob[] = []
@@ -178,45 +113,6 @@ export function createAiSummaryService(
     const w = getWin()
     if (w) emitAiSummaryError(w, { docId, message })
     emit(docId)
-  }
-
-  async function invokeSummary(
-    model: ChatOpenAI,
-    text: string,
-    docId: string
-  ): Promise<AiSummaryContent> {
-    const chunks = splitText(text, CHUNK_SIZE, CHUNK_OVERLAP)
-    const chunkSummaries: string[] = []
-    for (const chunk of chunks) {
-      if (destroyed) throw new Error('Summary service destroyed')
-      const res = await model.invoke(
-        `You are a research assistant reading text extracted from a PDF. Capture at most two essential facts from this excerpt in no more than 60 words total. Be concise and factual; do not write a long interpretation.\n\nExtracted PDF text:\n${chunk}`
-      )
-      chunkSummaries.push(contentToText((res as { content: unknown }).content))
-    }
-
-    const combined = chunkSummaries.join('\n\n')
-
-    if (combined.trim().length === 0) {
-      return { core: '', keyPoints: [] }
-    }
-
-    const finalRes = await model.invoke(
-      `You are a research assistant. Create a brief factual overview from the extracted PDF section notes below. Respond in the paper's primary language with ONLY a JSON object containing exactly two fields: "core" (one or two short sentences, at most 80 words) and "keyPoints" (an array of 3 to 5 concise strings, each at most 20 words). Do not add methods, contribution, analysis, markdown, or commentary.\n\nExtracted PDF section notes:\n${combined}`
-    )
-    const finalText = contentToText((finalRes as { content: unknown }).content)
-    let parsed: AiSummaryContent | null
-    try {
-      parsed = toSummaryContent(JSON.parse(stripCodeFences(finalText)))
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      logger.warn(`aiSummary:json-parse-failed id=${docId}: ${msg}`)
-      parsed = null
-    }
-    return parsed ?? {
-      core: compactText(finalText.trim() || combined, MAX_CORE_CHARS),
-      keyPoints: []
-    }
   }
 
   async function processSummary(docId: string): Promise<void> {
@@ -259,10 +155,9 @@ export function createAiSummaryService(
       return
     }
 
-    const model = createProviderChatModel({
+    const providerConfig = createAgentPythonProviderConfig({
       provider,
       apiKey: key,
-      streaming: false,
       deepThinking: false,
       maxTokens: SUMMARY_MAX_TOKENS
     })
@@ -272,7 +167,10 @@ export function createAiSummaryService(
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       if (destroyed) return
       try {
-        content = await invokeSummary(model, text, docId)
+        content = await agentPythonRuntime.generateSummary(
+          { provider: providerConfig, text },
+          new AbortController().signal
+        )
         lastError = null
         break
       } catch (e) {

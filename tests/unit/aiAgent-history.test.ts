@@ -14,58 +14,8 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn()
 }))
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn(class {})
-}))
-
 vi.mock('../../src/main/services/reforaDeepAgent', () => ({
   createReforaDeepAgent: vi.fn(() => ({ streamEvents: mockStreamEvents }))
-}))
-
-vi.mock('@langchain/core/tools', () => ({
-  DynamicTool: vi.fn(class {
-    constructor(opts: object) {
-      Object.assign(this, opts)
-    }
-  }),
-  DynamicStructuredTool: vi.fn(class {
-    constructor(opts: object) {
-      Object.assign(this, opts)
-    }
-  })
-}))
-
-vi.mock('@langchain/core/messages', () => ({
-  SystemMessage: class {
-    content: unknown
-    constructor(content: unknown) {
-      this.content = content
-    }
-  },
-  HumanMessage: class {
-    content: unknown
-    constructor(content: unknown) {
-      this.content = content
-    }
-  },
-  AIMessage: class {
-    content: unknown
-    tool_calls?: unknown[]
-    constructor(content: unknown) {
-      this.content = content
-    }
-  },
-  ToolMessage: class {
-    content: unknown
-    tool_call_id: string
-    name?: string
-    constructor(fields: unknown) {
-      const f = fields as { content?: unknown; tool_call_id?: string; name?: string }
-      this.content = f?.content
-      this.tool_call_id = f?.tool_call_id ?? ''
-      this.name = f?.name
-    }
-  }
 }))
 
 vi.mock('../../src/main/ipc/events', () => ({

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AIMessage } from '@langchain/core/messages'
 import type { AiProvider } from '../../src/shared/ipc-types'
 import { createRepositories } from '../../src/main/db/repositories'
 import {
@@ -18,14 +17,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/main/services/reforaDeepAgent', () => ({
   createReforaDeepAgent: mocks.createReforaDeepAgent
-}))
-
-vi.mock('../../src/main/services/providerModel', () => ({
-  createProviderChatModel: vi.fn(() => ({ id: 'model' })),
-  buildProviderReasoningOptions: vi.fn(() => ({
-    useResponsesApi: false,
-    modelKwargs: {}
-  }))
 }))
 
 vi.mock('../../src/main/services/logger', () => ({
@@ -132,7 +123,7 @@ describe('AiAgentService approval resume', () => {
       getState: vi.fn(async () => ({
         config: { configurable: { checkpoint_id: 'checkpoint-2' } },
         values: {
-          messages: [new AIMessage('Published report.md')],
+          messages: [{ content: 'Published report.md' }],
           todos: [{ content: 'Publish the report', status: 'completed' }]
         },
         tasks: []
@@ -312,7 +303,7 @@ describe('AiAgentService approval resume', () => {
     })
     let capturedOptions: {
       systemPrompt: string
-      tools: Array<{ name: string }>
+      enabledToolNames: string[]
     } | null = null
     let resumeCommand: unknown = null
     mocks.createReforaDeepAgent.mockImplementation((options) => {
@@ -323,13 +314,13 @@ describe('AiAgentService approval resume', () => {
           yield {
             event: 'on_chain_end',
             data: {
-              output: { messages: [new AIMessage('Continued without OCR.')] }
+              output: { messages: [{ content: 'Continued without OCR.' }] }
             }
           }
         },
         getState: vi.fn(async () => ({
           config: { configurable: { checkpoint_id: 'checkpoint-after-rejection' } },
-          values: { messages: [new AIMessage('Continued without OCR.')] },
+          values: { messages: [{ content: 'Continued without OCR.' }] },
           tasks: []
         }))
       }
@@ -362,9 +353,7 @@ describe('AiAgentService approval resume', () => {
     expect(capturedOptions?.systemPrompt).not.toContain(
       'Do not run or request OCR again'
     )
-    expect(capturedOptions?.tools).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'prepare_paper_ocr' })
-    ]))
+    expect(capturedOptions?.enabledToolNames).toContain('prepare_paper_ocr')
     expect(resumeCommand).toMatchObject({
       resume: {
         decisions: [{
@@ -404,7 +393,7 @@ describe('AiAgentService approval resume', () => {
       streamEvents: vi.fn(async function* () {}),
       getState: vi.fn(async () => ({
         config: { configurable: { checkpoint_id: 'checkpoint-completed' } },
-        values: { messages: [new AIMessage('Resumed')] },
+        values: { messages: [{ content: 'Resumed' }] },
         tasks: []
       }))
     })
@@ -450,9 +439,9 @@ describe('AiAgentService approval resume', () => {
       systemPrompt: expect.stringContaining(
         'Bounded arXiv and Semantic Scholar research tools are available'
       ),
-      tools: expect.arrayContaining([
-        expect.objectContaining({ name: 'search_arxiv' }),
-        expect.objectContaining({ name: 'explore_research_frontier' })
+      enabledToolNames: expect.arrayContaining([
+        'search_arxiv',
+        'explore_research_frontier'
       ])
     }))
   })

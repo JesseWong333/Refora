@@ -1,34 +1,20 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { Document, AiProvider, AiSummaryContent } from '../../src/shared/ipc-types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AiProvider, AiSummaryContent, Document } from '../../src/shared/ipc-types'
 import type { Repositories } from '../../src/main/db/repositories'
 
-const { mockInvoke } = vi.hoisted(() => ({
-  mockInvoke: vi.fn()
-}))
-
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn(class {
-    invoke = mockInvoke
-  })
+const mocks = vi.hoisted(() => ({
+  emitUpdated: vi.fn(),
+  emitError: vi.fn(),
+  generateSummary: vi.fn()
 }))
 
 vi.mock('electron', () => ({
-  BrowserWindow: vi.fn(),
-  safeStorage: {
-    isEncryptionAvailable: vi.fn(() => true),
-    encryptString: vi.fn((s: string) => Buffer.from(`enc:${s}`)),
-    decryptString: vi.fn((b: Buffer) => b.toString())
-  }
-}))
-
-const { mockEmitUpdated, mockEmitError } = vi.hoisted(() => ({
-  mockEmitUpdated: vi.fn(),
-  mockEmitError: vi.fn()
+  BrowserWindow: vi.fn()
 }))
 
 vi.mock('../../src/main/ipc/events', () => ({
-  emitAiSummaryUpdated: mockEmitUpdated,
-  emitAiSummaryError: mockEmitError
+  emitAiSummaryUpdated: mocks.emitUpdated,
+  emitAiSummaryError: mocks.emitError
 }))
 
 vi.mock('../../src/main/services/logger', () => ({
@@ -42,325 +28,154 @@ vi.mock('../../src/main/services/logger', () => ({
 
 import { createAiSummaryService } from '../../src/main/services/aiSummary'
 
-const mockDoc = { id: 'doc-1', filePath: '/test/file.pdf' } as unknown as Document
-const mockProvider: AiProvider = {
+const doc = { id: 'doc-1', filePath: '/test/file.pdf' } as unknown as Document
+const provider: AiProvider = {
   id: 'p1',
+  presetId: 'openai',
   name: 'Test',
   baseUrl: 'https://api.test.com/v1',
+  apiProtocol: 'openai-chat',
+  reasoningControl: 'none',
+  reasoningEffort: 'none',
   model: 'gpt-4o',
   baseModel: 'gpt-4o',
   variant: '',
-  variantFormat: 'dash',
+  variantFormat: 'none',
   hasKey: true,
   temperature: null,
   maxTokens: null,
   createdAt: 1700000000000
 }
 
-function makeMockRepos(): Repositories {
+function makeRepos(): Repositories {
   return {
-    documents: { get: vi.fn(() => mockDoc) },
+    documents: { get: vi.fn(() => doc) },
     settings: { get: vi.fn(() => 'p1') },
     aiSummaries: {
-      setSummary: vi.fn(),
-      getFullText: vi.fn(() => null)
+      setSummary: vi.fn()
     }
-  } as unknown as Repositories & { aiSummaries: { setSummary: ReturnType<typeof vi.fn>; getFullText: ReturnType<typeof vi.fn> } }
+  } as unknown as Repositories
 }
 
-function makeMockAiProviders() {
-  return {
-    getProvider: vi.fn(() => mockProvider),
-    getDecryptedKey: vi.fn(() => 'secret-key')
-  }
-}
-
-function makeMockPdfText(text: string = 'Short text content') {
-  return {
-    getOrExtract: vi.fn(async () => text)
-  }
-}
-
-function makeMockWin() {
+function makeWin() {
   return {
     isDestroyed: vi.fn(() => false),
     webContents: { send: vi.fn() }
   } as never
 }
 
-let repos: ReturnType<typeof makeMockRepos>
-let aiProviders: ReturnType<typeof makeMockAiProviders>
-let pdfText: ReturnType<typeof makeMockPdfText>
+let repos: ReturnType<typeof makeRepos>
+let pdfText: { getOrExtract: ReturnType<typeof vi.fn> }
+let providers: {
+  getProvider: ReturnType<typeof vi.fn>
+  getDecryptedKey: ReturnType<typeof vi.fn>
+}
 let service: ReturnType<typeof createAiSummaryService>
-const flush = (ms = 0) => new Promise((r) => setTimeout(r, ms))
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockInvoke.mockReset()
-  repos = makeMockRepos()
-  aiProviders = makeMockAiProviders()
-  pdfText = makeMockPdfText()
-  service = createAiSummaryService(repos, makeMockWin(), aiProviders as never, pdfText as never)
+  repos = makeRepos()
+  pdfText = { getOrExtract: vi.fn(async () => 'Extracted paper text') }
+  providers = {
+    getProvider: vi.fn(() => provider),
+    getDecryptedKey: vi.fn(() => 'secret-key')
+  }
+  mocks.generateSummary.mockResolvedValue({
+    core: 'Core summary',
+    keyPoints: ['point 1', 'point 2']
+  })
+  service = createAiSummaryService(
+    repos,
+    makeWin(),
+    providers as never,
+    pdfText as never,
+    { generateSummary: mocks.generateSummary } as never
+  )
 })
 
 afterEach(() => {
   service.destroy()
 })
 
-describe('AiSummaryService', () => {
-  describe('splitText logic (via invoke call count)', () => {
-    it('empty text: 0 invoke calls, setSummary with empty content', async () => {
-      pdfText.getOrExtract.mockResolvedValue('')
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-      expect(mockInvoke).not.toHaveBeenCalled()
-      const content = repos.aiSummaries.setSummary.mock.calls[0][2] as AiSummaryContent
-      expect(content).toEqual({ core: '', keyPoints: [] })
+describe('AiSummaryService Python backend', () => {
+  it('extracts text, delegates the complete summary job to Python, and persists the result', async () => {
+    service.summarize('doc-1')
+
+    await vi.waitFor(() => {
+      expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1)
     })
-
-    it('short text (<= chunk size): 2 invoke calls (1 chunk + 1 final)', async () => {
-      pdfText.getOrExtract.mockResolvedValue('Short text')
-      mockInvoke.mockResolvedValue({ content: 'chunk summary' })
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk summary' })
-      mockInvoke.mockResolvedValueOnce({ content: '{"core":"Core","keyPoints":["a"]}' })
-
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-      expect(mockInvoke).toHaveBeenCalledTimes(2)
-    })
-
-    it('long text (> chunk size): multiple chunks + 1 final invoke', async () => {
-      const longText = 'x'.repeat(6500)
-      pdfText.getOrExtract.mockResolvedValue(longText)
-      mockInvoke.mockResolvedValue({ content: 'chunk summary' })
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk1' })
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk2' })
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk3' })
-      mockInvoke.mockResolvedValueOnce({ content: '{"core":"Final","keyPoints":[]}' })
-
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-      expect(mockInvoke).toHaveBeenCalledTimes(4)
-    })
+    expect(mocks.generateSummary).toHaveBeenCalledWith(
+      {
+        provider: {
+          model: 'gpt-4o',
+          baseUrl: 'https://api.test.com/v1',
+          apiKey: 'secret-key',
+          useResponsesApi: false,
+          modelKwargs: {},
+          temperature: null,
+          maxTokens: 450
+        },
+        text: 'Extracted paper text'
+      },
+      expect.any(AbortSignal)
+    )
+    expect(repos.aiSummaries.setSummary).toHaveBeenCalledWith(
+      'doc-1',
+      'gpt-4o',
+      { core: 'Core summary', keyPoints: ['point 1', 'point 2'] }
+    )
+    expect(mocks.emitUpdated).toHaveBeenCalledWith(expect.anything(), 'doc-1')
   })
 
-  describe('processSummary error paths', () => {
-    it('when doc not found: calls emit with docId, returns early', async () => {
-      repos.documents.get = vi.fn(() => null)
-      service.summarize('doc-1')
-      await flush(10)
-      expect(mockEmitUpdated).toHaveBeenCalledWith(expect.anything(), 'doc-1')
-      expect(mockEmitError).not.toHaveBeenCalled()
-      expect(pdfText.getOrExtract).not.toHaveBeenCalled()
-    })
+  it('preserves an empty summary returned by Python', async () => {
+    pdfText.getOrExtract.mockResolvedValue('')
+    mocks.generateSummary.mockResolvedValue({ core: '', keyPoints: [] })
 
-    it('when pdfText extraction fails: calls emitError with Failed to extract PDF text', async () => {
-      pdfText.getOrExtract.mockRejectedValue(new Error('extraction error'))
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(mockEmitError).toHaveBeenCalledTimes(1))
-      const payload = mockEmitError.mock.calls[0][1] as { docId: string; message: string }
-      expect(payload.docId).toBe('doc-1')
-      expect(payload.message).toContain('Failed to extract PDF text')
-    })
+    service.summarize('doc-1')
 
-    it('when no active provider: calls emitError with No AI provider configured', async () => {
-      repos.settings.get = vi.fn(() => '')
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(mockEmitError).toHaveBeenCalledTimes(1))
-      const payload = mockEmitError.mock.calls[0][1] as { docId: string; message: string }
-      expect(payload.message).toContain('No AI provider configured')
+    await vi.waitFor(() => {
+      expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1)
     })
-
-    it('when provider decryption fails: calls emitError', async () => {
-      aiProviders.getProvider.mockImplementation(() => {
-        throw new Error('provider not found')
-      })
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(mockEmitError).toHaveBeenCalledTimes(1))
-      const payload = mockEmitError.mock.calls[0][1] as { docId: string; message: string }
-      expect(payload.message).toContain('AI provider unavailable')
-    })
-
-    it('when getDecryptedKey fails: calls emitError', async () => {
-      aiProviders.getDecryptedKey.mockImplementation(() => {
-        throw new Error('decryption failed')
-      })
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(mockEmitError).toHaveBeenCalledTimes(1))
-      const payload = mockEmitError.mock.calls[0][1] as { docId: string; message: string }
-      expect(payload.message).toContain('AI provider unavailable')
-    })
+    const content = vi.mocked(repos.aiSummaries.setSummary).mock.calls[0][2] as AiSummaryContent
+    expect(content).toEqual({ core: '', keyPoints: [] })
   })
 
-  describe('processSummary normal flow', () => {
-    it('single chunk: calls invoke twice, setSummary, and emit', async () => {
-      pdfText.getOrExtract.mockResolvedValue('Some text content')
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk summary' })
-      mockInvoke.mockResolvedValueOnce({
-        content: '{"core":"Core summary","keyPoints":["point1","point2"]}'
-      })
+  it('reports extraction, provider, and Python generation failures without persisting', async () => {
+    pdfText.getOrExtract.mockRejectedValueOnce(new Error('extract failed'))
+    service.summarize('doc-1')
+    await vi.waitFor(() => expect(mocks.emitError).toHaveBeenCalledTimes(1))
+    expect(mocks.emitError.mock.calls[0][1].message).toContain('Failed to extract PDF text')
+    expect(repos.aiSummaries.setSummary).not.toHaveBeenCalled()
 
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-
-      expect(mockInvoke).toHaveBeenCalledTimes(2)
-      const [docId, model, content] = repos.aiSummaries.setSummary.mock.calls[0] as [
-        string,
-        string,
-        AiSummaryContent
-      ]
-      expect(docId).toBe('doc-1')
-      expect(model).toBe('gpt-4o')
-      expect(content).toEqual({ core: 'Core summary', keyPoints: ['point1', 'point2'] })
-      expect(mockEmitUpdated).toHaveBeenCalledWith(expect.anything(), 'doc-1')
-      expect(pdfText.getOrExtract.mock.invocationCallOrder[0]).toBeLessThan(
-        mockInvoke.mock.invocationCallOrder[0]
-      )
-      expect(mockInvoke.mock.calls[0][0]).toContain('text extracted from a PDF')
-      expect(mockInvoke.mock.calls[1][0]).toContain('exactly two fields')
-      expect(mockInvoke.mock.calls[1][0]).toContain('3 to 5 concise strings')
+    vi.clearAllMocks()
+    pdfText.getOrExtract.mockResolvedValue('text')
+    providers.getProvider.mockImplementationOnce(() => {
+      throw new Error('provider missing')
     })
+    service.summarize('doc-1')
+    await vi.waitFor(() => expect(mocks.emitError).toHaveBeenCalledTimes(1))
+    expect(mocks.emitError.mock.calls[0][1].message).toContain('AI provider unavailable')
 
-    it('JSON parse failure: setSummary called with fallback content (core=raw text, keyPoints=[])', async () => {
-      pdfText.getOrExtract.mockResolvedValue('Some text content')
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk summary' })
-      mockInvoke.mockResolvedValueOnce({ content: 'This is not JSON at all' })
-
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-
-      const content = repos.aiSummaries.setSummary.mock.calls[0][2] as AiSummaryContent
-      expect(content).toEqual({ core: 'This is not JSON at all', keyPoints: [] })
-    })
-
-    it('JSON with code fences: strips fences and parses correctly', async () => {
-      pdfText.getOrExtract.mockResolvedValue('Some text content')
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk summary' })
-      mockInvoke.mockResolvedValueOnce({
-        content: '```json\n{"core":"Fenced","keyPoints":["a"]}\n```'
-      })
-
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-
-      const content = repos.aiSummaries.setSummary.mock.calls[0][2] as AiSummaryContent
-      expect(content).toEqual({ core: 'Fenced', keyPoints: ['a'] })
-    })
-
-    it('handles array content from model response', async () => {
-      pdfText.getOrExtract.mockResolvedValue('Some text content')
-      mockInvoke.mockResolvedValueOnce({ content: [{ type: 'text', text: 'chunk summary' }] })
-      mockInvoke.mockResolvedValueOnce({
-        content: [{ type: 'text', text: '{"core":"Array","keyPoints":[]}' }]
-      })
-
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-
-      const content = repos.aiSummaries.setSummary.mock.calls[0][2] as AiSummaryContent
-      expect(content).toEqual({ core: 'Array', keyPoints: [] })
-    })
-
-    it('keeps new summaries brief and ignores extra interpretation sections', async () => {
-      pdfText.getOrExtract.mockResolvedValue('Some text content')
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk summary' })
-      mockInvoke.mockResolvedValueOnce({
-        content: JSON.stringify({
-          core: 'x'.repeat(600),
-          keyPoints: ['1', '2', '3', '4', '5', '6'],
-          methods: 'Survey of methods',
-          contribution: 'Key contribution'
-        })
-      })
-
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(1))
-
-      const content = repos.aiSummaries.setSummary.mock.calls[0][2] as AiSummaryContent
-      expect(content.core.length).toBeLessThanOrEqual(480)
-      expect(content.core.endsWith('…')).toBe(true)
-      expect(content.keyPoints).toEqual(['1', '2', '3', '4', '5'])
-      expect(content.methods).toBeUndefined()
-      expect(content.contribution).toBeUndefined()
-    })
+    vi.clearAllMocks()
+    providers.getProvider.mockReturnValue(provider)
+    mocks.generateSummary.mockRejectedValueOnce(Object.assign(new Error('bad key'), { status: 401 }))
+    service.summarize('doc-1')
+    await vi.waitFor(() => expect(mocks.emitError).toHaveBeenCalledTimes(1))
+    expect(mocks.emitError.mock.calls[0][1].message).toContain('Summary generation failed')
   })
 
-  describe('destroyed mid-process', () => {
-    it('destroyed before setSummary: setSummary not called', async () => {
-      pdfText.getOrExtract.mockResolvedValue('Some text content')
-      mockInvoke.mockResolvedValueOnce({ content: 'chunk summary' })
-      let resolveFinal!: (v: { content: string }) => void
-      mockInvoke.mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveFinal = resolve
-        })
-      )
+  it('does not persist a late Python result after destruction', async () => {
+    let resolve!: (value: AiSummaryContent) => void
+    mocks.generateSummary.mockReturnValueOnce(new Promise((done) => {
+      resolve = done
+    }))
 
-      service.summarize('doc-1')
-      await vi.waitFor(() => expect(mockInvoke).toHaveBeenCalledTimes(2))
+    service.summarize('doc-1')
+    await vi.waitFor(() => expect(mocks.generateSummary).toHaveBeenCalledTimes(1))
+    service.destroy()
+    resolve({ core: 'late', keyPoints: [] })
+    await new Promise((done) => setTimeout(done, 10))
 
-      service.destroy()
-      resolveFinal({ content: '{"core":"x","keyPoints":[]}' })
-      await flush(50)
-
-      expect(repos.aiSummaries.setSummary).not.toHaveBeenCalled()
-    })
-
-    it('destroyed after text extraction but before provider resolution: setSummary not called', async () => {
-      let resolveExtract!: (v: string) => void
-      pdfText.getOrExtract.mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveExtract = resolve
-        })
-      )
-
-      service.summarize('doc-1')
-      await flush(10)
-
-      service.destroy()
-      resolveExtract('Some text content')
-      await flush(50)
-
-      expect(repos.aiSummaries.setSummary).not.toHaveBeenCalled()
-      expect(aiProviders.getProvider).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('summarize queue', () => {
-    it('respects MAX_CONCURRENT=2 limit', async () => {
-      pdfText.getOrExtract.mockResolvedValue('text')
-      let active = 0
-      let maxConcurrent = 0
-      mockInvoke.mockImplementation(async () => {
-        active++
-        maxConcurrent = Math.max(maxConcurrent, active)
-        await flush(20)
-        active--
-        return { content: 'summary' }
-      })
-
-      service.summarize('doc-1')
-      service.summarize('doc-2')
-      service.summarize('doc-3')
-      service.summarize('doc-4')
-
-      await vi.waitFor(() => expect(repos.aiSummaries.setSummary).toHaveBeenCalledTimes(4))
-      expect(maxConcurrent).toBeLessThanOrEqual(2)
-    })
-
-    it('destroy clears queue: pending jobs do not call setSummary', async () => {
-      pdfText.getOrExtract.mockResolvedValue('text')
-      mockInvoke.mockImplementation(() => new Promise((r) => setTimeout(r, 10000)))
-
-      service.summarize('doc-1')
-      service.summarize('doc-2')
-      service.summarize('doc-3')
-      service.summarize('doc-4')
-
-      service.destroy()
-      await flush(50)
-
-      expect(repos.aiSummaries.setSummary).not.toHaveBeenCalled()
-    })
+    expect(repos.aiSummaries.setSummary).not.toHaveBeenCalled()
   })
 })

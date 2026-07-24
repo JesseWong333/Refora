@@ -64,6 +64,20 @@ reasoning_details_chunk = compatible_model._convert_chunk_to_generation_chunk(
     None,
 )
 assert reasoning_details_chunk.message.additional_kwargs["reasoning_content"] == "Compare evidence"
+roleless_chunk = compatible_model._convert_chunk_to_generation_chunk(
+    {
+        "choices": [
+            {
+                "delta": {
+                    "content": "Roleless compatible output",
+                }
+            }
+        ]
+    },
+    AIMessageChunk,
+    None,
+)
+assert roleless_chunk.message.content == "Roleless compatible output"
 callback_output = io.StringIO()
 with contextlib.redirect_stdout(callback_output):
     worker.EventCallback().on_llm_new_token(
@@ -86,11 +100,125 @@ class ToolCapableFakeMessagesModel(FakeMessagesListChatModel):
         return self
 
 
+class SequenceModel:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.prompts = []
+
+    def invoke(self, prompt):
+        self.prompts.append(prompt)
+        return self.responses.pop(0)
+
+
+summary_model = SequenceModel(
+    [
+        AIMessage(content="Chunk one"),
+        AIMessage(content="Chunk two"),
+        AIMessage(
+            content='```json\n{"core":"Compact core","keyPoints":["one","two"]}\n```'
+        ),
+    ]
+)
+worker._model = lambda config: summary_model
+summary = worker._generate_summary(
+    {
+        "provider": {
+            "model": "summary-model",
+            "apiKey": "test",
+            "baseUrl": "https://example.test/v1",
+            "useResponsesApi": False,
+            "modelKwargs": {},
+            "temperature": None,
+            "maxTokens": 450,
+        },
+        "text": "x" * 3100,
+    }
+)
+assert summary == {"core": "Compact core", "keyPoints": ["one", "two"]}
+assert len(summary_model.prompts) == 3
+
+title_model = SequenceModel(
+    [
+        AIMessage(
+            content=[],
+            additional_kwargs={"reasoning_content": "work\nUseful Research Title"},
+        )
+    ]
+)
+worker._model = lambda config: title_model
+title = worker._generate_title(
+    {
+        "provider": {
+            "model": "reasoning-model",
+            "apiKey": "test",
+            "baseUrl": "https://example.test/v1",
+            "useResponsesApi": False,
+            "modelKwargs": {},
+            "temperature": None,
+            "maxTokens": 512,
+        },
+        "userMessage": "Investigate agent migration.",
+        "reasoningModel": True,
+    }
+)
+assert title == "Useful Research Title"
+
+global_tools = worker._tool_definitions(False)
+workspace_tools = worker._tool_definitions(True)
+assert "/research.md" not in global_tools["propose_workspace_memory_update"]["schema"]["properties"]["path"]["enum"]
+assert "/research.md" in workspace_tools["propose_workspace_memory_update"]["schema"]["properties"]["path"]["enum"]
+assert "read_paper_fulltext" in worker._read_only_tool_names
+assert "prepare_paper_ocr" not in worker._read_only_tool_names
+connection_defaults = worker._apply_schema_defaults(
+    {"connections": [{"sourceItemId": "one", "targetItemId": "two"}]},
+    workspace_tools["create_workspace_connections"]["schema"],
+)
+assert connection_defaults["connections"][0]["sourceAnchor"] == "right"
+assert connection_defaults["connections"][0]["targetAnchor"] == "left"
+
+
+class PolicyRpc(worker.HostRpc):
+    def __init__(self):
+        super().__init__("run-1", "workspace-1")
+        self.effect = None
+        self.host_calls = 0
+
+    def call(self, name, arguments, tool_call_id):
+        if name == "__tool_effect_get":
+            return json.dumps(self.effect)
+        if name == "__tool_effect_begin":
+            self.effect = {"status": "running", "result": None}
+            return "{}"
+        if name == "__tool_effect_finish":
+            self.effect = {
+                "status": arguments["status"],
+                "result": arguments["result"],
+            }
+            return "{}"
+        self.host_calls += 1
+        return '{"published":true}'
+
+
+policy_rpc = PolicyRpc()
+first_policy_result = policy_rpc.call_tool(
+    "publish_workspace_artifacts",
+    {"paths": ["outputs/report.md"]},
+    "call-1",
+)
+second_policy_result = policy_rpc.call_tool(
+    "publish_workspace_artifacts",
+    {"paths": ["outputs/report.md"]},
+    "call-1",
+)
+assert first_policy_result == second_policy_result == '{"published":true}'
+assert policy_rpc.host_calls == 1
+
 worker._model = lambda config: ToolCapableFakeModel(responses=["Python Deep Agent ready"])
 
 with tempfile.TemporaryDirectory() as directory:
     request = {
         "mode": "run",
+        "runId": "smoke-run",
         "threadId": "smoke-thread",
         "workspaceId": None,
         "checkpointPath": str(Path(directory) / "checkpoints.sqlite"),
@@ -98,9 +226,7 @@ with tempfile.TemporaryDirectory() as directory:
         "provider": {},
         "systemPrompt": "You are Refora.",
         "messages": [{"role": "user", "content": "Respond once."}],
-        "tools": [],
-        "readOnlyToolNames": [],
-        "academicToolNames": [],
+        "enabledToolNames": [],
         "sandboxRoot": None,
         "memories": {"/brief.md": ""},
         "includeResearchMemory": False,
@@ -172,17 +298,7 @@ with tempfile.TemporaryDirectory() as directory:
         **request,
         "threadId": "approval-thread",
         "messages": [{"role": "user", "content": "Read the scan."}],
-        "tools": [
-            {
-                "name": "prepare_paper_ocr",
-                "description": "Prepare OCR.",
-                "schema": {
-                    "type": "object",
-                    "properties": {"docId": {"type": "string"}},
-                    "required": ["docId"],
-                },
-            }
-        ],
+        "enabledToolNames": ["prepare_paper_ocr"],
     }
     interrupted_output = io.StringIO()
     with contextlib.redirect_stdout(interrupted_output):
@@ -224,22 +340,18 @@ with tempfile.TemporaryDirectory() as directory:
 
     host_calls = []
 
-    class RecordingRpc:
+    class RecordingRpc(worker.HostRpc):
+        def __init__(self):
+            super().__init__("recording-run", None)
+
         def call(self, name, arguments, tool_call_id):
             host_calls.append((name, arguments, tool_call_id))
             return '{"ok":true}'
 
     host_tool = worker._host_tool(
-        {
-            "name": "search_library",
-            "description": "Search papers.",
-            "schema": {
-                "type": "object",
-                "properties": {"query": {"type": "string"}},
-                "required": ["query"],
-            },
-        },
+        "search_library",
         RecordingRpc(),
+        False,
     )
     host_result = host_tool.invoke(
         {
@@ -251,5 +363,5 @@ with tempfile.TemporaryDirectory() as directory:
     )
     assert host_result.content == '{"ok":true}'
     assert host_calls == [
-        ("search_library", {"query": "agents"}, "tool-call-1")
+        ("__host_search_library", {"query": "agents"}, "tool-call-1")
     ]

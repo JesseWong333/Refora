@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   })
 }))
 
-vi.mock('@langchain/openai', () => ({ ChatOpenAI: vi.fn() }))
 vi.mock('../../src/main/services/reforaDeepAgent', () => ({
   createReforaDeepAgent: mocks.createAgent
 }))
@@ -131,28 +130,33 @@ describe('aiAgent web_search tool', () => {
     }, 'thread-1')
 
     const options = mocks.options as {
-      tools: Array<{ name: string; invoke(input: unknown): Promise<string> }>
-      readOnlyTools: Array<{ name: string }>
+      enabledToolNames: string[]
+      executeHostOperation: (
+        name: string,
+        args: Record<string, unknown>,
+        toolCallId: string | null
+      ) => Promise<string>
     }
-    const searchTool = options.tools.find((candidate) => candidate.name === 'web_search')
-    const fetchTool = options.tools.find((candidate) => candidate.name === 'web_fetch')
-    expect(searchTool).toBeTruthy()
-    expect(fetchTool).toBeTruthy()
-    expect(options.readOnlyTools.map((candidate) => candidate.name)).toEqual(
+    expect(options.enabledToolNames).toEqual(
       expect.arrayContaining(['web_search', 'web_fetch'])
     )
 
-    const output = await searchTool!.invoke({ query: 'current topic', maxResults: 3 })
+    const output = await options.executeHostOperation(
+      'web_search',
+      { query: 'current topic', maxResults: 3 },
+      null
+    )
     expect(webSearch.search).toHaveBeenCalledWith(
       expect.objectContaining({ query: 'current topic', maxResults: 3 }),
       expect.any(AbortSignal)
     )
     expect(JSON.parse(output)).toMatchObject({ provider: 'ddgs' })
 
-    const fetched = await fetchTool!.invoke({
-      url: 'https://example.com',
-      maxChars: 5000
-    })
+    const fetched = await options.executeHostOperation(
+      'web_fetch',
+      { url: 'https://example.com', maxChars: 5000 },
+      null
+    )
     expect(webSearch.fetchPage).toHaveBeenCalledWith(
       { url: 'https://example.com', maxChars: 5000 },
       expect.any(AbortSignal)

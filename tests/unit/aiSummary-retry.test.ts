@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(),
+  generateSummary: vi.fn(),
   emitUpdated: vi.fn(),
   emitError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -19,12 +19,6 @@ vi.mock('electron', () => ({
     webContents = { send: vi.fn() }
     isDestroyed = () => false
   }
-}))
-
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn(class {
-    invoke = mocks.invoke
-  })
 }))
 
 vi.mock('../../src/main/ipc/events', () => ({
@@ -117,8 +111,14 @@ beforeEach(() => {
   mocks.getProvider.mockReturnValue(provider)
   mocks.getDecryptedKey.mockReturnValue('test-key')
   mocks.pdfGetOrExtract.mockResolvedValue(PAPER_TEXT)
-  mocks.invoke.mockResolvedValue({ content: '{"core":"summary","keyPoints":["point1"]}' })
-  service = createAiSummaryService(repos, mockWin, aiProvidersService, pdfTextService)
+  mocks.generateSummary.mockResolvedValue(SUCCESS_RESPONSE)
+  service = createAiSummaryService(
+    repos,
+    mockWin,
+    aiProvidersService,
+    pdfTextService,
+    { generateSummary: (...args: unknown[]) => mocks.generateSummary(...args) } as never
+  )
 })
 
 afterEach(() => {
@@ -126,20 +126,22 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-const SUCCESS_RESPONSE = { content: '{"core":"summary","keyPoints":["point1"]}' }
+const SUCCESS_RESPONSE = { core: 'summary', keyPoints: ['point1'] }
 
 function retryableError(message: string, status: number): Error {
   return Object.assign(new Error(message), { status })
 }
 
-function makeInvokeSequence(...sequences: Array<Promise<unknown> | Error>): typeof mocks.invoke {
+function makeInvokeSequence(
+  ...sequences: Array<Promise<unknown> | Error>
+): typeof mocks.generateSummary {
   let callIndex = 0
   return vi.fn(() => {
     const item = sequences[callIndex] ?? SUCCESS_RESPONSE
     callIndex++
     if (item instanceof Error) return Promise.reject(item)
     return Promise.resolve(item)
-  }) as typeof mocks.invoke
+  }) as typeof mocks.generateSummary
 }
 
 function isDone(): boolean {
@@ -157,7 +159,7 @@ async function runToCompletion(maxSteps = 40): Promise<void> {
 
 describe('aiSummary retry logic', () => {
   it('retries on retryable errors and succeeds', async () => {
-    mocks.invoke = makeInvokeSequence(
+    mocks.generateSummary = makeInvokeSequence(
       retryableError('rate limit exceeded', 429),
       retryableError('rate limit exceeded', 429),
       SUCCESS_RESPONSE
@@ -176,7 +178,7 @@ describe('aiSummary retry logic', () => {
 
   it('does not retry on non-retryable errors (401)', async () => {
     const authErr = retryableError('Invalid API key', 401)
-    mocks.invoke = makeInvokeSequence(authErr)
+    mocks.generateSummary = makeInvokeSequence(authErr)
 
     await runToCompletion()
 
@@ -191,7 +193,7 @@ describe('aiSummary retry logic', () => {
   })
 
   it('retries MAX_RETRIES times then emits error on persistent failure', async () => {
-    mocks.invoke = makeInvokeSequence(
+    mocks.generateSummary = makeInvokeSequence(
       retryableError('Internal Server Error', 500),
       retryableError('Internal Server Error', 500),
       retryableError('Internal Server Error', 500)
@@ -211,7 +213,7 @@ describe('aiSummary retry logic', () => {
 
   it('retries on network error codes (ECONNRESET)', async () => {
     const netErr = Object.assign(new Error('fetch failed'), { code: 'ECONNRESET' })
-    mocks.invoke = makeInvokeSequence(netErr, SUCCESS_RESPONSE)
+    mocks.generateSummary = makeInvokeSequence(netErr, SUCCESS_RESPONSE)
 
     await runToCompletion()
 
@@ -229,7 +231,7 @@ describe('aiSummary retry logic', () => {
     await runToCompletion()
 
     expect(mocks.pdfGetOrExtract).toHaveBeenCalledTimes(1)
-    expect(mocks.invoke).not.toHaveBeenCalled()
+    expect(mocks.generateSummary).not.toHaveBeenCalled()
     expect(mocks.setSummary).not.toHaveBeenCalled()
     expect(mocks.emitError).toHaveBeenCalledWith(
       mockWin,
@@ -241,7 +243,7 @@ describe('aiSummary retry logic', () => {
   })
 
   it('uses exponential backoff delays (1s, 2s) before retries', async () => {
-    mocks.invoke = makeInvokeSequence(
+    mocks.generateSummary = makeInvokeSequence(
       retryableError('server error', 503),
       retryableError('server error', 503),
       retryableError('server error', 503)

@@ -497,11 +497,33 @@ function buildRuntime(dbPath: string): Runtime {
     const metadataService = createMetadataService(repos, () => win)
     const aiProvidersService = createAiProvidersService(repos)
     const pdfTextService = createPdfTextService(repos, () => win)
+    const agentPythonWorkerPath = app.isPackaged
+      ? join(process.resourcesPath, 'agent-python', 'worker.py')
+      : join(__dirname, '../../resources/agent/worker.py')
+    const agentPythonProjectPath = app.isPackaged
+      ? join(process.resourcesPath, 'agent-python', 'pyproject.toml')
+      : join(__dirname, '../../python/agent/pyproject.toml')
+    const agentPythonRuntime = createAgentPythonRuntime({
+      userDataDir: app.getPath('userData'),
+      workerScriptPath: agentPythonWorkerPath,
+      projectPath: agentPythonProjectPath,
+      downloadFile: async (url, destination, signal) => {
+        const response = await net.fetch(url, { signal })
+        if (!response.ok) throw new Error(`Runtime download failed with HTTP ${response.status}`)
+        if (!response.body) throw new Error('Runtime download returned an empty response')
+        await pipeline(
+          Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>),
+          createWriteStream(destination, { mode: 0o600 }),
+          { signal }
+        )
+      }
+    })
     const aiSummaryService = createAiSummaryService(
       repos,
       () => win,
       aiProvidersService,
-      pdfTextService
+      pdfTextService,
+      agentPythonRuntime
     )
     const agentSandboxService = createAgentSandboxService({
       repos,
@@ -622,27 +644,6 @@ function buildRuntime(dbPath: string): Runtime {
       repos,
       ddgsRuntime: ddgsRuntimeManager,
       fetch: (url, init) => net.fetch(url, init)
-    })
-    const agentPythonWorkerPath = app.isPackaged
-      ? join(process.resourcesPath, 'agent-python', 'worker.py')
-      : join(__dirname, '../../resources/agent/worker.py')
-    const agentPythonProjectPath = app.isPackaged
-      ? join(process.resourcesPath, 'agent-python', 'pyproject.toml')
-      : join(__dirname, '../../python/agent/pyproject.toml')
-    const agentPythonRuntime = createAgentPythonRuntime({
-      userDataDir: app.getPath('userData'),
-      workerScriptPath: agentPythonWorkerPath,
-      projectPath: agentPythonProjectPath,
-      downloadFile: async (url, destination, signal) => {
-        const response = await net.fetch(url, { signal })
-        if (!response.ok) throw new Error(`Runtime download failed with HTTP ${response.status}`)
-        if (!response.body) throw new Error('Runtime download returned an empty response')
-        await pipeline(
-          Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>),
-          createWriteStream(destination, { mode: 0o600 }),
-          { signal }
-        )
-      }
     })
     const aiAgentService = createAiAgentService(
       repos,

@@ -7,10 +7,6 @@ vi.mock('../../src/main/services/reforaDeepAgent', () => ({
   createReforaDeepAgent: () => ({ streamEvents: mockStreamEvents })
 }))
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn()
-}))
-
 vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: vi.fn(),
   emitAiChatDone: vi.fn(),

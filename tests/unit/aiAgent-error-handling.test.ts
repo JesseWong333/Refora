@@ -14,21 +14,6 @@ const mocks = vi.hoisted(() => ({
   createReforaDeepAgent: vi.fn()
 }))
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn()
-}))
-
-vi.mock('@langchain/core/tools', () => ({
-  DynamicTool: vi.fn((opts: Record<string, unknown>) => opts),
-  DynamicStructuredTool: vi.fn((opts: Record<string, unknown>) => opts)
-}))
-
-vi.mock('@langchain/core/messages', () => ({
-  SystemMessage: vi.fn((content: string) => ({ content })),
-  HumanMessage: vi.fn((content: string) => ({ content })),
-  AIMessage: vi.fn((content: string) => ({ content }))
-}))
-
 vi.mock('../../src/main/ipc/events', () => ({
   emitAiChatToken: mocks.emitAiChatToken,
   emitAiChatDone: mocks.emitAiChatDone,

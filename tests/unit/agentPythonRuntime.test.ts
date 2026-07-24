@@ -74,6 +74,7 @@ describe('Agent Python runtime', () => {
     const events = []
     for await (const event of runtime.stream({
       mode: 'run',
+      runId: 'run-1',
       threadId: 'thread-1',
       workspaceId: null,
       checkpointPath: '/tmp/checkpoint.sqlite',
@@ -89,9 +90,7 @@ describe('Agent Python runtime', () => {
       },
       systemPrompt: 'prompt',
       messages: [{ role: 'user', content: 'hello' }],
-      tools: [],
-      readOnlyToolNames: [],
-      academicToolNames: [],
+      enabledToolNames: [],
       sandboxRoot: null,
       memories: {},
       includeResearchMemory: false,
@@ -121,5 +120,40 @@ describe('Agent Python runtime', () => {
         tasks: []
       }
     }])
+  })
+
+  it('runs summary and title jobs through the same managed Python worker', async () => {
+    const summaryRuntime = await fixture(
+      '#!/bin/sh\n' +
+      'read request\n' +
+      'printf \'%s\\n\' \'{"type":"complete","result":{"core":"Summary","keyPoints":["one"]},"state":{}}\'\n'
+    )
+    const provider = {
+      model: 'model',
+      baseUrl: 'https://example.test',
+      apiKey: 'key',
+      useResponsesApi: false,
+      modelKwargs: {},
+      temperature: null,
+      maxTokens: 450
+    }
+    await expect(summaryRuntime.generateSummary(
+      { provider, text: 'paper text' },
+      new AbortController().signal
+    )).resolves.toEqual({ core: 'Summary', keyPoints: ['one'] })
+
+    const titleRuntime = await fixture(
+      '#!/bin/sh\n' +
+      'read request\n' +
+      'printf \'%s\\n\' \'{"type":"complete","result":"Research Title","state":{}}\'\n'
+    )
+    await expect(titleRuntime.generateTitle(
+      {
+        provider: { ...provider, maxTokens: 30 },
+        userMessage: 'question',
+        reasoningModel: false
+      },
+      new AbortController().signal
+    )).resolves.toBe('Research Title')
   })
 })
