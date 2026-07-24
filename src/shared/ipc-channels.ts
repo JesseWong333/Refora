@@ -45,6 +45,10 @@ export const IpcChannel = {
   SettingsGet: 'settings:get',
   SettingsSet: 'settings:set',
 
+  WebSearchConfigGet: 'webSearch:config:get',
+  WebSearchConfigUpdate: 'webSearch:config:update',
+  WebSearchTest: 'webSearch:test',
+
   MineruStatus: 'mineru:status',
   MineruChooseInstallRoot: 'mineru:chooseInstallRoot',
   MineruInstall: 'mineru:install',

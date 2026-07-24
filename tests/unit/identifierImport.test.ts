@@ -148,6 +148,7 @@ describe('isSafeUrl', () => {
   it('rejects malformed URLs', async () => {
     expect(await isSafeUrl('not-a-url')).toBe(false)
     expect(await isSafeUrl('')).toBe(false)
+    expect(await isSafeUrl('https://user:secret@example.com/file.pdf')).toBe(false)
   })
 
   it('rejects hostnames that resolve to private addresses or cannot be resolved', async () => {

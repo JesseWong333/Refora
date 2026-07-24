@@ -66,6 +66,11 @@ import type {
   OcrProfile,
   OcrProgressEvent
 } from '../shared/mineru-types'
+import type {
+  WebSearchConfig,
+  WebSearchConfigPatch,
+  WebSearchTestResult
+} from '../shared/webSearch'
 
 class IpcResponseError extends Error {
   readonly code: string
@@ -190,6 +195,13 @@ const api: ReforaApi = {
     get: <T>(key: string, defaultValue: T) =>
       invoke<T>(IpcChannel.SettingsGet, key, defaultValue),
     set: (key: string, value: unknown) => invoke<void>(IpcChannel.SettingsSet, key, value)
+  },
+
+  webSearch: {
+    getConfig: () => invoke<WebSearchConfig>(IpcChannel.WebSearchConfigGet),
+    updateConfig: (patch: WebSearchConfigPatch) =>
+      invoke<WebSearchConfig>(IpcChannel.WebSearchConfigUpdate, patch),
+    test: () => invoke<WebSearchTestResult>(IpcChannel.WebSearchTest)
   },
 
   mineru: {

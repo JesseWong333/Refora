@@ -215,6 +215,35 @@
         "invalid": "安装需要修复"
       }
     },
+    "webSearch": {
+      "title": "联网搜索",
+      "desc": "配置 Refora Agent 使用的联网搜索与网页读取服务",
+      "activeProvider": "当前搜索服务",
+      "activeProviderHint": "当前服务商会收到搜索查询；web_fetch 会直接访问 Agent 指定的公网网页。",
+      "providers": {
+        "disabled": "关闭",
+        "ddgs": "DDGS · 免密钥",
+        "tavily": "Tavily",
+        "brave": "Brave Search"
+      },
+      "ddgsHint": "通过 DDGS {{version}} 进行免密钥元搜索，底层搜索引擎由 DDGS 自动选择；首次测试或搜索时安装受管 Python 运行环境。",
+      "tavilyHint": "通过 Tavily 官方 Search API 提供面向 AI 的搜索结果。",
+      "braveHint": "通过 Brave 官方 Search API 获取网页搜索结果。",
+      "installed": "已安装",
+      "installOnUse": "使用时安装",
+      "apiKey": "API 密钥",
+      "keyConfigured": "已配置密钥",
+      "keyMissing": "需要密钥",
+      "keepCurrentKey": "留空则保留当前密钥",
+      "enterApiKey": "输入 API 密钥",
+      "removeKey": "移除",
+      "privacy": "联网搜索会把查询词、地区、时间筛选和可选域名筛选发送给当前服务商；DDGS 可能调用其支持的第三方搜索引擎。web_fetch 会直接请求指定公网网页，并阻止访问内网地址。API 密钥使用 macOS 钥匙串加密，不会暴露给渲染进程或 Agent。",
+      "test": "保存并测试",
+      "testOk": "连接成功 · {{count}} 条结果",
+      "testFailed": "搜索服务测试失败",
+      "loadFailed": "无法读取联网搜索设置",
+      "saveFailed": "无法保存联网搜索设置"
+    },
     "agentMemory": {
       "title": "Agent 记忆",
       "desc": "与当前 Workspace 隔离的精选记忆",

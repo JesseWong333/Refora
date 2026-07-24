@@ -13,6 +13,8 @@ extraResources:
       - '!module-cache{,/**}'
   - from: resources/mineru_worker.py
     to: mineru/mineru_worker.py
+  - from: resources/ddgs_worker.py
+    to: web-search/ddgs_worker.py
 asar: true
 asarUnpack:
   - '**/*.node'

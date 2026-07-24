@@ -9,6 +9,11 @@ import type {
   OcrProfile,
   OcrProgressEvent
 } from './mineru-types'
+import type {
+  WebSearchConfig,
+  WebSearchConfigPatch,
+  WebSearchTestResult
+} from './webSearch'
 
 export interface IpcError {
   code: string
@@ -757,6 +762,11 @@ export interface ReforaApi {
   settings: {
     get<T>(key: string, defaultValue: T): Promise<T>
     set(key: string, value: unknown): Promise<void>
+  }
+  webSearch: {
+    getConfig(): Promise<WebSearchConfig>
+    updateConfig(patch: WebSearchConfigPatch): Promise<WebSearchConfig>
+    test(): Promise<WebSearchTestResult>
   }
   mineru: {
     status(): Promise<MineruEngineStatus>

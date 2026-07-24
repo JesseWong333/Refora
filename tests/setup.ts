@@ -90,6 +90,29 @@ const noop = async () => undefined
     set: noop,
   },
 
+  webSearch: {
+    getConfig: async () => ({
+      provider: 'disabled',
+      hasTavilyApiKey: false,
+      hasBraveApiKey: false,
+      ddgsInstalled: false,
+      ddgsVersion: '9.14.4',
+    }),
+    updateConfig: async (patch: { provider?: string }) => ({
+      provider: patch.provider ?? 'disabled',
+      hasTavilyApiKey: false,
+      hasBraveApiKey: false,
+      ddgsInstalled: false,
+      ddgsVersion: '9.14.4',
+    }),
+    test: async () => ({
+      ok: false,
+      provider: 'disabled',
+      resultCount: 0,
+      error: 'Web search is disabled',
+    }),
+  },
+
   mineru: {
     status: async () => ({
       state: 'notInstalled',

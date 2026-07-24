@@ -109,6 +109,9 @@ async function resolvePublicAddress(urlStr: string): Promise<{ address: string; 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Download URL is not HTTP(S)')
   }
+  if (parsed.username || parsed.password) {
+    throw new Error('Download URL contains credentials')
+  }
   const hostname = parsed.hostname
     .toLowerCase()
     .replace(/^\[|\]$/g, '')

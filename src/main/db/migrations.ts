@@ -133,6 +133,7 @@ function migrationSchemaPresent(db: SqliteLike, version: number): boolean {
         ['table', 'agent_tool_effects']
       ])
   }
+  if (version === 25) return hasObjects([['table', 'web_search_config']])
   return version <= db.getUserVersion()
 }
 

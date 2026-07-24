@@ -19,6 +19,7 @@ import { createAgentRunsRepository } from './agentRuns'
 import { createAgentMemoriesRepository } from './agentMemories'
 import { createAgentInterruptsRepository } from './agentInterrupts'
 import { createAgentToolEffectsRepository } from './agentToolEffects'
+import { createWebSearchConfigRepository } from './webSearchConfig'
 import { RepoError } from './errors'
 
 export interface RepositoryDeps {
@@ -49,6 +50,7 @@ export function createRepositories(db: SqliteDb, deps: RepositoryDeps = {}) {
   const agentMemories = createAgentMemoriesRepository(db)
   const agentInterrupts = createAgentInterruptsRepository(db)
   const agentToolEffects = createAgentToolEffectsRepository(db)
+  const webSearchConfig = createWebSearchConfigRepository(db)
 
   let depth = 0
 
@@ -109,6 +111,7 @@ export function createRepositories(db: SqliteDb, deps: RepositoryDeps = {}) {
     agentMemories,
     agentInterrupts,
     agentToolEffects,
+    webSearchConfig,
     transaction
   }
 }

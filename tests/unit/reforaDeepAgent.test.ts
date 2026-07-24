@@ -25,8 +25,13 @@ describe('Refora Deep Agent factory', () => {
 
   it('builds the single Refora harness with planning, subagents, memory, and HITL policy', () => {
     const model = { id: 'model' }
-    const tools = [{ name: 'search_library' }, { name: 'publish_workspace_artifacts' }]
-    const readOnlyTools = [tools[0]]
+    const tools = [
+      { name: 'search_library' },
+      { name: 'web_search' },
+      { name: 'web_fetch' },
+      { name: 'publish_workspace_artifacts' }
+    ]
+    const readOnlyTools = tools.slice(0, 3)
     const sandboxBackend = { id: 'workspace:one' }
     const memoryBackend = { id: 'memory:one' }
     const checkpointer = { id: 'checkpointer' }
@@ -86,6 +91,9 @@ describe('Refora Deep Agent factory', () => {
     ])
     for (const subagent of options.subagents) {
       expect(subagent.tools).toBe(readOnlyTools)
+      expect(subagent.tools.map((tool: { name: string }) => tool.name)).toEqual(
+        expect.arrayContaining(['web_search', 'web_fetch'])
+      )
       expect(subagent.middleware).toEqual([{ name: 'FilesystemMiddleware' }])
     }
     expect(options.interruptOn).toEqual({

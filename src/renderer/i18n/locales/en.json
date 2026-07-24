@@ -215,6 +215,35 @@
         "invalid": "Installation needs repair"
       }
     },
+    "webSearch": {
+      "title": "Web Search",
+      "desc": "Configure web search and page access for the Refora Agent",
+      "activeProvider": "Active search provider",
+      "activeProviderHint": "The selected provider receives search queries; web_fetch directly accesses the public page requested by the Agent.",
+      "providers": {
+        "disabled": "Disabled",
+        "ddgs": "DDGS · Keyless",
+        "tavily": "Tavily",
+        "brave": "Brave Search"
+      },
+      "ddgsHint": "Keyless metasearch through DDGS {{version}}. DDGS automatically selects its underlying search engine; the managed Python runtime is installed on first test or search.",
+      "tavilyHint": "AI-oriented search through the official Tavily Search API.",
+      "braveHint": "Web results from the official Brave Search API.",
+      "installed": "Installed",
+      "installOnUse": "Install on use",
+      "apiKey": "API key",
+      "keyConfigured": "Key configured",
+      "keyMissing": "Key required",
+      "keepCurrentKey": "Leave blank to keep the current key",
+      "enterApiKey": "Enter API key",
+      "removeKey": "Remove",
+      "privacy": "Web search sends the query, region, time filter, and optional domain filters to the selected provider. DDGS may use its supported third-party search engines. web_fetch sends a direct request to the selected public page and blocks private-network addresses. API keys are encrypted with the macOS keychain and are never exposed to the renderer or Agent.",
+      "test": "Save & Test",
+      "testOk": "Connection succeeded · {{count}} result",
+      "testFailed": "Search provider test failed",
+      "loadFailed": "Failed to load web search settings",
+      "saveFailed": "Failed to save web search settings"
+    },
     "agentMemory": {
       "title": "Agent Memory",
       "desc": "Curated memory isolated to the active Workspace",

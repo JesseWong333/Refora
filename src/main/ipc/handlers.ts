@@ -70,7 +70,9 @@ import type { AgentExecutionService } from '../services/agentExecution'
 import type { AgentArtifactPublisher } from '../services/agentArtifactPublisher'
 import type { MineruEngineManager } from '../services/mineruEngineManager'
 import type { MineruDocumentService } from '../services/mineruDocumentService'
+import type { WebSearchService } from '../services/webSearch'
 import type { OcrJob, OcrProfile } from '../../shared/mineru-types'
+import type { WebSearchConfigPatch } from '../../shared/webSearch'
 import {
   deleteWorkspaceAsset,
   deleteWorkspaceWithAssets,
@@ -206,6 +208,7 @@ export interface RuntimeRef {
   agentExecutionService?: AgentExecutionService
   agentArtifactPublisher?: AgentArtifactPublisher
   mineruDocumentService?: MineruDocumentService
+  webSearchService?: WebSearchService
 }
 
 export interface IpcHandlerDeps {
@@ -591,6 +594,27 @@ export function createIpcHandlers(deps: IpcHandlerDeps) {
           const rules = typeof value === 'string' && value.trim() ? value.trim() : ''
           applyProxyRules(rules)
         }
+      }),
+
+    [IpcChannel.WebSearchConfigGet]: (): Promise<Result<Awaited<ReturnType<WebSearchService['getConfig']>>>> =>
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.webSearchService
+        if (!service) throw new RepoError('not_ready', 'Web search service is not ready')
+        return service.getConfig()
+      }),
+    [IpcChannel.WebSearchConfigUpdate]: (
+      patch: WebSearchConfigPatch
+    ): Promise<Result<Awaited<ReturnType<WebSearchService['updateConfig']>>>> =>
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.webSearchService
+        if (!service) throw new RepoError('not_ready', 'Web search service is not ready')
+        return service.updateConfig(patch)
+      }),
+    [IpcChannel.WebSearchTest]: (): Promise<Result<Awaited<ReturnType<WebSearchService['test']>>>> =>
+      asyncWrap(async () => {
+        const service = deps.getRuntime()?.webSearchService
+        if (!service) throw new RepoError('not_ready', 'Web search service is not ready')
+        return service.test()
       }),
 
     [IpcChannel.MineruStatus]: (): Promise<Result<Awaited<ReturnType<MineruEngineManager['getStatus']>>>> =>
