@@ -123,17 +123,23 @@ describe('provider reasoning request options', () => {
     ).toEqual({ reasoning: { effort: 'high' } })
   })
 
-  it('does not send reasoning parameters to a non-reasoning model', () => {
-    const model = createProviderChatModel({
-      provider: { ...openAiProvider, model: 'gpt-4o-mini' },
-      apiKey: 'test-key',
-      streaming: false,
-      deepThinking: true
-    })
+  it('honors explicit reasoning configuration for unrecognized provider model aliases', () => {
+    for (const modelId of ['xopkimik26', 'xopdeepseekv4flash']) {
+      const model = createProviderChatModel({
+        provider: {
+          ...compatibleProvider,
+          model: modelId,
+          baseModel: modelId,
+          reasoningControl: 'enable-thinking',
+          reasoningEffort: 'max'
+        },
+        apiKey: 'test-key',
+        streaming: true,
+        deepThinking: true
+      })
 
-    expect(model.useResponsesApi).toBe(true)
-    expect(model.modelKwargs).toEqual({})
-    expect(model.reasoning).toBeUndefined()
+      expect(model.modelKwargs).toEqual({ enable_thinking: true })
+    }
   })
 
   it('uses the per-chat reasoning effort instead of the provider default', () => {

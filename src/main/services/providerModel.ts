@@ -1,7 +1,6 @@
 import { ChatOpenAI, type ChatOpenAIFields } from '@langchain/openai'
 import type { BaseMessage, BaseMessageChunk } from '@langchain/core/messages'
 import type { AiProvider, AiReasoningEffort } from '../../shared/ipc-types'
-import { inferModelCapabilities } from '../../shared/providerCatalog'
 
 export interface ProviderReasoningOptions {
   useResponsesApi: boolean
@@ -152,16 +151,19 @@ export function createProviderChatModel(input: {
   maxTokens?: number | null
 }): ChatOpenAI {
   const modelId = input.modelId?.trim() || input.provider.model
-  const capabilities = inferModelCapabilities(input.provider.presetId, modelId)
   const reasoningProvider = input.reasoningEffort
     ? { ...input.provider, reasoningEffort: input.reasoningEffort }
     : input.provider
   const reasoningOptions = buildProviderReasoningOptions(
     reasoningProvider,
-    capabilities.supportsReasoning ? input.deepThinking : undefined
+    input.deepThinking
   )
   const temperature = input.temperature ?? input.provider.temperature
   const maxTokens = input.maxTokens ?? input.provider.maxTokens
+  const reasoningEnabled =
+    input.deepThinking === true &&
+    reasoningProvider.reasoningControl !== 'none' &&
+    reasoningProvider.reasoningEffort !== 'none'
 
   const fields: ChatOpenAIFields = {
     model: modelId,
@@ -172,7 +174,7 @@ export function createProviderChatModel(input: {
     ...(reasoningOptions.reasoning
       ? { reasoning: reasoningOptions.reasoning as ChatOpenAIFields['reasoning'] }
       : {}),
-    ...(temperature != null && !capabilities.supportsReasoning ? { temperature } : {}),
+    ...(temperature != null && !reasoningEnabled ? { temperature } : {}),
     ...(maxTokens != null ? { maxTokens } : {}),
     ...(Object.keys(reasoningOptions.modelKwargs).length > 0
       ? { modelKwargs: reasoningOptions.modelKwargs }

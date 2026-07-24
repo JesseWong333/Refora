@@ -42,8 +42,6 @@ import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
 import { generateThreadTitle } from './generateThreadTitle'
 import { historyToMessages } from './chatHistoryMessages'
-import { resolveDeepThinkingMode, type DeepThinkingMode } from '../../shared/deepThinking'
-import { inferModelCapabilities } from '../../shared/providerCatalog'
 import { openPdf } from './pdfOpen'
 import type { AgentExecutionService } from './agentExecution'
 import type { AgentArtifactPublisher } from './agentArtifactPublisher'
@@ -1833,20 +1831,10 @@ export function createAiAgentService(
       const deepThinking = requestedReasoningEffort !== undefined
         ? reasoningEffort !== 'none'
         : req.features?.deepThinking === true
-      const supportsNativeReasoning = inferModelCapabilities(
-        provider.presetId,
-        modelId
-      ).supportsReasoning
-      const thinkingMode: DeepThinkingMode = deepThinking
-        ? supportsNativeReasoning
-          ? 'native'
-          : resolveDeepThinkingMode(modelId)
-        : 'none'
       const systemPrompt = [
         SYSTEM_PROMPT,
         req.workspaceId ? WORKSPACE_SYSTEM_PROMPT : '',
         academicResearch ? academicResearchSystemPrompt(req.workspaceId) : '',
-        thinkingMode === 'prompt' ? 'Prefer careful multi-step reasoning before answering.' : '',
         req.workspaceId ? buildWorkspaceContext(repos, req.workspaceId) : ''
       ]
         .filter((s) => s.length > 0)
@@ -2419,14 +2407,6 @@ export function createAiAgentService(
         ? 'none'
         : provider.reasoningEffort
       const deepThinking = reasoningEffort !== 'none'
-      const thinkingMode: DeepThinkingMode = deepThinking && !inferModelCapabilities(
-        provider.presetId,
-        run.modelId
-      ).supportsReasoning
-        ? resolveDeepThinkingMode(run.modelId)
-        : deepThinking
-          ? 'native'
-          : 'none'
       const rejectedOcrAction = pending.actions.some(
         (action, index) =>
           action.name === 'prepare_paper_ocr' &&
@@ -2436,7 +2416,6 @@ export function createAiAgentService(
         SYSTEM_PROMPT,
         thread.workspaceId ? WORKSPACE_SYSTEM_PROMPT : '',
         academicResearch ? academicResearchSystemPrompt(thread.workspaceId) : '',
-        thinkingMode === 'prompt' ? 'Prefer careful multi-step reasoning before answering.' : '',
         thread.workspaceId ? buildWorkspaceContext(repos, thread.workspaceId) : ''
       ].filter(Boolean).join('\n\n')
       const llm = createProviderChatModel({
