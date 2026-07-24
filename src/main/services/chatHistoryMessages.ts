@@ -1,7 +1,19 @@
-import { HumanMessage, AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
 import type { ChatMessage } from '../../shared/ipc-types'
 
 export const TOOL_HISTORY_OUTPUT_MAX = 3000
+
+export interface AgentWireMessage {
+  [key: string]: unknown
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  name?: string
+  tool_call_id?: string
+  tool_calls?: Array<{
+    id: string
+    name: string
+    args: Record<string, unknown>
+  }>
+}
 
 interface ParsedToolPayload {
   name: string
@@ -36,13 +48,13 @@ export function truncateOutput(output: string, max: number): string {
 }
 
 export function lastIsAiWithToolCall(
-  msgs: BaseMessage[],
+  msgs: AgentWireMessage[],
   toolCallId: string,
   name: string
 ): boolean {
   if (msgs.length === 0) return false
   const last = msgs[msgs.length - 1]
-  if (!(last instanceof AIMessage)) return false
+  if (last.role !== 'assistant') return false
   const calls = last.tool_calls
   if (!Array.isArray(calls) || calls.length === 0) return false
   return calls.some(
@@ -65,15 +77,15 @@ export function safeParseArgs(input: string | null): Record<string, unknown> {
   }
 }
 
-export function historyToMessages(rows: ChatMessage[]): BaseMessage[] {
-  const out: BaseMessage[] = []
+export function historyToMessages(rows: ChatMessage[]): AgentWireMessage[] {
+  const out: AgentWireMessage[] = []
   for (const row of rows) {
     if (row.role === 'user') {
-      out.push(new HumanMessage(row.content))
+      out.push({ role: 'user', content: row.content })
       continue
     }
     if (row.role === 'assistant') {
-      out.push(new AIMessage(row.content))
+      out.push({ role: 'assistant', content: row.content })
       continue
     }
     if (row.role === 'tool') {
@@ -81,30 +93,28 @@ export function historyToMessages(rows: ChatMessage[]): BaseMessage[] {
       const toolCallId = parsed.toolCallId ?? `legacy_${row.id}`
       const name = parsed.name ?? 'unknown'
       if (!lastIsAiWithToolCall(out, toolCallId, name)) {
-        out.push(
-          new AIMessage({
-            content: '',
-            tool_calls: [{ id: toolCallId, name, args: safeParseArgs(parsed.input) }]
-          })
-        )
-      }
-      out.push(
-        new ToolMessage({
-          content: truncateOutput(parsed.output ?? '', TOOL_HISTORY_OUTPUT_MAX),
-          tool_call_id: toolCallId,
-          name
+        out.push({
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: toolCallId, name, args: safeParseArgs(parsed.input) }]
         })
-      )
+      }
+      out.push({
+        role: 'tool',
+        content: truncateOutput(parsed.output ?? '', TOOL_HISTORY_OUTPUT_MAX),
+        tool_call_id: toolCallId,
+        name
+      })
     }
   }
   sanitizeToolCallPairs(out)
   return out
 }
 
-export function sanitizeToolCallPairs(messages: BaseMessage[]): void {
+export function sanitizeToolCallPairs(messages: AgentWireMessage[]): void {
   const knownToolCallIds = new Set<string>()
   for (const msg of messages) {
-    if (msg instanceof AIMessage) {
+    if (msg.role === 'assistant') {
       const calls = msg.tool_calls
       if (Array.isArray(calls)) {
         for (const c of calls) {
@@ -116,21 +126,21 @@ export function sanitizeToolCallPairs(messages: BaseMessage[]): void {
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
-    if (msg instanceof ToolMessage && msg.tool_call_id && !knownToolCallIds.has(msg.tool_call_id)) {
+    if (msg.role === 'tool' && msg.tool_call_id && !knownToolCallIds.has(msg.tool_call_id)) {
       messages.splice(i, 1)
     }
   }
 
   const satisfiedIds = new Set<string>()
   for (const msg of messages) {
-    if (msg instanceof ToolMessage && msg.tool_call_id) {
+    if (msg.role === 'tool' && msg.tool_call_id) {
       satisfiedIds.add(msg.tool_call_id)
     }
   }
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
-    if (!(msg instanceof AIMessage)) continue
+    if (msg.role !== 'assistant') continue
     const calls = msg.tool_calls
     if (!Array.isArray(calls) || calls.length === 0) continue
 
@@ -140,14 +150,12 @@ export function sanitizeToolCallPairs(messages: BaseMessage[]): void {
     if (unpaired.length === calls.length) {
       messages.splice(i, 1)
     } else {
-      const placeholders = unpaired.map(
-        (c) =>
-          new ToolMessage({
-            content: '[Tool result unavailable]',
-            tool_call_id: c.id!,
-            name: c.name ?? 'unknown'
-          })
-      )
+      const placeholders: AgentWireMessage[] = unpaired.map((call) => ({
+        role: 'tool',
+        content: '[Tool result unavailable]',
+        tool_call_id: call.id,
+        name: call.name ?? 'unknown'
+      }))
       messages.splice(i + 1, 0, ...placeholders)
       for (const c of unpaired) satisfiedIds.add(c.id!)
     }

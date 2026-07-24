@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createRepositories } from '../../src/main/db/repositories'
 import {
-  createReforaWorkspaceMemoryBackend,
   ensureWorkspaceMemoryFiles,
   MAX_WORKSPACE_MEMORY_FILE_CHARS,
+  readReforaWorkspaceMemories,
   updateWorkspaceMemory
 } from '../../src/main/services/reforaWorkspaceMemoryBackend'
 import {
@@ -28,26 +28,18 @@ describe('Refora Workspace memory backend', () => {
     db.close()
   })
 
-  it('exposes only the curated Markdown files as read-only data', async () => {
+  it('passes only curated Markdown files to the Python memory backend', () => {
     updateWorkspaceMemory(repos, {
       workspaceId,
       path: '/brief.md',
       content: 'Line one\nLine two'
     })
-    const backend = createReforaWorkspaceMemoryBackend(repos, workspaceId)
-
-    const listing = await backend.ls('/')
-    expect('files' in listing ? listing.files.map((entry) => entry.path) : [])
-      .toEqual(['/brief.md', '/decisions.md', '/glossary.md', '/preferences.md', '/research.md'])
-    expect(await backend.read('/brief.md')).toMatchObject({
-      content: '1: Line one\n2: Line two',
-      mimeType: 'text/markdown'
-    })
-    expect(await backend.write('/brief.md', 'unapproved')).toMatchObject({
-      error: expect.stringContaining('read-only')
-    })
-    expect(await backend.read('/outside.md')).toMatchObject({
-      error: expect.stringContaining('not found')
+    expect(readReforaWorkspaceMemories(repos, workspaceId)).toEqual({
+      '/brief.md': 'Line one\nLine two',
+      '/decisions.md': '',
+      '/glossary.md': '',
+      '/preferences.md': '',
+      '/research.md': ''
     })
   })
 

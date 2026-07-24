@@ -1,114 +1,205 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-const mocks = vi.hoisted(() => ({
-  createDeepAgent: vi.fn(() => ({ kind: 'deep-agent' })),
-  createFilesystemMiddleware: vi.fn(() => ({ name: 'FilesystemMiddleware' }))
-}))
-
-vi.mock('deepagents', () => ({
-  CompositeBackend: class {
-    constructor(
-      readonly defaultBackend: unknown,
-      readonly routes: Record<string, unknown>
-    ) {}
-  },
-  createDeepAgent: mocks.createDeepAgent,
-  createFilesystemMiddleware: mocks.createFilesystemMiddleware
-}))
-
+import { describe, expect, it, vi } from 'vitest'
+import { createAgentStringHostTool } from '../../src/main/services/agentHostTool'
 import { createReforaDeepAgent } from '../../src/main/services/reforaDeepAgent'
 
-describe('Refora Deep Agent factory', () => {
-  beforeEach(() => {
-    mocks.createDeepAgent.mockClear()
+describe('Refora Python Deep Agent adapter', () => {
+  it('passes Agent configuration, Python tool schemas, memory, and checkpoints to the sidecar', async () => {
+    const requests: unknown[] = []
+    const runtime = {
+      stream: vi.fn(async function *(
+        request: unknown,
+        options: { onComplete: (value: unknown) => void }
+      ) {
+        requests.push(request)
+        yield {
+          event: 'on_chat_model_stream',
+          data: { chunk: { content: 'ready' } }
+        }
+        options.onComplete({
+          result: { messages: [{ content: 'ready' }] },
+          state: {
+            config: { configurable: { checkpoint_id: 'checkpoint-2' } },
+            values: { messages: [{ content: 'ready' }] },
+            tasks: []
+          }
+        })
+      })
+    }
+    const search = createAgentStringHostTool({
+      name: 'search_library',
+      argumentName: 'query',
+      description: 'Search local papers',
+      func: async (query) => JSON.stringify({ query })
+    })
+    const effectRepo = {
+      get: vi.fn(() => null),
+      begin: vi.fn(),
+      finish: vi.fn()
+    }
+    const agent = createReforaDeepAgent({
+      runtime: runtime as never,
+      repos: { agentToolEffects: effectRepo } as never,
+      runId: 'run-1',
+      threadId: 'thread-1',
+      workspaceId: 'workspace-1',
+      provider: {
+        model: 'gpt-test',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'secret',
+        useResponsesApi: true,
+        modelKwargs: {},
+        temperature: null,
+        maxTokens: 1000
+      },
+      systemPrompt: 'Refora prompt',
+      tools: [search],
+      readOnlyTools: [search],
+      sandboxRoot: '/tmp/refora-agent',
+      memories: { '/brief.md': 'Project brief' },
+      checkpointPath: '/tmp/checkpoints.sqlite',
+      includeResearchMemory: true
+    })
+
+    const events = []
+    for await (const event of agent.streamEvents(
+      { messages: [{ role: 'user', content: 'hello' }] },
+      {
+        signal: new AbortController().signal,
+        recursionLimit: 42,
+        configurable: {
+          thread_id: 'thread-1',
+          checkpoint_id: 'checkpoint-1'
+        }
+      }
+    )) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([{
+      event: 'on_chat_model_stream',
+      data: { chunk: { content: 'ready' } }
+    }])
+    expect(requests[0]).toMatchObject({
+      mode: 'run',
+      threadId: 'thread-1',
+      workspaceId: 'workspace-1',
+      checkpointPath: '/tmp/checkpoints.sqlite',
+      checkpointBefore: 'checkpoint-1',
+      messages: [{ role: 'user', content: 'hello' }],
+      readOnlyToolNames: ['search_library'],
+      academicToolNames: expect.arrayContaining(['search_arxiv']),
+      sandboxRoot: '/tmp/refora-agent',
+      memories: { '/brief.md': 'Project brief' },
+      includeResearchMemory: true,
+      recursionLimit: 42,
+      tools: [{
+        name: 'search_library',
+        description: 'Search local papers',
+        schema: expect.objectContaining({
+          type: 'object',
+          required: ['query']
+        })
+      }]
+    })
+    expect(requests[0]).toMatchObject({
+      systemPrompt: expect.stringContaining('propose_workspace_memory_update')
+    })
+    expect(await agent.getState()).toMatchObject({
+      config: { configurable: { checkpoint_id: 'checkpoint-2' } }
+    })
+    expect(agent.getResult()).toMatchObject({
+      messages: [{ content: 'ready' }]
+    })
   })
 
-  it('builds the single Refora harness with planning, subagents, memory, and HITL policy', () => {
-    const model = { id: 'model' }
-    const tools = [
-      { name: 'search_library' },
-      { name: 'web_search' },
-      { name: 'web_fetch' },
-      { name: 'publish_workspace_artifacts' }
-    ]
-    const readOnlyTools = tools.slice(0, 3)
-    const sandboxBackend = { id: 'workspace:one' }
-    const memoryBackend = { id: 'memory:one' }
-    const checkpointer = { id: 'checkpointer' }
-    const middleware = [{ name: 'policy' }]
-
-    const result = createReforaDeepAgent({
-      model,
-      systemPrompt: 'Refora prompt',
-      tools,
-      readOnlyTools,
-      backend: sandboxBackend,
-      memoryBackend,
-      checkpointer,
-      includeResearchMemory: true,
-      middleware
-    } as never)
-
-    expect(result).toEqual({ kind: 'deep-agent' })
-    expect(mocks.createDeepAgent).toHaveBeenCalledTimes(1)
-    const options = mocks.createDeepAgent.mock.calls[0][0]
-    expect(options.name).toBe('refora')
-    expect(options.tools).toBe(tools)
-    expect(options.checkpointer).toBe(checkpointer)
-    expect(options.middleware).toEqual([
-      { name: 'FilesystemMiddleware' },
-      ...middleware
-    ])
-    expect(mocks.createFilesystemMiddleware).toHaveBeenCalledWith(expect.objectContaining({
-      backend: options.backend,
-      systemPrompt: expect.stringContaining('same sandbox root')
-    }))
-    expect(options.memory).toEqual([
-      '/memories/brief.md',
-      '/memories/preferences.md',
-      '/memories/decisions.md',
-      '/memories/glossary.md',
-      '/memories/research.md'
-    ])
-    expect(options.systemPrompt).toMatchObject({
-      prefix: 'Refora prompt',
-      suffix: expect.stringContaining('propose_workspace_memory_update')
-    })
-    expect(options.systemPrompt.suffix).toContain(
-      'call the tool directly instead of asking for approval in assistant text'
-    )
-    expect(options.systemPrompt.suffix).toContain(
-      'do not immediately resubmit that same action'
-    )
-    expect(options.systemPrompt.suffix).toContain(
-      'A later distinct request may call the tool again'
-    )
-    expect(options.subagents.map((agent: { name: string }) => agent.name)).toEqual([
-      'general-purpose',
-      'researcher',
-      'analyst',
-      'data-analyst'
-    ])
-    for (const subagent of options.subagents) {
-      expect(subagent.tools).toBe(readOnlyTools)
-      expect(subagent.tools.map((tool: { name: string }) => tool.name)).toEqual(
-        expect.arrayContaining(['web_search', 'web_fetch'])
-      )
-      expect(subagent.middleware).toEqual([{ name: 'FilesystemMiddleware' }])
+  it('replays idempotent host tool results for the same Python tool call ID', async () => {
+    const effects = new Map<string, { status: string; result: string | null }>()
+    const effectRepo = {
+      get: vi.fn((_runId: string, toolCallId: string) => effects.get(toolCallId) ?? null),
+      begin: vi.fn((input: { toolCallId: string }) => {
+        effects.set(input.toolCallId, { status: 'running', result: null })
+      }),
+      finish: vi.fn((
+        _runId: string,
+        toolCallId: string,
+        status: string,
+        result: string
+      ) => {
+        effects.set(toolCallId, { status, result })
+      })
     }
-    expect(options.interruptOn).toEqual({
-      prepare_paper_ocr: {
-        allowedDecisions: ['approve', 'reject'],
-        description:
-          'Run balanced local OCR for this paper and prepare a reusable structured full-text cache.'
-      },
-      install_runtime_packages: { allowedDecisions: ['approve', 'reject'] },
-      publish_workspace_artifacts: { allowedDecisions: ['approve', 'reject'] },
-      propose_workspace_memory_update: {
-        allowedDecisions: ['approve', 'edit', 'reject']
-      }
+    const publish = vi.fn(async (paths: string) => JSON.stringify({ paths }))
+    const tool = createAgentStringHostTool({
+      name: 'publish_workspace_artifacts',
+      argumentName: 'paths',
+      description: 'Publish outputs',
+      func: publish
     })
-    expect(options.backend.defaultBackend).toBe(sandboxBackend)
-    expect(options.backend.routes).toEqual({ '/memories/': memoryBackend })
+    const results: string[] = []
+    const runtime = {
+      stream: vi.fn(async function *(
+        _request: unknown,
+        options: {
+          executeTool: (
+            name: string,
+            args: Record<string, unknown>,
+            toolCallId: string | null
+          ) => Promise<string>
+          onComplete: (value: unknown) => void
+        }
+      ) {
+        results.push(await options.executeTool(
+          'publish_workspace_artifacts',
+          { paths: 'outputs/report.md' },
+          'tool-call-1'
+        ))
+        results.push(await options.executeTool(
+          'publish_workspace_artifacts',
+          { paths: 'outputs/report.md' },
+          'tool-call-1'
+        ))
+        options.onComplete({ result: {}, state: {} })
+        yield { event: 'on_chain_end', data: { output: {} } }
+      })
+    }
+    const agent = createReforaDeepAgent({
+      runtime: runtime as never,
+      repos: { agentToolEffects: effectRepo } as never,
+      runId: 'run-1',
+      threadId: 'thread-1',
+      workspaceId: 'workspace-1',
+      provider: {
+        model: 'gpt-test',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'secret',
+        useResponsesApi: false,
+        modelKwargs: {},
+        temperature: null,
+        maxTokens: null
+      },
+      systemPrompt: 'Refora prompt',
+      tools: [tool],
+      readOnlyTools: [],
+      sandboxRoot: null,
+      memories: {},
+      checkpointPath: '/tmp/checkpoints.sqlite'
+    })
+
+    const events = []
+    for await (const event of agent.streamEvents(
+      { messages: [{ role: 'user', content: 'publish' }] },
+      {}
+    )) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([{ event: 'on_chain_end', data: { output: {} } }])
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(results).toEqual([
+      '{"paths":"outputs/report.md"}',
+      '{"paths":"outputs/report.md"}'
+    ])
+    expect(effectRepo.begin).toHaveBeenCalledTimes(1)
+    expect(effectRepo.finish).toHaveBeenCalledTimes(1)
   })
 })

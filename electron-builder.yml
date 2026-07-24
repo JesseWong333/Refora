@@ -15,6 +15,13 @@ extraResources:
     to: mineru/mineru_worker.py
   - from: resources/ddgs_worker.py
     to: web-search/ddgs_worker.py
+  - from: resources/agent/worker.py
+    to: agent-python/worker.py
+  - from: python/agent
+    to: agent-python
+    filter:
+      - pyproject.toml
+      - uv.lock
 asar: true
 asarUnpack:
   - '**/*.node'

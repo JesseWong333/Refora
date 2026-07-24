@@ -59,6 +59,8 @@ import { createMineruDocumentService } from './services/mineruDocumentService'
 import type { MineruDocumentService } from './services/mineruDocumentService'
 import { createDdgsRuntimeManager } from './services/ddgsRuntime'
 import type { DdgsRuntimeManager } from './services/ddgsRuntime'
+import { createAgentPythonRuntime } from './services/agentPythonRuntime'
+import type { AgentPythonRuntime } from './services/agentPythonRuntime'
 import { createWebSearchService } from './services/webSearch'
 import type { WebSearchService } from './services/webSearch'
 import {
@@ -106,6 +108,7 @@ interface Runtime extends RuntimeRef {
   mineruWorker: MineruWorkerProcess
   mineruDocumentService: MineruDocumentService
   ddgsRuntimeManager: DdgsRuntimeManager
+  agentPythonRuntime: AgentPythonRuntime
   webSearchService: WebSearchService
 }
 let runtime: Runtime | null = null
@@ -455,6 +458,7 @@ function destroyRuntime(target: Runtime): void {
   target.aiAgentService.destroy()
   target.webSearchService.destroy()
   target.ddgsRuntimeManager.destroy()
+  target.agentPythonRuntime.destroy()
   target.agentExecutionService.destroy()
   target.agentCheckpointService.close()
   target.pdfTextService.destroy()
@@ -619,6 +623,27 @@ function buildRuntime(dbPath: string): Runtime {
       ddgsRuntime: ddgsRuntimeManager,
       fetch: (url, init) => net.fetch(url, init)
     })
+    const agentPythonWorkerPath = app.isPackaged
+      ? join(process.resourcesPath, 'agent-python', 'worker.py')
+      : join(__dirname, '../../resources/agent/worker.py')
+    const agentPythonProjectPath = app.isPackaged
+      ? join(process.resourcesPath, 'agent-python', 'pyproject.toml')
+      : join(__dirname, '../../python/agent/pyproject.toml')
+    const agentPythonRuntime = createAgentPythonRuntime({
+      userDataDir: app.getPath('userData'),
+      workerScriptPath: agentPythonWorkerPath,
+      projectPath: agentPythonProjectPath,
+      downloadFile: async (url, destination, signal) => {
+        const response = await net.fetch(url, { signal })
+        if (!response.ok) throw new Error(`Runtime download failed with HTTP ${response.status}`)
+        if (!response.body) throw new Error('Runtime download returned an empty response')
+        await pipeline(
+          Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>),
+          createWriteStream(destination, { mode: 0o600 }),
+          { signal }
+        )
+      }
+    })
     const aiAgentService = createAiAgentService(
       repos,
       () => win,
@@ -638,7 +663,8 @@ function buildRuntime(dbPath: string): Runtime {
         frontierService: researchFrontierService
       },
       mineruDocumentService,
-      webSearchService
+      webSearchService,
+      agentPythonRuntime
     )
     const watcher = createWatcher({
       importFiles: (paths, isWatch) => importer.importFiles(paths, isWatch),
@@ -715,6 +741,7 @@ function buildRuntime(dbPath: string): Runtime {
       mineruWorker,
       mineruDocumentService,
       ddgsRuntimeManager,
+      agentPythonRuntime,
       webSearchService
     }
   } catch (error) {

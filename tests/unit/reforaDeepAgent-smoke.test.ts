@@ -1,103 +1,34 @@
-import { describe, expect, it, vi } from 'vitest'
-import { HumanMessage } from '@langchain/core/messages'
-import { DynamicStructuredTool } from '@langchain/core/tools'
-import { FakeListChatModel } from '@langchain/core/utils/testing'
-import { Command, MemorySaver } from '@langchain/langgraph'
-import { FakeToolCallingModel } from 'langchain'
-import { StateBackend } from 'deepagents'
-import { z } from 'zod'
-import { createReforaDeepAgent } from '../../src/main/services/reforaDeepAgent'
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
 
-describe('Refora Deep Agent package integration', () => {
-  it('constructs and invokes the real Deep Agents graph', async () => {
-    const agent = createReforaDeepAgent({
-      model: new FakeListChatModel({ responses: ['Deep Agent ready'] }),
-      systemPrompt: 'You are Refora.',
-      tools: [],
-      readOnlyTools: [],
-      backend: new StateBackend(),
-      memoryBackend: new StateBackend(),
-      checkpointer: new MemorySaver()
-    })
+const python = process.env.REFORA_AGENT_PYTHON
 
-    const result = await agent.invoke(
-      { messages: [new HumanMessage('Respond once.')] },
-      { configurable: { thread_id: 'smoke-thread' } }
-    )
-    const messages = result.messages as Array<{ content: unknown }>
-    expect(messages.at(-1)?.content).toBe('Deep Agent ready')
+describe('Refora Python Deep Agent package integration', () => {
+  it('pins every migrated LangChain package in the Python project', () => {
+    const project = readFileSync(resolve('python/agent/pyproject.toml'), 'utf8')
+    const lock = readFileSync(resolve('python/agent/uv.lock'), 'utf8')
+    expect(project).toContain('"deepagents==0.6.12"')
+    expect(project).toContain('"langchain==1.3.14"')
+    expect(project).toContain('"langchain-core==1.5.1"')
+    expect(project).toContain('"langgraph==1.2.9"')
+    expect(project).toContain('"langchain-openai==1.4.1"')
+    expect(project).toContain('"langgraph-checkpoint-sqlite==3.1.0"')
+    expect(lock).toContain('requires-python = "==3.12.*"')
+    expect(lock).toContain('name = "deepagents"\nversion = "0.6.12"')
+    expect(lock).toContain('name = "langchain"\nversion = "1.3.14"')
+    expect(lock).toContain('name = "langchain-core"\nversion = "1.5.1"')
+    expect(lock).toContain('name = "langgraph"\nversion = "1.2.9"')
+    expect(lock).toContain('name = "langchain-openai"\nversion = "1.4.1"')
+    expect(lock).toContain('name = "langgraph-checkpoint-sqlite"\nversion = "3.1.0"')
   })
 
-  it('rejects one OCR call without executing it', async () => {
-    const executeOcr = vi.fn(async () => 'OCR complete')
-    const prepareOcr = new DynamicStructuredTool({
-      name: 'prepare_paper_ocr',
-      description: 'Prepare OCR',
-      schema: z.object({ docId: z.string() }),
-      func: executeOcr
-    })
-    const model = new FakeToolCallingModel({
-      toolCalls: [
-        [{
-          name: 'prepare_paper_ocr',
-          args: { docId: 'doc-1' },
-          id: 'ocr-call-1'
-        }],
-        [],
-        [{
-          name: 'prepare_paper_ocr',
-          args: { docId: 'doc-1' },
-          id: 'ocr-call-2'
-        }]
-      ]
-    })
-    const agent = createReforaDeepAgent({
-      model,
-      systemPrompt: 'You are Refora.',
-      tools: [prepareOcr],
-      readOnlyTools: [],
-      backend: new StateBackend(),
-      memoryBackend: new StateBackend(),
-      checkpointer: new MemorySaver()
-    })
-    const config = { configurable: { thread_id: 'ocr-rejection-thread' } }
-
-    await agent.invoke(
-      { messages: [new HumanMessage('Use OCR if approved.')] },
-      config
-    )
-    const interrupted = await agent.getState(config)
-    expect(interrupted.tasks[0]?.interrupts[0]?.value).toMatchObject({
-      actionRequests: [{
-        name: 'prepare_paper_ocr',
-        args: { docId: 'doc-1' }
-      }]
-    })
-
-    await agent.invoke(
-      new Command({
-        resume: {
-          decisions: [{
-            type: 'reject',
-            message: 'The user rejected this OCR action.'
-          }]
-        }
-      }),
-      config
-    )
-    expect(executeOcr).not.toHaveBeenCalled()
-
-    await agent.invoke(
-      { messages: [new HumanMessage('Request OCR again if it is still needed.')] },
-      config
-    )
-    const interruptedAgain = await agent.getState(config)
-    expect(interruptedAgain.tasks[0]?.interrupts[0]?.value).toMatchObject({
-      actionRequests: [{
-        name: 'prepare_paper_ocr',
-        args: { docId: 'doc-1' }
-      }]
-    })
-    expect(executeOcr).not.toHaveBeenCalled()
+  it.skipIf(!python)('constructs and invokes the real Python Deep Agents graph', () => {
+    expect(() => execFileSync(
+      python!,
+      [resolve('python/agent/smoke_test.py')],
+      { stdio: 'pipe' }
+    )).not.toThrow()
   })
 })

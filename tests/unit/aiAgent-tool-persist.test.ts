@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { withDeepAgentRepositories } from '../helpers/deepAgentRepositories'
 
 const mockStreamEvents = vi.hoisted(() => vi.fn())
@@ -261,14 +260,15 @@ describe('aiAgent tool call persistence', () => {
         {
           event: 'on_chat_model_end',
           data: {
-            output: new AIMessage({
+            output: {
+              type: 'ai',
               content: '',
               tool_calls: [{
                 id: 'academic-tool-1',
                 name: 'search_arxiv',
                 args: { query: 'secret frontier query' }
               }]
-            })
+            }
           },
           run_id: 'llm-tool-call-1'
         },
@@ -410,7 +410,7 @@ describe('aiAgent tool call persistence', () => {
   })
 
   describe('history reconstruction', () => {
-    it('converts tool role messages to ToolMessage with synthetic AIMessage', async () => {
+    it('converts tool role messages to Python tool messages with a synthetic assistant call', async () => {
       const toolContent = JSON.stringify({
         name: 'search_workspace_docs',
         input: 'machine learning',
@@ -454,29 +454,47 @@ describe('aiAgent tool call persistence', () => {
       expect(lastStreamInput).not.toBeNull()
       const messages = lastStreamInput!.messages
 
-      expect(messages[0]).toBeInstanceOf(HumanMessage)
+      expect(messages[0]).toEqual(expect.objectContaining({
+        role: 'user',
+        content: 'What papers do we have?'
+      }))
 
-      const toolHistoryMsg = messages.find((m) => m instanceof ToolMessage)
+      const toolHistoryMsg = messages.find(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          Reflect.get(message, 'role') === 'tool'
+      ) as Record<string, unknown> | undefined
       expect(toolHistoryMsg).toBeDefined()
-      expect((toolHistoryMsg as ToolMessage).tool_call_id).toBe('legacy_m2')
-      expect((toolHistoryMsg as ToolMessage).name).toBe('search_workspace_docs')
-      expect((toolHistoryMsg as ToolMessage).content).toContain('[{"docId":"d1"}]')
+      expect(toolHistoryMsg?.tool_call_id).toBe('legacy_m2')
+      expect(toolHistoryMsg?.name).toBe('search_workspace_docs')
+      expect(toolHistoryMsg?.content).toContain('[{"docId":"d1"}]')
 
       const syntheticAi = messages.find(
-        (m) =>
-          m instanceof AIMessage &&
-          Array.isArray((m as AIMessage).tool_calls) &&
-          (m as AIMessage).tool_calls!.some(
-            (c) => c.id === 'legacy_m2' && c.name === 'search_workspace_docs'
+        (message) => {
+          if (
+            typeof message !== 'object' ||
+            message === null ||
+            Reflect.get(message, 'role') !== 'assistant'
+          ) return false
+          const toolCalls = Reflect.get(message, 'tool_calls')
+          return Array.isArray(toolCalls) && toolCalls.some(
+            (call) =>
+              typeof call === 'object' &&
+              call !== null &&
+              Reflect.get(call, 'id') === 'legacy_m2' &&
+              Reflect.get(call, 'name') === 'search_workspace_docs'
           )
+        }
       )
       expect(syntheticAi).toBeDefined()
 
       const assistantHistoryMsg = messages.find(
-        (m) =>
-          m instanceof AIMessage &&
-          typeof m.content === 'string' &&
-          m.content === 'We have one ML paper.'
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          Reflect.get(message, 'role') === 'assistant' &&
+          Reflect.get(message, 'content') === 'We have one ML paper.'
       )
       expect(assistantHistoryMsg).toBeDefined()
     })

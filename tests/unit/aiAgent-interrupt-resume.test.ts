@@ -21,7 +21,11 @@ vi.mock('../../src/main/services/reforaDeepAgent', () => ({
 }))
 
 vi.mock('../../src/main/services/providerModel', () => ({
-  createProviderChatModel: vi.fn(() => ({ id: 'model' }))
+  createProviderChatModel: vi.fn(() => ({ id: 'model' })),
+  buildProviderReasoningOptions: vi.fn(() => ({
+    useResponsesApi: false,
+    modelKwargs: {}
+  }))
 }))
 
 vi.mock('../../src/main/services/logger', () => ({
@@ -42,6 +46,7 @@ vi.mock('../../src/main/ipc/events', () => ({
 }))
 
 import { createAiAgentService } from '../../src/main/services/aiAgent'
+import { AGENT_STATE_VERSION } from '../../src/main/services/agentCheckpoint'
 
 const provider: AiProvider = {
   id: 'provider-1',
@@ -170,7 +175,7 @@ describe('AiAgentService approval resume', () => {
     })
     expect(repos.chat.getThread(thread.id)).toMatchObject({
       headCheckpointId: 'checkpoint-1',
-      agentStateVersion: 1
+      agentStateVersion: AGENT_STATE_VERSION
     })
     expect(mocks.emitAiChatInterrupted).toHaveBeenCalledTimes(1)
 
@@ -183,7 +188,6 @@ describe('AiAgentService approval resume', () => {
     expect(resumedAgent.streamEvents).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        version: 'v2',
         configurable: { thread_id: thread.id }
       })
     )
@@ -456,7 +460,7 @@ describe('AiAgentService approval resume', () => {
   it('detects an interrupt from the latest state when a later turn starts from a checkpoint', async () => {
     const workspace = repos.workspaces.create('Research')
     const thread = repos.chat.createThread(workspace.id, provider.id)
-    repos.chat.updateAgentState(thread.id, 'checkpoint-before', 1)
+    repos.chat.updateAgentState(thread.id, 'checkpoint-before', AGENT_STATE_VERSION)
     const getState = vi.fn(async (config: { configurable?: { checkpoint_id?: string } }) =>
       config.configurable?.checkpoint_id
         ? {

@@ -1,9 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { type BrowserWindow } from 'electron'
-import { DynamicTool, DynamicStructuredTool } from '@langchain/core/tools'
-import { HumanMessage } from '@langchain/core/messages'
-import { Command, GraphRecursionError, MemorySaver } from '@langchain/langgraph'
-import { StateBackend } from 'deepagents'
 import { z } from 'zod'
 import type { Repositories } from '../db/repositories'
 import type {
@@ -37,7 +33,7 @@ import {
   emitWorkspaceItemsChanged
 } from '../ipc/events'
 import { logger } from './logger'
-import { createProviderChatModel } from './providerModel'
+import { buildProviderReasoningOptions } from './providerModel'
 import { truncateHistoryByTokens } from './tokenEstimate'
 import { deriveThreadTitle } from './deriveThreadTitle'
 import { generateThreadTitle } from './generateThreadTitle'
@@ -65,15 +61,19 @@ import {
   type PaperLocatorType
 } from '../../shared/academicResearch'
 import { normalizeArxivId } from './arxiv'
-import { createReforaSandboxBackend } from './reforaSandboxBackend'
 import {
-  createReforaWorkspaceMemoryBackend,
   ensureWorkspaceMemoryFiles,
+  readReforaWorkspaceMemories,
   updateWorkspaceMemory,
   WORKSPACE_MEMORY_PATHS
 } from './reforaWorkspaceMemoryBackend'
 import { createReforaDeepAgent } from './reforaDeepAgent'
-import { createReforaAgentPolicyMiddleware } from './reforaAgentPolicy'
+import {
+  createAgentStringHostTool,
+  createAgentStructuredHostTool,
+  type AgentHostTool
+} from './agentHostTool'
+import type { AgentPythonRuntime } from './agentPythonRuntime'
 import {
   createAgentTraceRecorder,
   extractTokenUsage,
@@ -579,7 +579,8 @@ export function createAiAgentService(
   agentCheckpointService?: AgentCheckpointService,
   academicResearch?: AiAgentAcademicResearchServices,
   mineruDocumentService?: MineruDocumentService,
-  webSearchService?: WebSearchService
+  webSearchService?: WebSearchService,
+  agentPythonRuntime?: AgentPythonRuntime
 ) {
   const getWin = (): BrowserWindow | null => {
     const w = win()
@@ -601,7 +602,6 @@ export function createAiAgentService(
   const activeRuns = new Map<string, ActiveAgentRun>()
   const inFlightRuns = new Map<string, Set<ActiveAgentRun>>()
   const deletingThreads = new Set<string>()
-  const fallbackCheckpointer = new MemorySaver()
 
   function registerActiveRun(threadId: string, runId: string): ActiveAgentRun {
     let complete = (): void => undefined
@@ -671,7 +671,7 @@ export function createAiAgentService(
 
   function buildTools(req: ChatSendRequest, providerModel: string, signal: AbortSignal) {
     const workspaceId = req.workspaceId ?? ''
-    const listWorkspaceContext = new DynamicStructuredTool({
+    const listWorkspaceContext = createAgentStructuredHostTool({
       name: 'list_workspace_context',
       description:
         'List the current workspace cards and connections. ' +
@@ -753,7 +753,7 @@ export function createAiAgentService(
       }
     })
 
-    const createWorkspaceConnections = new DynamicStructuredTool({
+    const createWorkspaceConnections = createAgentStructuredHostTool({
       name: 'create_workspace_connections',
       description:
         'Create directed connections between cards in the current workspace. ' +
@@ -835,7 +835,7 @@ export function createAiAgentService(
       }
     })
 
-    const findRelatedPapers = new DynamicStructuredTool({
+    const findRelatedPapers = createAgentStructuredHostTool({
       name: 'find_related_papers',
       description:
         'Find related papers that already exist in the local library using title, keywords, abstract, authors, venue, and year metadata. ' +
@@ -918,8 +918,9 @@ export function createAiAgentService(
       }
     })
 
-    const searchWorkspaceDocs = new DynamicTool({
+    const searchWorkspaceDocs = createAgentStringHostTool({
       name: 'search_workspace_docs',
+      argumentName: 'query',
       description:
         'Search documents in the current workspace by title, authors, abstract, or keywords (full-text). ' +
         'Returns JSON [{docId, title, authors, year, hasSummary}]. Pass an empty string to list all workspace documents.',
@@ -960,7 +961,7 @@ export function createAiAgentService(
       }
     })
 
-    const readPaperFulltext = new DynamicStructuredTool({
+    const readPaperFulltext = createAgentStructuredHostTool({
       name: 'read_paper_fulltext',
       description:
         'Read a chunk of the full extracted text of a paper by its docId. ' +
@@ -1035,7 +1036,7 @@ export function createAiAgentService(
       }
     })
 
-    const readPaperOcrFulltext = new DynamicStructuredTool({
+    const readPaperOcrFulltext = createAgentStructuredHostTool({
       name: 'read_paper_ocr_fulltext',
       description:
         'Read a chunk of existing MinerU OCR Markdown for a paper by docId without running OCR or requiring approval. ' +
@@ -1131,7 +1132,7 @@ export function createAiAgentService(
       }
     })
 
-    const preparePaperOcr = new DynamicStructuredTool({
+    const preparePaperOcr = createAgentStructuredHostTool({
       name: 'prepare_paper_ocr',
       description:
         'Run the local MinerU balanced OCR pipeline for a paper and prepare a reusable structured Markdown cache. ' +
@@ -1172,8 +1173,9 @@ export function createAiAgentService(
       }
     })
 
-    const getPaperSummary = new DynamicTool({
+    const getPaperSummary = createAgentStringHostTool({
       name: 'get_paper_summary',
+      argumentName: 'docId',
       description:
         'Get the cached AI summary of a paper by its docId. Returns a JSON summary object, or a notice that no summary is available yet.',
       func: async (docId: string) => {
@@ -1185,7 +1187,7 @@ export function createAiAgentService(
       }
     })
 
-    const generateReport = new DynamicStructuredTool({
+    const generateReport = createAgentStructuredHostTool({
       name: 'generate_report',
       description:
         'Create and pin a structured report to the workspace board. ' +
@@ -1233,7 +1235,7 @@ export function createAiAgentService(
       }
     })
 
-    const addDocsToWorkspace = new DynamicStructuredTool({
+    const addDocsToWorkspace = createAgentStructuredHostTool({
       name: 'add_docs_to_workspace',
       description:
         'Add documents from the library to the current workspace board. ' +
@@ -1293,7 +1295,7 @@ export function createAiAgentService(
       }
     })
 
-    const requestSummary = new DynamicStructuredTool({
+    const requestSummary = createAgentStructuredHostTool({
       name: 'request_summary',
       description:
         'Queues background AI summary generation for a paper to cache it for future use. ' +
@@ -1317,8 +1319,9 @@ export function createAiAgentService(
       }
     })
 
-    const searchLibrary = new DynamicTool({
+    const searchLibrary = createAgentStringHostTool({
       name: 'search_library',
+      argumentName: 'query',
       description:
         'Search the entire document library by full-text query. ' +
         'Returns a JSON array of objects [{docId, title, authors, year}]. ' +
@@ -1339,8 +1342,9 @@ export function createAiAgentService(
       }
     })
 
-    const getPaperMetadata = new DynamicTool({
+    const getPaperMetadata = createAgentStringHostTool({
       name: 'get_paper_metadata',
+      argumentName: 'docId',
       description:
         'Get full metadata of a paper by its docId. Returns a JSON object with title, authors, year, venue, abstract, keywords, doi, arxivId, url, and other fields.',
       func: async (docId: string) => {
@@ -1365,8 +1369,9 @@ export function createAiAgentService(
       }
     })
 
-    const openPaper = new DynamicTool({
+    const openPaper = createAgentStringHostTool({
       name: 'open_paper',
+      argumentName: 'docId',
       description:
         'Open a paper PDF in the system default viewer by its docId. Use when the user wants to view or read a paper.',
       func: async (docId: string) => {
@@ -1388,7 +1393,7 @@ export function createAiAgentService(
       }
     })
 
-    const publishWorkspaceArtifacts = new DynamicStructuredTool({
+    const publishWorkspaceArtifacts = createAgentStructuredHostTool({
       name: 'publish_workspace_artifacts',
       description:
         'Publish final files from the current agent sandbox to the selected Workspace as managed WorkspaceAsset cards. ' +
@@ -1410,7 +1415,7 @@ export function createAiAgentService(
       }
     })
 
-    const installRuntimePackages = new DynamicStructuredTool({
+    const installRuntimePackages = createAgentStructuredHostTool({
       name: 'install_runtime_packages',
       description:
         'Install shared Python 3.12 or Node.js 24 runtimes and version-pinned packages for the current Workspace or default sandbox. ' +
@@ -1437,7 +1442,7 @@ export function createAiAgentService(
       }
     })
 
-    const proposeWorkspaceMemoryUpdate = new DynamicStructuredTool({
+    const proposeWorkspaceMemoryUpdate = createAgentStructuredHostTool({
       name: 'propose_workspace_memory_update',
       description:
         'Propose an update to the current Workspace memory. This always requires user approval. ' +
@@ -1465,7 +1470,7 @@ export function createAiAgentService(
       }
     })
 
-    const academicTools: Array<DynamicStructuredTool> = []
+    const academicTools: AgentHostTool[] = []
     if (academicResearch) {
       const academicResult = async (operation: () => Promise<unknown>): Promise<string> => {
         if (signal.aborted) return JSON.stringify({ error: { code: 'cancelled', message: 'Cancelled' } })
@@ -1483,7 +1488,7 @@ export function createAiAgentService(
       }
 
       academicTools.push(
-        new DynamicStructuredTool({
+        createAgentStructuredHostTool({
           name: 'search_arxiv',
           description:
             'Search arXiv metadata and abstracts using a bounded paginated query. ' +
@@ -1497,7 +1502,7 @@ export function createAiAgentService(
           }),
           func: async (input) => academicResult(() => academicResearch.arxivClient.search(input, signal))
         }),
-        new DynamicStructuredTool({
+        createAgentStructuredHostTool({
           name: 'get_arxiv_paper',
           description:
             'Fetch the official arXiv HTML version of a selected paper, convert it to Markdown, and return one bounded chunk. ' +
@@ -1528,7 +1533,7 @@ export function createAiAgentService(
             }
           })
         }),
-        new DynamicStructuredTool({
+        createAgentStructuredHostTool({
           name: 'resolve_academic_identity',
           description:
             'Resolve a local document ID, arXiv ID, DOI, Semantic Scholar paperId, or CorpusId to one verified paper identity. ' +
@@ -1538,7 +1543,7 @@ export function createAiAgentService(
             () => academicResearch.identityService.resolve(paper, signal)
           )
         }),
-        new DynamicStructuredTool({
+        createAgentStructuredHostTool({
           name: 'get_citing_papers',
           description:
             'Return a bounded page of papers that cite the target paper. ' +
@@ -1560,7 +1565,7 @@ export function createAiAgentService(
             )
           )
         }),
-        new DynamicStructuredTool({
+        createAgentStructuredHostTool({
           name: 'get_referenced_papers',
           description:
             'Return a bounded page of papers cited by the target paper. ' +
@@ -1581,7 +1586,7 @@ export function createAiAgentService(
             )
           )
         }),
-        new DynamicStructuredTool({
+        createAgentStructuredHostTool({
           name: 'get_semantic_recommendations',
           description:
             'Return a bounded list of Semantic Scholar recommendations for one paper. ' +
@@ -1594,7 +1599,7 @@ export function createAiAgentService(
             () => academicResearch.graphService.getRecommendations(paper, limit, signal)
           )
         }),
-        new DynamicStructuredTool({
+        createAgentStructuredHostTool({
           name: 'explore_research_frontier',
           description:
             'Run one bounded deterministic research-frontier round. ' +
@@ -1659,7 +1664,7 @@ export function createAiAgentService(
 
     const webAccessTools = webSearchService?.isEnabled()
       ? [
-          new DynamicStructuredTool({
+          createAgentStructuredHostTool({
             name: 'web_search',
             description:
               'Search the public web using the provider configured in Refora Settings. ' +
@@ -1688,7 +1693,7 @@ export function createAiAgentService(
               }
             }
           }),
-          new DynamicStructuredTool({
+          createAgentStructuredHostTool({
             name: 'web_fetch',
             description:
               'Fetch a public HTTP(S) web page and return bounded text or Markdown content. ' +
@@ -1715,6 +1720,39 @@ export function createAiAgentService(
         ]
       : []
 
+    const executeSandbox = agentExecutionService
+      ? createAgentStructuredHostTool({
+          name: '__execute',
+          description: 'Execute a command through the isolated Refora Agent runner.',
+          schema: z.object({
+            command: z.string().min(1),
+            timeout: z.number().int().min(0).max(3600).nullable().optional()
+          }),
+          func: async ({ command }) => {
+            try {
+              const result = await agentExecutionService.execute({
+                workspaceId: req.workspaceId,
+                script: command,
+                cwd: '.',
+                timeoutSeconds: 300,
+                signal
+              })
+              return JSON.stringify({
+                output: [result.stdout, result.stderr].filter(Boolean).join('\n'),
+                exitCode: result.exitCode,
+                truncated: result.truncated
+              })
+            } catch (error) {
+              return JSON.stringify({
+                output: error instanceof Error ? error.message : String(error),
+                exitCode: null,
+                truncated: false
+              })
+            }
+          }
+        })
+      : null
+
     const libraryTools = [
       searchLibrary,
       findRelatedPapers,
@@ -1728,6 +1766,7 @@ export function createAiAgentService(
     ]
     if (!workspaceId) {
       return [
+        ...(executeSandbox ? [executeSandbox] : []),
         ...libraryTools,
         ...academicTools,
         ...webAccessTools,
@@ -1737,6 +1776,7 @@ export function createAiAgentService(
       ]
     }
     return [
+      ...(executeSandbox ? [executeSandbox] : []),
       listWorkspaceContext,
       searchWorkspaceDocs,
       ...libraryTools.slice(0, -1),
@@ -1852,50 +1892,54 @@ export function createAiAgentService(
         .filter((s) => s.length > 0)
         .join('\n\n')
 
-      const llm = createProviderChatModel({
-        provider,
+      const reasoningOptions = buildProviderReasoningOptions(
+        { ...provider, reasoningEffort },
+        supportsNativeReasoning ? deepThinking : undefined
+      )
+      const providerConfig = {
+        model: modelId,
+        baseUrl: provider.baseUrl,
         apiKey: key,
-        modelId,
-        streaming: true,
-        deepThinking,
-        reasoningEffort
-      })
+        useResponsesApi: reasoningOptions.useResponsesApi,
+        modelKwargs: reasoningOptions.modelKwargs,
+        ...(reasoningOptions.reasoning ? { reasoning: reasoningOptions.reasoning } : {}),
+        temperature: supportsNativeReasoning ? null : provider.temperature,
+        maxTokens: provider.maxTokens
+      }
 
       ensureWorkspaceMemoryFiles(repos, req.workspaceId)
       const tools = buildTools(req, modelId, controller.signal)
       const readOnlyTools = tools.filter((candidate) => READ_ONLY_TOOL_NAMES.has(candidate.name))
-      const backend = agentExecutionService && agentSandboxService
-        ? await createReforaSandboxBackend({
-            workspaceId: req.workspaceId,
-            signal: controller.signal,
-            executionService: agentExecutionService,
-            sandboxService: agentSandboxService
-          })
-        : new StateBackend()
+      const sandboxRoot = agentExecutionService && agentSandboxService
+        ? (await agentSandboxService.ensure(req.workspaceId)).sandboxRoot
+        : null
       if (finishIfInactive()) return
       if (controller.signal.aborted) throw new Error('Agent run aborted')
-      const memoryBackend = createReforaWorkspaceMemoryBackend(repos, req.workspaceId)
       const agent = createReforaDeepAgent({
-        model: llm,
+        runtime: agentPythonRuntime as AgentPythonRuntime,
+        repos,
+        runId,
+        threadId,
+        workspaceId: req.workspaceId,
+        provider: providerConfig,
         systemPrompt,
         tools,
         readOnlyTools,
-        backend,
-        memoryBackend,
-        checkpointer: agentCheckpointService?.checkpointer ?? fallbackCheckpointer,
-        includeResearchMemory: req.workspaceId !== null,
-        middleware: [createReforaAgentPolicyMiddleware({
-          repos,
-          runId,
-          workspaceId: req.workspaceId
-        })]
+        sandboxRoot,
+        memories: readReforaWorkspaceMemories(repos, req.workspaceId),
+        checkpointPath: agentCheckpointService?.checkpointPath ?? '',
+        includeResearchMemory: req.workspaceId !== null
       })
 
       const allHistory = repos.chat.listMessages(threadId)
       const isFirstExchange = allHistory.length <= 1
       const thread = repos.chat.getThread(threadId)
       const replacedRun = req.replaceRunId ? repos.agentRuns.get(req.replaceRunId) : null
-      const checkpointBefore = replacedRun?.checkpointBefore ?? thread?.headCheckpointId ?? null
+      const savedCheckpointBefore =
+        replacedRun?.checkpointBefore ?? thread?.headCheckpointId ?? null
+      const checkpointBefore = thread?.agentStateVersion === AGENT_STATE_VERSION
+        ? savedCheckpointBefore
+        : null
       const userMessage = allHistory[allHistory.length - 1]
       repos.agentRuns.create({
         id: runId,
@@ -1909,7 +1953,7 @@ export function createAiAgentService(
       })
 
       const inputMsgs = thread?.agentStateVersion === AGENT_STATE_VERSION && checkpointBefore
-        ? [new HumanMessage(req.text)]
+        ? [{ role: 'user' as const, content: req.text }]
         : historyToMessages(
             truncateHistoryByTokens(
               allHistory as ChatMessage[],
@@ -1924,11 +1968,12 @@ export function createAiAgentService(
       if (req.workspaceId && req.attachments?.length) {
         const lastIdx = inputMsgs.length - 1
         const lastMsg = inputMsgs[lastIdx]
-        if (lastMsg instanceof HumanMessage && typeof lastMsg.content === 'string') {
+        if (lastMsg?.role === 'user') {
           const attachmentBlock = buildAttachmentContext(repos, req.attachments, req.workspaceId)
-          inputMsgs[lastIdx] = new HumanMessage(
-            `${lastMsg.content}\n\n[Attached papers]\n${attachmentBlock}`
-          )
+          inputMsgs[lastIdx] = {
+            role: 'user',
+            content: `${lastMsg.content}\n\n[Attached papers]\n${attachmentBlock}`
+          }
         }
       }
 
@@ -1973,10 +2018,7 @@ export function createAiAgentService(
       try {
         for await (const event of agent.streamEvents(
           { messages: inputMsgs },
-          {
-            version: 'v2',
-            ...invocationConfig
-          }
+          invocationConfig
         )) {
           if (controller.signal.aborted) throw new Error('Agent run aborted')
           const eventName = event.event
@@ -2032,8 +2074,19 @@ export function createAiAgentService(
                   if (p.type === 'text' && typeof p.text === 'string' && p.text) {
                     contentParts.push({ kind: 'message', token: p.text })
                   }
-                  else if (p.type === 'reasoning' && typeof p.reasoning === 'string')
-                    contentParts.push({ kind: 'reasoning', token: p.reasoning })
+                  else if (p.type === 'reasoning') {
+                    if (typeof p.reasoning === 'string' && p.reasoning) {
+                      contentParts.push({ kind: 'reasoning', token: p.reasoning })
+                    } else if (Array.isArray(p.summary)) {
+                      for (const summary of p.summary) {
+                        if (!summary || typeof summary !== 'object') continue
+                        const text = Reflect.get(summary, 'text')
+                        if (typeof text === 'string' && text) {
+                          contentParts.push({ kind: 'reasoning', token: text })
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2169,11 +2222,10 @@ export function createAiAgentService(
               : '[Response cancelled by user]'
         } else {
           const isRecursionError =
-            streamErr instanceof GraphRecursionError ||
-            (streamErr instanceof Error &&
+            streamErr instanceof Error &&
               (streamErr.name === 'GraphRecursionError' ||
                 (streamErr as unknown as Record<string, unknown>).lc_error_code === 'GRAPH_RECURSION_LIMIT' ||
-                /recursion limit/i.test(streamErr.message)))
+                /recursion limit/i.test(streamErr.message))
           const msg = isRecursionError
             ? RECURSION_LIMIT_MESSAGE
             : streamErr instanceof Error
@@ -2432,14 +2484,24 @@ export function createAiAgentService(
         thinkingMode === 'prompt' ? 'Prefer careful multi-step reasoning before answering.' : '',
         thread.workspaceId ? buildWorkspaceContext(repos, thread.workspaceId) : ''
       ].filter(Boolean).join('\n\n')
-      const llm = createProviderChatModel({
-        provider,
+      const supportsNativeReasoning = inferModelCapabilities(
+        provider.presetId,
+        run.modelId
+      ).supportsReasoning
+      const reasoningOptions = buildProviderReasoningOptions(
+        { ...provider, reasoningEffort },
+        supportsNativeReasoning ? deepThinking : undefined
+      )
+      const providerConfig = {
+        model: run.modelId,
+        baseUrl: provider.baseUrl,
         apiKey: key,
-        modelId: run.modelId,
-        streaming: false,
-        deepThinking,
-        reasoningEffort
-      })
+        useResponsesApi: reasoningOptions.useResponsesApi,
+        modelKwargs: reasoningOptions.modelKwargs,
+        ...(reasoningOptions.reasoning ? { reasoning: reasoningOptions.reasoning } : {}),
+        temperature: supportsNativeReasoning ? null : provider.temperature,
+        maxTokens: provider.maxTokens
+      }
       const toolRequest: ChatSendRequest = {
         workspaceId: thread.workspaceId,
         threadId: req.threadId,
@@ -2451,30 +2513,25 @@ export function createAiAgentService(
       ensureWorkspaceMemoryFiles(repos, thread.workspaceId)
       const tools = buildTools(toolRequest, run.modelId, controller.signal)
       const readOnlyTools = tools.filter((candidate) => READ_ONLY_TOOL_NAMES.has(candidate.name))
-      const backend = agentExecutionService && agentSandboxService
-        ? await createReforaSandboxBackend({
-            workspaceId: thread.workspaceId,
-            signal: controller.signal,
-            executionService: agentExecutionService,
-            sandboxService: agentSandboxService
-          })
-        : new StateBackend()
+      const sandboxRoot = agentExecutionService && agentSandboxService
+        ? (await agentSandboxService.ensure(thread.workspaceId)).sandboxRoot
+        : null
       if (destroyed) return
       if (controller.signal.aborted) throw new Error('Agent resume aborted')
       const agent = createReforaDeepAgent({
-        model: llm,
+        runtime: agentPythonRuntime as AgentPythonRuntime,
+        repos,
+        runId: req.runId,
+        threadId: req.threadId,
+        workspaceId: thread.workspaceId,
+        provider: providerConfig,
         systemPrompt,
         tools,
         readOnlyTools,
-        backend,
-        memoryBackend: createReforaWorkspaceMemoryBackend(repos, thread.workspaceId),
-        checkpointer: agentCheckpointService?.checkpointer ?? fallbackCheckpointer,
-        includeResearchMemory: thread.workspaceId !== null,
-        middleware: [createReforaAgentPolicyMiddleware({
-          repos,
-          runId: req.runId,
-          workspaceId: thread.workspaceId
-        })]
+        sandboxRoot,
+        memories: readReforaWorkspaceMemories(repos, thread.workspaceId),
+        checkpointPath: agentCheckpointService?.checkpointPath ?? '',
+        includeResearchMemory: thread.workspaceId !== null
       })
       const decisions = req.decisions.map((decision, index) => {
         if (decision.type === 'edit') {
@@ -2517,11 +2574,8 @@ export function createAiAgentService(
       }
       let streamedResult: unknown = null
       for await (const event of agent.streamEvents(
-        new Command({ resume: { decisions } }) as never,
-        {
-          version: 'v2',
-          ...config
-        }
+        { resume: { decisions } },
+        config
       )) {
         if (controller.signal.aborted) throw new Error('Agent resume aborted')
         const eventName = event.event

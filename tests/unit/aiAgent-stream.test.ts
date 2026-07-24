@@ -261,6 +261,27 @@ describe('AiAgentService stream content handling', () => {
     expect(reasoningCalls()).toEqual(['thinking...'])
   })
 
+  it('extracts Python Responses API reasoning summary deltas', async () => {
+    mocks.createReforaDeepAgent.mockReturnValue({
+      streamEvents: makeStream([
+        streamEvent({
+          content: [{
+            type: 'reasoning',
+            summary: [
+              { index: 0, type: 'summary_text', text: 'inspect ' },
+              { index: 1, type: 'summary_text', text: 'sources' }
+            ]
+          }]
+        })
+      ])
+    })
+
+    await service.run(mockReq, 'thread-1')
+
+    expect(tokenCalls()).toEqual([])
+    expect(reasoningCalls()).toEqual(['inspect ', 'sources'])
+  })
+
   it('concatenates mixed text and reasoning blocks', async () => {
     mocks.createReforaDeepAgent.mockReturnValue({
       streamEvents: makeStream([

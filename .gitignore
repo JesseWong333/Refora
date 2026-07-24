@@ -18,6 +18,8 @@ coverage/
 playwright-report/
 *.log
 *.log.*
+__pycache__/
+*.py[cod]
 .vite/
 .cache/
 .tmp/

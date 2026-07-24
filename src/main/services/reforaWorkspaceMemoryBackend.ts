@@ -1,19 +1,4 @@
 import { posix } from 'node:path'
-import type {
-  BackendProtocolV2,
-  DeleteResult,
-  EditResult,
-  FileDownloadResponse,
-  FileInfo,
-  FileUploadResponse,
-  GlobResult,
-  GrepMatch,
-  GrepResult,
-  LsResult,
-  ReadRawResult,
-  ReadResult,
-  WriteResult
-} from 'deepagents'
 import type { Repositories } from '../db/repositories'
 
 export const WORKSPACE_MEMORY_PATHS = [
@@ -47,92 +32,16 @@ function scopeFor(workspaceId: string | null): MemoryScope {
     : { scope: 'global', scopeId: 'global', workspaceId: null }
 }
 
-export function createReforaWorkspaceMemoryBackend(
+export function readReforaWorkspaceMemories(
   repos: Repositories,
   workspaceId: string | null
-): BackendProtocolV2 {
+): Record<string, string> {
   const scope = scopeFor(workspaceId)
-
-  function memory(path: string) {
-    const normalized = normalizeMemoryPath(path)
-    if (!normalized) return null
-    return repos.agentMemories.get(scope.scope, scope.scopeId, normalized)
-  }
-
-  return {
-    ls(path: string): LsResult {
-      if (path !== '/' && path !== '.') return { error: 'Memory paths are limited to /' }
-      const files: FileInfo[] = repos.agentMemories.list(scope.scope, scope.scopeId).map((entry) => ({
-        path: entry.path,
-        is_dir: false,
-        size: entry.content.length,
-        modified_at: new Date(entry.updatedAt).toISOString()
-      }))
-      return { files }
-    },
-    read(path: string, offset = 0, limit = 500): ReadResult {
-      const entry = memory(path)
-      if (!entry) return { error: `Memory file not found: ${path}` }
-      const lines = entry.content.split('\n')
-      const start = Math.max(0, offset)
-      const count = Math.max(1, limit)
-      return {
-        content: lines
-          .slice(start, start + count)
-          .map((line, index) => `${start + index + 1}: ${line}`)
-          .join('\n'),
-        mimeType: 'text/markdown'
-      }
-    },
-    readRaw(path: string): ReadRawResult {
-      const entry = memory(path)
-      if (!entry) return { error: `Memory file not found: ${path}` }
-      return {
-        data: {
-          content: entry.content,
-          mimeType: 'text/markdown',
-          created_at: new Date(entry.createdAt).toISOString(),
-          modified_at: new Date(entry.updatedAt).toISOString()
-        }
-      }
-    },
-    write(): WriteResult {
-      return { error: 'Workspace memory is read-only. Use propose_workspace_memory_update.' }
-    },
-    edit(): EditResult {
-      return { error: 'Workspace memory is read-only. Use propose_workspace_memory_update.' }
-    },
-    delete(): DeleteResult {
-      return { error: 'Workspace memory is read-only. Manage memory from Refora settings.' }
-    },
-    grep(pattern: string): GrepResult {
-      const matches: GrepMatch[] = []
-      for (const entry of repos.agentMemories.list(scope.scope, scope.scopeId)) {
-        entry.content.split('\n').forEach((line, index) => {
-          if (line.includes(pattern)) matches.push({ path: entry.path, line: index + 1, text: line })
-        })
-      }
-      return { matches }
-    },
-    glob(pattern: string): GlobResult {
-      const paths = repos.agentMemories.list(scope.scope, scope.scopeId)
-      const files = paths
-        .filter((entry) => pattern === '*' || pattern === '**/*' || pattern === '*.md' || pattern === entry.path)
-        .map((entry) => ({ path: entry.path, is_dir: false, size: entry.content.length }))
-      return { files }
-    },
-    uploadFiles(files): FileUploadResponse[] {
-      return files.map(([path]) => ({ path, error: 'permission_denied' }))
-    },
-    downloadFiles(paths): FileDownloadResponse[] {
-      return paths.map((path) => {
-        const entry = memory(path)
-        return entry
-          ? { path, content: new TextEncoder().encode(entry.content), error: null }
-          : { path, content: null, error: 'file_not_found' }
-      })
-    }
-  }
+  return Object.fromEntries(
+    repos.agentMemories
+      .list(scope.scope, scope.scopeId)
+      .map((entry) => [entry.path, entry.content])
+  )
 }
 
 export function ensureWorkspaceMemoryFiles(repos: Repositories, workspaceId: string | null): void {
