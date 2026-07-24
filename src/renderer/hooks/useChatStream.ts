@@ -33,6 +33,9 @@ interface ResumeRetryContext {
   editedActions?: Array<{ name: string; args: Record<string, unknown> }>
 }
 
+const MIN_LIVE_ACTIVITY_MS = 160
+const LIVE_ACTIVITY_TOOL_NAMES = new Set(['write_file', 'edit_file', 'write_todos'])
+
 function reviewedOcrDocumentId(context: ResumeRetryContext): string | null {
   if (context.decision === 'reject') return null
   const action = context.interrupt.actions.find((candidate) => candidate.name === 'prepare_paper_ocr')
@@ -88,12 +91,19 @@ export function useChatStream({
   const hadMessagesRef = useRef(false)
   const stickToBottomRef = useRef(true)
   const disposedRef = useRef(false)
+  const liveActivityStartedAtRef = useRef(new Map<string, number>())
+  const deferredTraceTimersRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  )
 
   const displayMessages = useMemo(() => messages.filter((m) => m.role !== 'tool'), [messages])
 
   useEffect(() => {
     threadIdRef.current = activeThreadId
     if (!isSendingRef.current) {
+      for (const timer of deferredTraceTimersRef.current.values()) clearTimeout(timer)
+      deferredTraceTimersRef.current.clear()
+      liveActivityStartedAtRef.current.clear()
       retrySendRef.current = null
       latestSendRef.current = null
       cancelledRef.current = false
@@ -175,6 +185,41 @@ export function useChatStream({
         )
       }
     })
+  }, [])
+
+  const mergeLiveTraceStep = useCallback((step: AgentTraceStep) => {
+    const keepVisible = step.name !== null && LIVE_ACTIVITY_TOOL_NAMES.has(step.name)
+    if (!keepVisible) {
+      setTraceSteps((prev) => mergeTraceStep(prev, step))
+      return
+    }
+    const existingTimer = deferredTraceTimersRef.current.get(step.id)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+      deferredTraceTimersRef.current.delete(step.id)
+    }
+    if (step.status === 'running') {
+      if (!liveActivityStartedAtRef.current.has(step.id)) {
+        liveActivityStartedAtRef.current.set(step.id, Date.now())
+      }
+      setTraceSteps((prev) => mergeTraceStep(prev, step))
+      return
+    }
+    const receivedAt = liveActivityStartedAtRef.current.get(step.id)
+    const remaining = receivedAt === undefined
+      ? 0
+      : MIN_LIVE_ACTIVITY_MS - (Date.now() - receivedAt)
+    if (remaining <= 0) {
+      liveActivityStartedAtRef.current.delete(step.id)
+      setTraceSteps((prev) => mergeTraceStep(prev, step))
+      return
+    }
+    const timer = setTimeout(() => {
+      deferredTraceTimersRef.current.delete(step.id)
+      liveActivityStartedAtRef.current.delete(step.id)
+      setTraceSteps((prev) => mergeTraceStep(prev, step))
+    }, remaining)
+    deferredTraceTimersRef.current.set(step.id, timer)
   }, [])
 
   const chatHandlersRef = useRef<{
@@ -290,7 +335,7 @@ export function useChatStream({
             streamingStepOutputRef.current.set(payload.step.id, payload.step.output ?? '')
           }
         }
-        setTraceSteps((prev) => mergeTraceStep(prev, payload.step))
+        mergeLiveTraceStep(payload.step)
       },
       onInterrupted: (payload: ChatInterruptedEvent) => {
         if (payload.runId !== activeRunIdRef.current) return
@@ -345,6 +390,9 @@ export function useChatStream({
     return () => {
       disposedRef.current = true
       if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current)
+      for (const timer of deferredTraceTimersRef.current.values()) clearTimeout(timer)
+      deferredTraceTimersRef.current.clear()
+      liveActivityStartedAtRef.current.clear()
       if (isSendingRef.current && threadIdRef.current) {
         void api.ai.chatCancel(threadIdRef.current).catch(() => undefined)
       }

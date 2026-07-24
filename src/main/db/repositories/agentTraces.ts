@@ -84,6 +84,7 @@ export function createAgentTracesRepository(db: SqliteDb) {
   function updateStep(
     id: string,
     patch: {
+      input?: string | null
       output?: string | null
       status?: AgentTraceStepStatus
       endedAt?: number | null
@@ -96,12 +97,13 @@ export function createAgentTracesRepository(db: SqliteDb) {
       | Record<string, unknown>
       | undefined
     if (!existing) return null
+    const traceInput = patch.input !== undefined ? patch.input : (existing.input as string | null)
     const output = patch.output !== undefined ? patch.output : (existing.output as string | null)
     const status = patch.status ?? (existing.status as AgentTraceStepStatus)
     const endedAt = patch.endedAt !== undefined ? patch.endedAt : (existing.endedAt as number | null)
 
-    const sets: string[] = ['output = ?', 'status = ?', 'endedAt = ?']
-    const params: unknown[] = [output, status, endedAt]
+    const sets: string[] = ['input = ?', 'output = ?', 'status = ?', 'endedAt = ?']
+    const params: unknown[] = [traceInput, output, status, endedAt]
 
     if (patch.inputTokens !== undefined) {
       sets.push('inputTokens = ?')

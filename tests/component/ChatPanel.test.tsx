@@ -578,6 +578,29 @@ describe('ChatMessages presentation', () => {
     expect(screen.queryByText('Inspect the papers')).toBeNull()
   })
 
+  it('reads live todo updates from Deep Agents wrapped tool input', () => {
+    const todoStep = {
+      ...makeTodoStep('todo-wrapped', 3, []),
+      input: JSON.stringify({
+        input: JSON.stringify({
+          todos: [
+            { content: 'Inspect the papers', status: 'in_progress' },
+            { content: 'Draft the comparison', status: 'pending' }
+          ]
+        })
+      })
+    }
+
+    renderMessages({
+      traceSteps: [todoStep],
+      activeRunId: 'run-todo'
+    })
+
+    expect(screen.getByTestId('agent-todo-list')).toBeInTheDocument()
+    expect(screen.getByText('Inspect the papers')).toBeInTheDocument()
+    expect(screen.getByText('0/2')).toBeInTheDocument()
+  })
+
   it('keeps a todo plan collapsed when the same run reports another update', () => {
     const first = makeTodoStep('todo-1', 1, [
       { content: 'Inspect the papers', status: 'in_progress' },
@@ -1291,6 +1314,54 @@ describe('useChatStream lifecycle', () => {
       expect(result.current.traceSteps.find((step) => step.id === 'reasoning-1')?.output).toBe('Inspect sources')
       expect(result.current.traceSteps.find((step) => step.id === 'message-1')?.output).toBe('Answer')
     })
+  })
+
+  it('keeps fast file activity running long enough to render before completion', async () => {
+    const { result } = renderChatStream()
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false))
+
+    await act(async () => {
+      await result.current.sendText('Write a report', [], 'thread-1')
+    })
+    const runId = (mockChatSend.mock.calls[0][0] as ChatSendRequest).runId!
+    const runningStep: AgentTraceStep = {
+      id: 'write-1',
+      threadId: 'thread-1',
+      runId,
+      kind: 'tool',
+      name: 'write_file',
+      input: '{"file_path":"/outputs/report.md"}',
+      output: null,
+      status: 'running',
+      startedAt: 1,
+      endedAt: null,
+      seq: 0,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      parentStepId: null,
+      agentName: null,
+      namespace: null,
+      depth: 0,
+      checkpointId: null
+    }
+
+    act(() => {
+      chatTraceHandler?.({ threadId: 'thread-1', runId, step: runningStep })
+      chatTraceHandler?.({
+        threadId: 'thread-1',
+        runId,
+        step: { ...runningStep, status: 'done', endedAt: 2, output: 'written' }
+      })
+    })
+
+    expect(result.current.traceSteps.find((step) => step.id === 'write-1')?.status)
+      .toBe('running')
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 180))
+    })
+    expect(result.current.traceSteps.find((step) => step.id === 'write-1')?.status)
+      .toBe('done')
   })
 
   it('keeps failed send context available for retry after a stream error', async () => {

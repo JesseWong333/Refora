@@ -81,7 +81,9 @@ import {
   extractToolInput,
   extractToolName,
   extractToolOutput,
-  stringifyTraceValue
+  stringifyTraceValue,
+  type AgentTraceContext,
+  type AgentTraceRecorder
 } from './agentTraceRecorder'
 
 const MAX_FULLTEXT_CHARS = 8000
@@ -92,6 +94,7 @@ const WORKSPACE_CONTEXT_DOC_LIMIT = 80
 const WORKSPACE_CONTEXT_CHAR_LIMIT = 6000
 const MAX_RECURSION_LIMIT = 50
 const academicResearchToolNames = new Set<string>(ACADEMIC_RESEARCH_TOOL_NAMES)
+const STREAMED_ACTIVITY_TOOL_NAMES = new Set(['write_file', 'edit_file', 'write_todos'])
 const ACADEMIC_TRACE_REDACTION = 'Academic research data kept transient for this run.'
 const READ_ONLY_TOOL_NAMES = new Set([
   'list_workspace_context',
@@ -182,6 +185,83 @@ function todosFromAgentState(
     }]
   })
   return todos.length > 0 ? todos : null
+}
+
+function traceKindForTool(toolName: string | null): AgentTraceStepKind {
+  return toolName === 'task'
+    ? 'subagent'
+    : toolName === 'write_todos'
+      ? 'todo'
+      : 'tool'
+}
+
+function toolCallPreviews(value: unknown): Array<{
+  key: string
+  name: string
+}> {
+  if (!value || typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+  const collection = Array.isArray(record.tool_call_chunks) && record.tool_call_chunks.length > 0
+    ? record.tool_call_chunks
+    : record.tool_calls
+  const previews: Array<{ key: string; name: string }> = []
+  if (!Array.isArray(collection)) return previews
+  collection.forEach((candidate, position) => {
+    if (!candidate || typeof candidate !== 'object') return
+    const call = candidate as Record<string, unknown>
+    const name = typeof call.name === 'string' ? call.name : ''
+    if (!STREAMED_ACTIVITY_TOOL_NAMES.has(name)) return
+    const slot = typeof call.index === 'number' ? call.index : position
+    previews.push({ key: `slot:${slot}`, name })
+  })
+  return previews
+}
+
+function createStreamedToolTraceTracker(trace: AgentTraceRecorder) {
+  const seen = new Set<string>()
+  const pendingByName = new Map<string, string[]>()
+
+  function observe(
+    value: unknown,
+    modelRunKey: string | null,
+    context: AgentTraceContext
+  ): void {
+    for (const preview of toolCallPreviews(value)) {
+      const key = `${modelRunKey ?? 'model'}:${preview.key}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const step = trace.start(
+        traceKindForTool(preview.name),
+        preview.name,
+        null,
+        [`tool-preview:${key}`],
+        context
+      )
+      const pending = pendingByName.get(preview.name) ?? []
+      pending.push(step.id)
+      pendingByName.set(preview.name, pending)
+    }
+  }
+
+  function start(
+    toolName: string | null,
+    toolInput: string | null,
+    keys: string[],
+    context: AgentTraceContext
+  ): void {
+    if (toolName) {
+      const pending = pendingByName.get(toolName)
+      const stepId = pending?.shift()
+      if (pending?.length === 0) pendingByName.delete(toolName)
+      if (stepId) {
+        trace.continueStep(stepId, toolInput, keys)
+        return
+      }
+    }
+    trace.start(traceKindForTool(toolName), toolName, toolInput, keys, context)
+  }
+
+  return { observe, start }
 }
 
 type AgentRunStopReason = 'cancelled' | 'superseded' | 'deleted' | 'destroyed'
@@ -1685,6 +1765,7 @@ export function createAiAgentService(
     const activeRun = registerActiveRun(threadId, runId)
     const controller = activeRun.controller
     const trace = createTrace(threadId, runId)
+    const streamedToolTraces = createStreamedToolTraceTracker(trace)
     const runStep = trace.start('run', 'agent_run', null)
     emitAiChatRunStatus(w, { threadId, runId, status: 'running' })
 
@@ -1917,6 +1998,7 @@ export function createAiAgentService(
 
           if (eventName === 'on_chat_model_end') {
             finishActiveContent()
+            streamedToolTraces.observe(data.output, runKey, eventContext)
             const usage = extractTokenUsage(data)
             const modelOutput = 'output' in data
               ? stringifyTraceValue(sanitizeAcademicCheckpointValue(data.output))
@@ -1936,6 +2018,7 @@ export function createAiAgentService(
               chunk?: { content?: unknown; additional_kwargs?: Record<string, unknown> }
             }
             const chunk = chunkData?.chunk
+            streamedToolTraces.observe(chunk, runKey, eventContext)
             const content = chunk?.content
             const contentParts: Array<{ kind: 'reasoning' | 'message'; token: string }> = []
             if (typeof content === 'string') {
@@ -1985,12 +2068,7 @@ export function createAiAgentService(
               runKey ? null : `tool-name:${toolName ?? 'unknown'}`
             ].filter((k): k is string => !!k)
             if (keys.length === 0) keys.push(`tool:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
-            const traceKind: AgentTraceStepKind = toolName === 'task'
-              ? 'subagent'
-              : toolName === 'write_todos'
-                ? 'todo'
-                : 'tool'
-            trace.start(traceKind, toolName, toolInput, keys, eventContext)
+            streamedToolTraces.start(toolName, toolInput, keys, eventContext)
             continue
           }
 
@@ -2015,7 +2093,7 @@ export function createAiAgentService(
             const finished = trace.finishByKeys(keys, 'done', toolOutput)
             if (!finished) {
               trace.recordSnapshot(
-                toolName === 'task' ? 'subagent' : toolName === 'write_todos' ? 'todo' : 'tool',
+                traceKindForTool(toolName),
                 toolName,
                 'done',
                 toolOutput,
@@ -2048,7 +2126,7 @@ export function createAiAgentService(
             const finished = trace.finishByKeys(keys, 'error', errMsg)
             if (!finished) {
               trace.recordSnapshot(
-                toolName === 'task' ? 'subagent' : toolName === 'write_todos' ? 'todo' : 'tool',
+                traceKindForTool(toolName),
                 toolName,
                 'error',
                 errMsg,
@@ -2322,6 +2400,7 @@ export function createAiAgentService(
     const activeRun = registerActiveRun(req.threadId, req.runId)
     const controller = activeRun.controller
     const trace = createTrace(req.threadId, req.runId)
+    const streamedToolTraces = createStreamedToolTraceTracker(trace)
     const runStep = trace.start('run', 'agent_resume', null)
     repos.agentRuns.update(req.runId, { status: 'running', endedAt: null, error: null })
     emitAiChatRunStatus(w, { threadId: req.threadId, runId: req.runId, status: 'running' })
@@ -2460,16 +2539,16 @@ export function createAiAgentService(
           keys.push(`tool:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         }
         const eventContext = trace.contextForEvent(event as unknown as Record<string, unknown>)
-        if (eventName === 'on_tool_start') {
+        if (eventName === 'on_chat_model_stream') {
+          const chunk = data.chunk && typeof data.chunk === 'object' ? data.chunk : null
+          streamedToolTraces.observe(chunk, runKey, eventContext)
+        } else if (eventName === 'on_chat_model_end') {
+          streamedToolTraces.observe(data.output, runKey, eventContext)
+        } else if (eventName === 'on_tool_start') {
           const toolInput = toolName && academicResearchToolNames.has(toolName)
             ? null
             : extractToolInput(data)
-          const traceKind: AgentTraceStepKind = toolName === 'task'
-            ? 'subagent'
-            : toolName === 'write_todos'
-              ? 'todo'
-              : 'tool'
-          trace.start(traceKind, toolName, toolInput, keys, eventContext)
+          streamedToolTraces.start(toolName, toolInput, keys, eventContext)
         } else if (eventName === 'on_tool_end') {
           const output = toolName && academicResearchToolNames.has(toolName)
             ? ACADEMIC_TRACE_REDACTION
@@ -2477,7 +2556,7 @@ export function createAiAgentService(
           const finished = trace.finishByKeys(keys, 'done', output)
           if (!finished) {
             trace.recordSnapshot(
-              toolName === 'task' ? 'subagent' : toolName === 'write_todos' ? 'todo' : 'tool',
+              traceKindForTool(toolName),
               toolName,
               'done',
               output,
@@ -2494,7 +2573,7 @@ export function createAiAgentService(
           const finished = trace.finishByKeys(keys, 'error', message)
           if (!finished) {
             trace.recordSnapshot(
-              toolName === 'task' ? 'subagent' : toolName === 'write_todos' ? 'todo' : 'tool',
+              traceKindForTool(toolName),
               toolName,
               'error',
               message,

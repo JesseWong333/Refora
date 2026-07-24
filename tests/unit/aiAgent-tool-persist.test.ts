@@ -302,6 +302,71 @@ describe('aiAgent tool call persistence', () => {
       expect(persistedTrace).not.toContain('secret result')
       expect(persistedTrace).toContain('Academic research data kept transient')
     })
+
+    it('starts streamed file activity before execution and reuses that trace step', async () => {
+      const { service, addTraceStep, updateTraceStep } = createService()
+      setupStreamEvents([
+        {
+          event: 'on_chat_model_stream',
+          data: {
+            chunk: {
+              content: '',
+              tool_call_chunks: [{
+                id: 'write-call-1',
+                index: 0,
+                name: 'write_file',
+                args: '{"file_path":"/outputs/report.md"'
+              }]
+            }
+          },
+          run_id: 'llm-write-1'
+        },
+        {
+          event: 'on_tool_start',
+          name: 'write_file',
+          data: {
+            input: {
+              input: '{"file_path":"/outputs/report.md","content":"Report"}'
+            }
+          },
+          run_id: 'tool-write-1'
+        },
+        {
+          event: 'on_tool_end',
+          name: 'write_file',
+          data: { output: "Successfully wrote to '/outputs/report.md'" },
+          run_id: 'tool-write-1'
+        },
+        {
+          event: 'on_chat_model_stream',
+          data: { chunk: { content: 'Created the report.' } },
+          run_id: 'llm-answer-1'
+        }
+      ])
+
+      await service.run(makeReq(), 't1')
+
+      const writeCallIndex = addTraceStep.mock.calls.findIndex(
+        ([input]) => input.name === 'write_file'
+      )
+      expect(writeCallIndex).toBeGreaterThanOrEqual(0)
+      expect(addTraceStep.mock.calls.filter(([input]) => input.name === 'write_file'))
+        .toHaveLength(1)
+      expect(addTraceStep.mock.calls[writeCallIndex][0]).toMatchObject({
+        kind: 'tool',
+        name: 'write_file',
+        input: null,
+        status: 'running'
+      })
+      const writeStepId = addTraceStep.mock.results[writeCallIndex].value.id
+      expect(updateTraceStep).toHaveBeenCalledWith(writeStepId, {
+        input: '{"file_path":"/outputs/report.md","content":"Report"}'
+      })
+      expect(updateTraceStep).toHaveBeenCalledWith(
+        writeStepId,
+        expect.objectContaining({ status: 'done' })
+      )
+    })
   })
 
   describe('on_tool_error', () => {

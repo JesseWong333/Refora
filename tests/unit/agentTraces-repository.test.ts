@@ -109,6 +109,25 @@ describe('AgentTracesRepository', () => {
       expect(updated!.endedAt).toBe(2000)
     })
 
+    it('fills in input for a tool step created from a streamed preview', () => {
+      const step = repos.agentTraces.addStep({
+        threadId: 't1',
+        runId: 'r1',
+        kind: 'tool',
+        name: 'write_file',
+        input: null,
+        status: 'running',
+        startedAt: 1000,
+        seq: 0
+      })
+      const updated = repos.agentTraces.updateStep(step.id, {
+        input: '{"file_path":"/outputs/report.md"}'
+      })
+      expect(updated!.input).toBe('{"file_path":"/outputs/report.md"}')
+      expect(updated!.status).toBe('running')
+      expect(updated!.endedAt).toBeNull()
+    })
+
     it('preserves existing values when patch omits them', () => {
       const step = repos.agentTraces.addStep({
         threadId: 't1',

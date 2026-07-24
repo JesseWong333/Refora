@@ -15,7 +15,7 @@ interface TokenUsage {
   totalTokens: number
 }
 
-interface AgentTraceContext {
+export interface AgentTraceContext {
   parentStepId?: string | null
   agentName?: string | null
   namespace?: string | null
@@ -58,8 +58,21 @@ export function extractToolName(event: {
 
 export function extractToolInput(data: Record<string, unknown> | undefined): string | null {
   if (!data) return null
-  if ('input' in data) return stringifyTraceValue(data.input)
-  if ('inputs' in data) return stringifyTraceValue(data.inputs)
+  let value = 'input' in data ? data.input : 'inputs' in data ? data.inputs : null
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) break
+    const record = value as Record<string, unknown>
+    const keys = Object.keys(record)
+    if (
+      'input' in record &&
+      keys.every((key) => ['input', 'tool_call_id', 'id', 'name'].includes(key))
+    ) {
+      value = record.input
+      continue
+    }
+    break
+  }
+  if (value !== null) return stringifyTraceValue(value)
   return null
 }
 
@@ -199,6 +212,19 @@ export function createAgentTraceRecorder(input: AgentTraceRecorderInput) {
     return step
   }
 
+  function continueStep(
+    id: string,
+    traceInput: string | null,
+    keys: string[]
+  ): AgentTraceStep | null {
+    for (const key of keys) addOpenKey(key, id)
+    const step = input.repos.agentTraces.updateStep(id, {
+      ...(traceInput !== null ? { input: traceInput } : {})
+    })
+    if (step) input.emitStep(step)
+    return step
+  }
+
   function finishByKeys(
     keys: string[],
     status: AgentTraceStepStatus,
@@ -281,7 +307,16 @@ export function createAgentTraceRecorder(input: AgentTraceRecorderInput) {
     return { parentStepId, agentName, namespace, depth: parentIds.length }
   }
 
-  return { start, finish, finishByKeys, recordSnapshot, finishOpen, failOpen, contextForEvent }
+  return {
+    start,
+    continueStep,
+    finish,
+    finishByKeys,
+    recordSnapshot,
+    finishOpen,
+    failOpen,
+    contextForEvent
+  }
 }
 
 export type AgentTraceRecorder = ReturnType<typeof createAgentTraceRecorder>

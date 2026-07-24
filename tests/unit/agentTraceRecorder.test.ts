@@ -5,6 +5,7 @@ import {
   createAgentTraceRecorder,
   extractTokenUsage,
   extractToolCallId,
+  extractToolInput,
   truncateTraceText
 } from '../../src/main/services/agentTraceRecorder'
 
@@ -116,9 +117,29 @@ describe('agentTraceRecorder', () => {
 
   it('keeps trace parsing and truncation behavior isolated from the agent service', () => {
     expect(extractToolCallId({}, { input: { tool_call_id: 'call-1' } })).toBe('call-1')
+    expect(extractToolInput({
+      input: {
+        input: '{"file_path":"/outputs/report.md","content":"Report"}'
+      }
+    })).toBe('{"file_path":"/outputs/report.md","content":"Report"}')
     expect(extractTokenUsage({
       output: { usage_metadata: { input_tokens: 3, output_tokens: 5 } }
     })).toEqual({ inputTokens: 3, outputTokens: 5, totalTokens: 8 })
     expect(truncateTraceText('x'.repeat(4001))).toBe(`${'x'.repeat(4000)}\n...[truncated]`)
+  })
+
+  it('continues a streamed tool preview with normalized input and execution keys', () => {
+    const { recorder, updateStep } = createRecorder()
+    const preview = recorder.start('tool', 'write_file', null, ['tool-preview:write-1'])
+
+    recorder.continueStep(
+      preview.id,
+      '{"file_path":"/outputs/report.md"}',
+      ['tool-run-1']
+    )
+    expect(updateStep).toHaveBeenCalledWith(preview.id, {
+      input: '{"file_path":"/outputs/report.md"}'
+    })
+    expect(recorder.finishByKeys(['tool-run-1'], 'done', 'written')?.id).toBe(preview.id)
   })
 })

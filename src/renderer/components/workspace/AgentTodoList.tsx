@@ -15,20 +15,36 @@ interface AgentTodoItem {
   status: AgentTodoStatus
 }
 
-function parseTodoValue(value: string | null): AgentTodoItem[] | null {
-  if (!value) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-    if (typeof parsed === 'string') parsed = JSON.parse(parsed)
-  } catch {
+function unwrapTodoValue(value: unknown): unknown {
+  let current = value
+  for (let depth = 0; depth < 6; depth += 1) {
+    if (typeof current === 'string') {
+      try {
+        current = JSON.parse(current) as unknown
+        continue
+      } catch {
+        return null
+      }
+    }
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return current
+    const record = current as Record<string, unknown>
+    if (Array.isArray(record.todos)) return record.todos
+    if ('input' in record) {
+      current = record.input
+      continue
+    }
+    if (record.update && typeof record.update === 'object') {
+      current = record.update
+      continue
+    }
     return null
   }
-  const todos = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === 'object'
-      ? (parsed as { todos?: unknown }).todos
-      : null
+  return null
+}
+
+function parseTodoValue(value: string | null): AgentTodoItem[] | null {
+  if (!value) return null
+  const todos = unwrapTodoValue(value)
   if (!Array.isArray(todos)) return null
   const items = todos.flatMap((todo): AgentTodoItem[] => {
     if (!todo || typeof todo !== 'object') return []
