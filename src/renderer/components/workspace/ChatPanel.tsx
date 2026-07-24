@@ -4,7 +4,6 @@ import { Plus, X, ArrowCounterClockwise } from '@phosphor-icons/react'
 import { api } from '../../ipc'
 import { errorMessage } from '../../../shared/ipc-types'
 import type {
-  AgentInterruptAction,
   AiProvider,
   AiReasoningEffort,
   ProviderModelInfo
@@ -19,6 +18,7 @@ import ChatInput from './ChatInput'
 import ModelSelector from './ModelSelector'
 import ThreadHistory from './ThreadHistory'
 import AgentOcrProgress from './AgentOcrProgress'
+import AgentApprovalCard from './AgentApprovalCard'
 
 export { parseReforaDocLink } from '../../utils/markdown'
 
@@ -60,54 +60,6 @@ function providerAllowsModel(provider: AiProvider, model: string): boolean {
     const parsed = parseModelId(candidate)
     return candidate === model || parsed.baseModel === model
   })
-}
-
-type TFunc = ReturnType<typeof useTranslation>['t']
-
-const APPROVAL_ACTION_COPY = {
-  prepare_paper_ocr: {
-    nameKey: 'workspace.chat.approvalPrepareOcr',
-    nameFallback: 'Run paper OCR',
-    descriptionKey: 'workspace.chat.approvalPrepareOcrDescription',
-    descriptionFallback:
-      'Run balanced local OCR for this paper and prepare a reusable structured full-text cache.'
-  },
-  install_runtime_packages: {
-    nameKey: 'workspace.chat.approvalInstallPackages',
-    nameFallback: 'Install runtime packages',
-    descriptionKey: 'workspace.chat.approvalInstallPackagesDescription',
-    descriptionFallback:
-      'Download and install the requested runtimes and packages in the current sandbox.'
-  },
-  publish_workspace_artifacts: {
-    nameKey: 'workspace.chat.approvalPublishArtifacts',
-    nameFallback: 'Publish workspace artifacts',
-    descriptionKey: 'workspace.chat.approvalPublishArtifactsDescription',
-    descriptionFallback: 'Publish the selected generated files to the current workspace.'
-  },
-  propose_workspace_memory_update: {
-    nameKey: 'workspace.chat.approvalUpdateMemory',
-    nameFallback: 'Update workspace memory',
-    descriptionKey: 'workspace.chat.approvalUpdateMemoryDescription',
-    descriptionFallback: 'Apply the proposed update to workspace memory.'
-  }
-} as const
-
-function approvalActionCopy(
-  action: AgentInterruptAction,
-  t: TFunc
-): { name: string; description?: string } {
-  if (!Object.prototype.hasOwnProperty.call(APPROVAL_ACTION_COPY, action.name)) {
-    return {
-      name: action.name,
-      description: action.description
-    }
-  }
-  const copy = APPROVAL_ACTION_COPY[action.name as keyof typeof APPROVAL_ACTION_COPY]
-  return {
-    name: t(copy.nameKey, copy.nameFallback),
-    description: t(copy.descriptionKey, copy.descriptionFallback)
-  }
 }
 
 interface ChatPanelProps {
@@ -174,34 +126,6 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
     setChatStreaming,
     fetchThreads
   })
-  const [approvalEditing, setApprovalEditing] = useState(false)
-  const [approvalDrafts, setApprovalDrafts] = useState<string[]>([])
-
-  useEffect(() => {
-    setApprovalEditing(false)
-    setApprovalDrafts(
-      chat.pendingInterrupt?.actions.map((action) => JSON.stringify(action.args, null, 2)) ?? []
-    )
-  }, [chat.pendingInterrupt?.id])
-
-  const submitEditedApproval = useCallback(() => {
-    if (!chat.pendingInterrupt) return
-    try {
-      const editedActions = chat.pendingInterrupt.actions.map((action, index) => {
-        const args = JSON.parse(approvalDrafts[index] ?? '{}') as unknown
-        if (!args || typeof args !== 'object' || Array.isArray(args)) {
-          throw new Error(t('workspace.chat.editActionInvalid', 'Action arguments must be a JSON object.'))
-        }
-        return { name: action.name, args: args as Record<string, unknown> }
-      })
-      void chat.resolveInterrupt('edit', editedActions)
-    } catch (approvalError) {
-      chat.setError(errorMessage(
-        approvalError,
-        t('workspace.chat.editActionInvalid', 'Action arguments must be valid JSON objects.')
-      ))
-    }
-  }, [approvalDrafts, chat, t])
 
   const canSend = !!activeProviderId && !!input.trim() && !chat.streaming && !chat.pendingInterrupt
 
@@ -471,81 +395,12 @@ export default function ChatPanel({ onClose }: ChatPanelProps = {}) {
       )}
 
       {chat.pendingInterrupt && (
-        <div className="shrink-0 px-3 pb-2">
-          <div className="rounded-lg border border-border bg-panel-2 px-3 py-2">
-            <div className="text-xs font-semibold text-foreground">
-              {t('workspace.chat.approvalRequired', 'Approval required')}
-            </div>
-            <div className="mt-1 space-y-1 text-xs text-muted">
-              {chat.pendingInterrupt.actions.map((action, index) => {
-                const copy = approvalActionCopy(action, t)
-                return (
-                  <div key={`${action.name}-${index}`} className="space-y-1 break-words">
-                    <div>
-                      <span className="font-medium text-foreground">{copy.name}</span>
-                      {copy.description ? ` — ${copy.description}` : ''}
-                    </div>
-                    {approvalEditing ? (
-                      <textarea
-                        aria-label={t('workspace.chat.approvalActionArguments', {
-                          action: copy.name,
-                          defaultValue: '{{action}} arguments'
-                        })}
-                        className="min-h-24 w-full resize-y rounded border border-border bg-background px-2 py-1 font-mono text-label text-foreground outline-none focus:border-accent"
-                        value={approvalDrafts[index] ?? ''}
-                        maxLength={70_000}
-                        onChange={(event) => setApprovalDrafts((current) => {
-                          const next = [...current]
-                          next[index] = event.target.value
-                          return next
-                        })}
-                      />
-                    ) : (
-                      <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-background px-2 py-1 font-mono text-label text-muted">
-                        {JSON.stringify(action.args, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            <div className="mt-2 flex justify-end gap-2">
-              <UiButton
-                variant="ghost"
-                size="sm"
-                disabled={chat.streaming}
-                onClick={() => void chat.resolveInterrupt('reject')}
-              >
-                {t('workspace.chat.rejectAction', 'Reject')}
-              </UiButton>
-              {chat.pendingInterrupt.actions.every((action) =>
-                action.allowedDecisions.includes('edit')) && (
-                <UiButton
-                  variant="ghost"
-                  size="sm"
-                  disabled={chat.streaming}
-                  onClick={() => setApprovalEditing((current) => !current)}
-                >
-                  {approvalEditing
-                    ? t('workspace.chat.cancelEditAction', 'Cancel edit')
-                    : t('workspace.chat.editAction', 'Edit')}
-                </UiButton>
-              )}
-              <UiButton
-                variant="primary"
-                size="sm"
-                disabled={chat.streaming}
-                onClick={() => approvalEditing
-                  ? submitEditedApproval()
-                  : void chat.resolveInterrupt('approve')}
-              >
-                {approvalEditing
-                  ? t('workspace.chat.applyEditAction', 'Apply and continue')
-                  : t('workspace.chat.approveAction', 'Approve')}
-              </UiButton>
-            </div>
-          </div>
-        </div>
+        <AgentApprovalCard
+          interrupt={chat.pendingInterrupt}
+          activeWorkspaceId={activeWorkspaceId}
+          streaming={chat.streaming}
+          onResolve={chat.resolveInterrupt}
+        />
       )}
 
       {chat.error && (

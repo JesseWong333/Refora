@@ -81,12 +81,20 @@ describe('initI18n and changeLanguage', () => {
     const approvalKeys = [
       'workspace.chat.approvalPrepareOcr',
       'workspace.chat.approvalPrepareOcrDescription',
+      'workspace.chat.approvalPaperTitle',
+      'workspace.chat.approvalPaperTarget',
       'workspace.chat.approvalInstallPackages',
       'workspace.chat.approvalInstallPackagesDescription',
+      'workspace.chat.approvalRuntimeList',
+      'workspace.chat.approvalPythonPackageList',
+      'workspace.chat.approvalPackageWithoutVersion',
       'workspace.chat.approvalPublishArtifacts',
       'workspace.chat.approvalPublishArtifactsDescription',
+      'workspace.chat.approvalArtifactPathList',
       'workspace.chat.approvalUpdateMemory',
-      'workspace.chat.approvalUpdateMemoryDescription'
+      'workspace.chat.approvalUpdateMemoryDescription',
+      'workspace.chat.approvalMemoryContent',
+      'workspace.chat.approvalMemoryRationale'
     ] as const
 
     initI18n('en')
@@ -99,8 +107,8 @@ describe('initI18n and changeLanguage', () => {
       expect(chinese[index]).not.toBe(approvalKeys[index])
       expect(chinese[index]).not.toBe(english[index])
     }
-    expect(i18n.t('workspace.chat.approvalActionArguments', {
-      action: '运行论文 OCR'
-    })).toBe('运行论文 OCR 的参数')
+    expect(i18n.t('workspace.chat.approvalPrepareOcrDescription', {
+      paper: '《示例论文》'
+    })).toContain('示例论文')
   })
 })

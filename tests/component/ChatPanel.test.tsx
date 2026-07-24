@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, renderHook, act, waitFor } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  renderHook,
+  act,
+  waitFor,
+  within
+} from '@testing-library/react'
 import { StrictMode } from 'react'
 import type {
   AgentTraceStep,
@@ -331,9 +340,18 @@ describe('ChatPanel OCR progress placement', () => {
 
     const approval = await screen.findByText('workspace.chat.approvalRequired')
     const approvalCard = approval.parentElement
+    expect(approvalCard).toHaveClass(
+      'mx-auto',
+      'w-full',
+      'max-w-[768px]',
+      'border-accent',
+      'bg-white'
+    )
     expect(approvalCard).toHaveTextContent('workspace.chat.approvalPrepareOcr')
     expect(approvalCard).toHaveTextContent('workspace.chat.approvalPrepareOcrDescription')
     expect(approvalCard).not.toHaveTextContent('prepare_paper_ocr')
+    expect(approvalCard?.querySelector('pre')).toBeNull()
+    expect(within(approvalCard as HTMLElement).getAllByRole('button')).toHaveLength(2)
     expect(approvalCard).not.toHaveTextContent(
       'Run balanced local OCR for this paper and prepare a reusable structured full-text cache.'
     )
